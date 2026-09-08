@@ -219,6 +219,15 @@ class AuditLog
             'codigos-prereservados' => 'codigos',
             'geonames' => 'geonames',
             'chatbot' => 'chatbot',
+            'fincas' => 'fincas',
+            'parcelas' => 'fincas',
+            'lotes' => 'lotes',
+            'negociaciones' => 'negociaciones',
+            'pagos-terrenos' => 'pagos_terreno',
+            'tasas-inmobiliarias' => 'tasas_inmobiliarias',
+            'parametrizacion-mora-inmobiliaria' => 'tasas_inmobiliarias',
+            'simulador' => 'simulador',
+            'reportes-inmobiliarios' => 'reportes_inmobiliarios',
         ];
 
         $modulo = $modulosMap[$recurso] ?? $recurso;
@@ -268,6 +277,11 @@ class AuditLog
             'restaurar' => 'restaurar',
             'abrir' => 'apertura',
             'cerrar' => 'cierre',
+            'desactivar' => 'desactivar',
+            'rescindir' => 'rescindir',
+            'cancelar-reserva' => 'rescindir',
+            'imagenes' => 'subir_foto',
+            'servicios' => 'asignar_servicio',
         ];
 
         foreach ($acciones as $patern => $accion) {
@@ -319,6 +333,15 @@ class AuditLog
             'categorias-productos' => 'categoria_productos',
             'sucursales' => 'sucursales',
             'gastos' => 'gastos',
+            'fincas' => 'fincas',
+            'parcelas' => 'parcelas',
+            'lotes' => 'lotes',
+            'negociaciones' => 'negociaciones',
+            'pagos-terrenos' => 'pagos_terrenos',
+            'tasas-inmobiliarias' => 'tasas_interes',
+            'parametrizacion-mora-inmobiliaria' => 'parametrizacion_mora_inmobiliaria',
+            'simulador' => 'simulador',
+            'reportes-inmobiliarios' => 'reportes',
         ];
 
         return $tablasMap[$recurso] ?? null;

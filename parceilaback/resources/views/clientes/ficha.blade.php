@@ -329,14 +329,14 @@
     @endif
 
     <!-- Resumen financiero -->
-    <div class="section-title">Resumen financiero</div>
+    <div class="section-title">Resumen de terrenos</div>
     <div class="stats-row">
         <div class="stat-cell">
-            <div class="stat-label">Monto total prestado</div>
+            <div class="stat-label">Total contratado</div>
             <div class="stat-value highlight">Q {{ number_format($stats['monto_total_prestado'], 2) }}</div>
         </div>
         <div class="stat-cell">
-            <div class="stat-label">Saldo pendiente</div>
+            <div class="stat-label">Saldo de terrenos</div>
             <div class="stat-value alert">Q {{ number_format($stats['saldo_actual_total'], 2) }}</div>
         </div>
         <div class="stat-cell">
@@ -346,7 +346,7 @@
             </div>
         </div>
         <div class="stat-cell">
-            <div class="stat-label">Créditos activos</div>
+            <div class="stat-label">Ventas activas</div>
             <div class="stat-value">{{ $stats['activos'] }}</div>
         </div>
     </div>
@@ -357,59 +357,51 @@
         <div class="score-main">{{ $comportamiento['comportamiento'] }}</div>
         <div class="score-detail">
             Puntos: {{ round($comportamiento['puntos']) }}/100 —
-            {{ $comportamiento['pagos_puntuales'] }} de {{ $comportamiento['pagos_total'] }} pagos a tiempo o adelantados
+            {{ $comportamiento['pagos_puntuales'] }} de {{ $comportamiento['pagos_total'] }} cuotas a tiempo o adelantadas
         </div>
     </div>
 
-    <!-- Resumen de créditos -->
-    <div class="section-title">Resumen de créditos</div>
+    <!-- Resumen de negociaciones -->
+    <div class="section-title">Terrenos solicitados y financiados</div>
     <div class="info-block">
         <div class="info-row">
             <span class="info-label">Total en historial</span>
             <span class="info-value">{{ $stats['total_historial'] }}</span>
         </div>
         <div class="info-row">
-            <span class="info-label">Liquidados</span>
+            <span class="info-label">Pagados en su totalidad</span>
             <span class="info-value">{{ $stats['liquidados'] }}</span>
         </div>
         <div class="info-row">
-            <span class="info-label">Vencidos</span>
+            <span class="info-label">En mora</span>
             <span class="info-value">{{ $stats['vencidos'] }}</span>
         </div>
     </div>
 
-    <!-- Créditos activos -->
-    @if($creditos_activos->count() > 0)
-    <div class="section-title">Créditos activos</div>
+    @if($negociaciones_activas->count() > 0)
+    <div class="section-title">Terrenos activos y reservas</div>
     <table class="data">
         <thead>
             <tr>
-                <th>Número</th>
+                <th>Código</th>
+                <th>Lote</th>
                 <th>Fecha</th>
-                <th class="text-right">Monto aprobado</th>
-                <th class="text-right">Capital pendiente</th>
-                <th class="text-right">Saldo total</th>
+                <th class="text-right">Precio final</th>
+                <th class="text-right">Saldo capital</th>
                 <th class="text-center">Estado</th>
             </tr>
         </thead>
         <tbody>
-            @foreach($creditos_activos as $credito)
+            @foreach($negociaciones_activas as $neg)
             <tr>
-                <td>{{ $credito->codigo_credito ?? $credito->numero_credito }}</td>
-                <td>{{ $credito->fecha_solicitud ? $credito->fecha_solicitud->format('d/m/Y') : '—' }}</td>
-                <td class="text-right">Q {{ number_format($credito->monto_aprobado, 2) }}</td>
-                <td class="text-right">Q {{ number_format($credito->capital_pendiente, 2) }}</td>
-                <td class="text-right">
-                    Q {{ number_format(
-                        $credito->capital_pendiente +
-                        ($credito->interes_generado - $credito->interes_pagado) +
-                        ($credito->mora_generada - $credito->mora_pagada),
-                        2
-                    ) }}
-                </td>
+                <td>{{ $neg->codigo_negociacion }}</td>
+                <td>{{ $neg->lote->codigo_unico ?? '—' }}</td>
+                <td>{{ $neg->fecha_negociacion ? $neg->fecha_negociacion->format('d/m/Y') : '—' }}</td>
+                <td class="text-right">Q {{ number_format($neg->precio_final, 2) }}</td>
+                <td class="text-right">Q {{ number_format($neg->saldo_capital_pendiente, 2) }}</td>
                 <td class="text-center">
-                    <span class="badge badge-{{ str_replace(' ', '_', strtolower($credito->estado)) }}">
-                        {{ ucfirst($credito->estado) }}
+                    <span class="badge badge-{{ str_replace(' ', '_', strtolower($neg->estado)) }}">
+                        {{ str_replace('_', ' ', ucfirst($neg->estado)) }}
                     </span>
                 </td>
             </tr>
@@ -418,28 +410,29 @@
     </table>
     @endif
 
-    <!-- Últimos créditos liquidados -->
-    @if($creditos_liquidados->count() > 0)
-    <div class="section-title">Últimos créditos liquidados</div>
+    @if($negociaciones_pagadas->count() > 0)
+    <div class="section-title">Terrenos pagados</div>
     <table class="data">
         <thead>
             <tr>
-                <th>Número</th>
-                <th>Fecha solicitud</th>
-                <th class="text-right">Monto</th>
-                <th>Prendas</th>
+                <th>Código</th>
+                <th>Lote</th>
+                <th>Fecha</th>
+                <th class="text-right">Precio</th>
+                <th class="text-center">Tipo</th>
                 <th class="text-center">Estado</th>
             </tr>
         </thead>
         <tbody>
-            @foreach($creditos_liquidados as $credito)
+            @foreach($negociaciones_pagadas as $neg)
             <tr>
-                <td>{{ $credito->codigo_credito ?? $credito->numero_credito }}</td>
-                <td>{{ $credito->fecha_solicitud ? $credito->fecha_solicitud->format('d/m/Y') : '—' }}</td>
-                <td class="text-right">Q {{ number_format($credito->monto_aprobado, 2) }}</td>
-                <td>{{ $credito->prendas->count() }} prenda(s)</td>
+                <td>{{ $neg->codigo_negociacion }}</td>
+                <td>{{ $neg->lote->codigo_unico ?? '—' }}</td>
+                <td>{{ $neg->fecha_negociacion ? $neg->fecha_negociacion->format('d/m/Y') : '—' }}</td>
+                <td class="text-right">Q {{ number_format($neg->precio_final, 2) }}</td>
+                <td class="text-center">{{ ucfirst($neg->tipo_negociacion) }}</td>
                 <td class="text-center">
-                    <span class="badge badge-liquidado">Liquidado</span>
+                    <span class="badge badge-liquidado">Pagado</span>
                 </td>
             </tr>
             @endforeach
@@ -449,7 +442,7 @@
 
     <div class="disclaimer">
         Este documento es confidencial y de uso interno. Los datos reflejan el estado al {{ $fechaGeneracion }}.
-        La calificación de riesgo se obtiene del historial de pagos, créditos vencidos y mora. No compartir sin autorización.
+        La calificación de riesgo se obtiene del historial de cuotas de terreno, mora y liquidaciones. No compartir sin autorización.
     </div>
 </body>
 </html>

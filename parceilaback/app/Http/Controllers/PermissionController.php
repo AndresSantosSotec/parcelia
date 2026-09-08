@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Permission;
 use App\Models\User;
+use App\Support\EmpenosAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -19,6 +20,9 @@ class PermissionController extends Controller
         $permisos = [];
         
         foreach (Permission::$permisosPorModulo as $modulo => $acciones) {
+            if (EmpenosAccess::isHiddenModule($modulo)) {
+                continue;
+            }
             $permisos[] = [
                 'modulo' => $modulo,
                 'acciones' => $acciones,
@@ -148,6 +152,9 @@ class PermissionController extends Controller
         if ($permisosRol === '*') {
             $permisos = [];
             foreach (Permission::$permisosPorModulo as $modulo => $acciones) {
+                if (EmpenosAccess::isHiddenModule($modulo)) {
+                    continue;
+                }
                 $permisos[] = [
                     'modulo' => $modulo,
                     'acciones' => $acciones,
@@ -161,6 +168,9 @@ class PermissionController extends Controller
 
         $permisos = [];
         foreach ($permisosRol as $modulo => $acciones) {
+            if (EmpenosAccess::isHiddenModule($modulo)) {
+                continue;
+            }
             $permisos[] = [
                 'modulo' => $modulo,
                 'acciones' => $acciones,

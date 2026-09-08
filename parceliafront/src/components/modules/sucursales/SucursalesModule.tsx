@@ -362,17 +362,19 @@ export function SucursalesModule() {
   return (
     <div className="space-y-6 p-4 sm:p-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Sucursales</h1>
+      <div className="page-toolbar">
+        <div className="min-w-0">
+          <h1 className="font-bold tracking-tight">Sucursales</h1>
           <p className="text-muted-foreground mt-1">
             Gestión completa de sucursales del sistema
           </p>
         </div>
-        <Button onClick={handleNuevo} className="w-full sm:w-auto">
-          <Plus size={18} className="mr-2" />
-          Nueva Sucursal
-        </Button>
+        <div className="page-toolbar-actions">
+          <Button onClick={handleNuevo}>
+            <Plus size={18} className="mr-2" />
+            Nueva Sucursal
+          </Button>
+        </div>
       </div>
 
       {/* Estadísticas */}

@@ -28,6 +28,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       if (response.success && response.data) {
         const user = response.data.user
         const rolLabels: Record<string, string> = {
+          superadmin: 'Soporte',
           administrador: 'Administrador',
           cajero: 'Cajero',
           tasador: 'Tasador',
@@ -40,44 +41,16 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         toast.error(response.message || 'Usuario o contraseña incorrectos')
       }
     } catch (error: any) {
-      console.warn('API no disponible o error de red, ingresando en modo plantilla/demo:', error)
-      // Fallback automático para modo plantilla / sin backend
-      const mockUser = {
-        id: 1,
-        name: username || `Administrador ${empresaConfig.nombreEmpresa}`,
-        username: username || 'admin',
-        email: 'admin@parcelia.local',
-        rol: 'administrador',
-        sucursal_id: 1,
-        activo: true,
-        permisos: ['*']
-      }
-      toast.success('Modo Plantilla Activo (Sin Backend) - Acceso Concedido')
-      onLogin(mockUser.name, 'Administrador', mockUser)
+      toast.error(error.message || 'No se pudo iniciar sesión. Verifica el servidor y tus credenciales.')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleQuickDemo = () => {
-    const mockUser = {
-      id: 1,
-      name: `Administrador ${empresaConfig.nombreEmpresa}`,
-      username: 'admin',
-      email: 'admin@parcelia.local',
-      rol: 'administrador',
-      sucursal_id: 1,
-      activo: true,
-      permisos: ['*']
-    }
-    toast.success(`Bienvenido a ${empresaConfig.nombreEmpresa} (Modo Plantilla)`)
-    onLogin('Administrador', 'Administrador', mockUser)
-  }
-
   return (
     <div className="login-background">
       <div className="login-card">
-        <div className="p-8 pb-0 space-y-5 text-center">
+        <div className="p-6 sm:p-8 pb-0 space-y-5 text-center">
           {empresaConfig.logoUrl ? (
             <div className="h-20 max-w-[200px] mx-auto flex items-center justify-center p-2 rounded-2xl bg-card border border-border/80 shadow-md overflow-hidden">
               <img src={empresaConfig.logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
@@ -92,7 +65,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             <p className="text-sm text-muted-foreground">{empresaConfig.slogan || 'Sistema de Gestión · Plataforma UI'}</p>
           </div>
         </div>
-        <div className="p-8 pt-6">
+        <div className="p-6 sm:p-8 pt-6">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
               <Label htmlFor="username" className="text-sm font-medium">Usuario</Label>
@@ -138,14 +111,6 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               ) : (
                 'Iniciar Sesión'
               )}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleQuickDemo}
-              className="w-full py-2 px-3 text-xs font-medium text-muted-foreground hover:text-foreground bg-muted/40 hover:bg-muted/70 rounded-lg transition-colors border border-border/50"
-            >
-              🚀 Explorar Plantilla (Modo Standalone / Demo)
             </button>
           </form>
           <p className="text-center text-[0.6875rem] text-muted-foreground/60 mt-6">

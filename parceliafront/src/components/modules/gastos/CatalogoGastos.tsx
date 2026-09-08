@@ -272,7 +272,7 @@ export function CatalogoGastos() {
       const response = await gastosService.eliminar(confirmarEliminar.id_gasto)
       
       if (response.soft_delete) {
-        toast.success('Gasto desactivado (tiene créditos asociados)')
+        toast.success('Gasto desactivado (tiene operaciones asociadas)')
       } else {
         toast.success('Gasto eliminado exitosamente')
       }
@@ -300,23 +300,23 @@ export function CatalogoGastos() {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <CardTitle className="flex items-center gap-2">
                 <CurrencyDollar className="h-5 w-5" />
                 Catálogo de Gastos
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                {loading ? 'Cargando...' : `${totalRegistros} gasto${totalRegistros !== 1 ? 's' : ''} encontrado${totalRegistros !== 1 ? 's' : ''}`}
+                Cargos extra del plan de pagos de terreno (escritura, gestión, etc.). Se prorratean en las cuotas y se marcan pagados al cobrar.
               </p>
             </div>
-            <Button onClick={abrirModalCrear}>
+            <Button onClick={abrirModalCrear} className="w-full sm:w-auto">
               <Plus className="h-4 w-4 mr-2" />
               Nuevo Gasto
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           {/* Filtros y Búsqueda */}
           <div className="flex flex-wrap gap-4 mb-4">
             <div className="flex-1 min-w-[250px]">
@@ -501,7 +501,7 @@ export function CatalogoGastos() {
             <DialogDescription>
               {gastoEditando 
                 ? 'Modifica los datos del gasto.'
-                : 'Crea un nuevo tipo de gasto para asociar a créditos prendarios.'}
+                : 'Crea un cargo extra para el plan de pagos de terreno (fijo o porcentaje).'}
             </DialogDescription>
           </DialogHeader>
 
@@ -562,7 +562,7 @@ export function CatalogoGastos() {
                     onChange={(e) => setFormData({ ...formData, monto: Number(e.target.value) || null })}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Este monto se aplicará igual sin importar el valor del crédito.
+                    Este monto se aplica igual en cada venta, sin importar el precio del lote.
                   </p>
                 </div>
               ) : (
@@ -579,7 +579,7 @@ export function CatalogoGastos() {
                     onChange={(e) => setFormData({ ...formData, porcentaje: Number(e.target.value) || null })}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Se calculará como porcentaje del monto otorgado del crédito.
+                    Se calcula como porcentaje del capital financiado (precio final menos enganche).
                   </p>
                 </div>
               )}
@@ -602,7 +602,7 @@ export function CatalogoGastos() {
                   onCheckedChange={(checked) => setFormData({ ...formData, activo: checked })}
                 />
                 <Label htmlFor="activo" className="cursor-pointer">
-                  Gasto activo (disponible para asociar a créditos)
+                  Gasto activo (disponible para asociar a ventas de terreno)
                 </Label>
               </div>
             </div>
@@ -628,7 +628,7 @@ export function CatalogoGastos() {
               ¿Estás seguro de eliminar el gasto "{confirmarEliminar?.nombre}"?
               {confirmarEliminar?.creditos_count && confirmarEliminar.creditos_count > 0 && (
                 <p className="mt-2 text-amber-600">
-                  Este gasto tiene {confirmarEliminar.creditos_count} crédito(s) asociado(s). 
+                  Este gasto tiene {confirmarEliminar.creditos_count} operación(es) asociada(s). 
                   Se desactivará en lugar de eliminarse permanentemente.
                 </p>
               )}

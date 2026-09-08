@@ -26,9 +26,9 @@ class EnsureSuperAdmin
         // Verificar que el usuario tenga rol superadmin
         $user = Auth::user();
 
-        if (!$user || $user->role !== 'superadmin') {
+        if (!$user || ($user->rol ?? null) !== 'superadmin') {
             return response()->json([
-                'message' => 'Acceso denegado. Se requiere rol de Super Administrador.'
+                'message' => 'Acceso denegado. Se requiere rol de Super Administrador (soporte).'
             ], 403);
         }
 

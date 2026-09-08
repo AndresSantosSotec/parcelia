@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Cliente, Credito } from '@/lib/types'
+import { Cliente } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -22,7 +22,6 @@ import { toast } from 'sonner'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
-import { useKV } from '@/hooks/use-kv'
 import { getMediaUrl } from '@/utils/imageUrl'
 import debounce from 'lodash/debounce'
 
@@ -61,9 +60,6 @@ export function ClientesModule() {
   const [clienteEditar, setClienteEditar] = useState<Cliente | undefined>()
   const [clienteEliminar, setClienteEliminar] = useState<Cliente | null>(null)
   const [clienteDetalle, setClienteDetalle] = useState<Cliente | null>(null)
-
-  // Créditos para mostrar info adicional
-  // const [creditos] = useKV<Credito[]>('creditos', []) // Ya no es necesario, viene en Cliente
 
   // Debounce para búsqueda
   const debouncedSetBusqueda = useMemo(
@@ -163,7 +159,7 @@ export function ClientesModule() {
 
     try {
       if (clienteEliminar.creditosInfo && clienteEliminar.creditosInfo.activos > 0) {
-        toast.error('No se puede eliminar un cliente con créditos activos')
+        toast.error('No se puede eliminar un comprador con terrenos o ventas activas')
         setClienteEliminar(null)
         return
       }
@@ -197,8 +193,6 @@ export function ClientesModule() {
     filtroSucursal !== 'todos',
     busqueda !== ''
   ].filter(Boolean).length
-
-  // getCreditosCliente ya no es necesario ya que viene integrado en el objeto cliente
 
   const handleToggleMasivo = async (accion: 'activar' | 'desactivar') => {
     if (clientesSeleccionados.size === 0) return
@@ -273,17 +267,19 @@ export function ClientesModule() {
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row gap-3 sm:gap-0 sm:justify-between sm:items-center">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Clientes</h1>
-          <p className="text-sm sm:text-base text-muted-foreground">
-            Gestión completa de clientes
+      <div className="page-toolbar">
+        <div className="min-w-0">
+          <h1 className="font-bold tracking-tight">Compradores</h1>
+          <p className="text-sm text-muted-foreground">
+            Gestión completa de compradores
           </p>
         </div>
-        <Button onClick={() => { setClienteEditar(undefined); setDialogAbierto(true) }} className="w-full sm:w-auto">
-          <Plus weight="bold" className="mr-2" />
-          Nuevo Cliente
-        </Button>
+        <div className="page-toolbar-actions">
+          <Button onClick={() => { setClienteEditar(undefined); setDialogAbierto(true) }}>
+            <Plus weight="bold" className="mr-2" />
+            Nuevo Comprador
+          </Button>
+        </div>
       </div>
 
       <Tabs value={tabActivo} onValueChange={setTabActivo}>
@@ -488,15 +484,15 @@ export function ClientesModule() {
 
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <CardTitle className="text-lg">Lista de Clientes</CardTitle>
+              <CardTitle className="text-lg">Lista de Compradores</CardTitle>
               <CardDescription>
                 {pagination ? `${pagination.total} cliente${pagination.total !== 1 ? 's' : ''} encontrado${pagination.total !== 1 ? 's' : ''}` : 'Cargando...'}
               </CardDescription>
             </div>
             <Select value={String(perPage)} onValueChange={(v) => { setPerPage(Number(v)); setPage(1) }}>
-              <SelectTrigger className="w-[130px]">
+              <SelectTrigger className="w-full sm:w-[130px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -525,7 +521,7 @@ export function ClientesModule() {
                     <TableHead className="w-[140px]">DPI / NIT</TableHead>
                     <TableHead className="w-[120px]">Contacto</TableHead>
                     <TableHead className="w-[80px] text-center">Estado</TableHead>
-                    <TableHead className="w-[100px] text-center">Créditos</TableHead>
+                    <TableHead className="w-[100px] text-center">Terrenos</TableHead>
                     <TableHead className="w-[120px] text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -587,7 +583,63 @@ export function ClientesModule() {
               )}
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className="md:hidden divide-y">
+              {clientes.map((cliente) => {
+                const creditosInfo = cliente.negociacionesInfo
+                  ? { total: cliente.negociacionesInfo.total, activos: cliente.negociacionesInfo.activos, vencidos: cliente.negociacionesInfo.en_mora }
+                  : (cliente.creditosInfo || { total: 0, activos: 0, vencidos: 0 })
+                return (
+                  <div key={cliente.id} className="p-3 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={clientesSeleccionados.has(String(cliente.id))}
+                        onCheckedChange={() => toggleSeleccion(String(cliente.id))}
+                        className="mt-1"
+                      />
+                      <Avatar className="h-10 w-10 shrink-0">
+                        {(cliente.fotografia || (cliente as any).fotografia_url) ? (
+                          <AvatarImage src={getMediaUrl(cliente.fotografia || (cliente as any).fotografia_url) || ''} alt={cliente.nombres} />
+                        ) : null}
+                        <AvatarFallback className="bg-primary/10 text-primary">
+                          {cliente.nombres[0]}{cliente.apellidos[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-medium truncate">{cliente.nombres} {cliente.apellidos}</p>
+                          <Badge variant={cliente.estado === 'activo' ? 'default' : 'secondary'}>
+                            {cliente.estado === 'activo' ? 'Activo' : 'Inactivo'}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground font-mono mt-0.5">{cliente.dpi}</p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                          <Phone size={12} /> {cliente.telefono}
+                        </p>
+                        {creditosInfo.total > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {creditosInfo.activos} contrato{creditosInfo.activos !== 1 ? 's' : ''}
+                            {creditosInfo.vencidos > 0 ? ` · ${creditosInfo.vencidos} en mora` : ''}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setClienteDetalle(cliente)}>
+                        <Eye size={14} className="mr-1" /> Ver
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => { setClienteEditar(cliente); setDialogAbierto(true) }}>
+                        <Pencil size={14} className="mr-1" /> Editar
+                      </Button>
+                      <Button variant="outline" size="sm" className="text-destructive" onClick={() => setClienteEliminar(cliente)}>
+                        <Trash size={14} className="mr-1" /> Borrar
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -626,13 +678,15 @@ export function ClientesModule() {
                         <SortIcon field="estado" />
                       </button>
                     </TableHead>
-                    <TableHead className="w-[100px] text-center">Créditos</TableHead>
+                    <TableHead className="w-[100px] text-center">Terrenos</TableHead>
                     <TableHead className="w-[120px] text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {clientes.map((cliente) => {
-                    const creditosInfo = cliente.creditosInfo || { total: 0, activos: 0, vencidos: 0 }
+                    const creditosInfo = cliente.negociacionesInfo
+                      ? { total: cliente.negociacionesInfo.total, activos: cliente.negociacionesInfo.activos, vencidos: cliente.negociacionesInfo.en_mora }
+                      : (cliente.creditosInfo || { total: 0, activos: 0, vencidos: 0 })
 
                     return (
                       <TableRow
@@ -758,6 +812,7 @@ export function ClientesModule() {
                 </TableBody>
               </Table>
             </div>
+            </>
           )}
 
           {/* Paginación */}

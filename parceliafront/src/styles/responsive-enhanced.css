@@ -474,3 +474,93 @@ input, select, textarea {
     color: black !important;
   }
 }
+
+/* ============================================
+   APP SHELL — overflow, toolbars y touch
+   ============================================ */
+
+html, body, #root {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.page-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .page-toolbar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+}
+
+.page-toolbar > :first-child {
+  flex: 1 1 16rem;
+  min-width: min(100%, 14rem);
+}
+
+.page-toolbar h1 {
+  font-size: 1.25rem;
+  line-height: 1.3;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+@media (min-width: 640px) {
+  .page-toolbar h1 {
+    font-size: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .page-toolbar h1 {
+    font-size: 1.75rem;
+  }
+}
+
+.page-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .page-toolbar-actions {
+    width: auto;
+    max-width: 100%;
+    justify-content: flex-end;
+    flex: 1 1 18rem;
+  }
+}
+
+@media (max-width: 639px) {
+  .page-toolbar-actions > button,
+  .page-toolbar-actions > [data-slot="button"] {
+    flex: 1 1 auto;
+    min-height: 2.5rem;
+  }
+}
+
+[data-slot="table-container"] {
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 767px) {
+  .login-card {
+    margin: 0.75rem;
+    max-width: calc(100% - 1.5rem);
+  }
+
+  .login-background::before,
+  .login-background::after {
+    width: 260px;
+    height: 260px;
+  }
+}

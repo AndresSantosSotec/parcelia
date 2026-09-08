@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Traits\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class PagoTerreno extends Model
 {
-    use HasFactory;
+    use HasFactory, Auditable;
+
+    protected string $auditoriaModulo = 'pagos_terreno';
 
     protected $table = 'pago_terrenos';
 
@@ -17,6 +20,7 @@ class PagoTerreno extends Model
         'cliente_id',
         'lote_id',
         'caja_apertura_cierre_id',
+        'movimiento_caja_id',
         'user_id',
         'tipo_pago',
         'monto_total',
@@ -31,8 +35,12 @@ class PagoTerreno extends Model
         'fecha_pago',
         'concepto',
         'observaciones',
+        'origen_fondos',
+        'ive_efectivo_reportable',
+        'recibo_id',
         'anulado',
         'motivo_anulacion',
+        'idempotency_key',
     ];
 
     protected $casts = [

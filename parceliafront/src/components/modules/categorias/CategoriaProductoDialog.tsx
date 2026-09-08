@@ -6,8 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-// import { DynamicFieldsManager } from './DynamicFieldsManager' // Funcionalidad deshabilitada
-// import { Separator } from '@/components/ui/separator' // Funcionalidad deshabilitada
+import { DynamicFieldsManager } from './DynamicFieldsManager'
+import { Separator } from '@/components/ui/separator'
 
 interface CategoriaProductoDialogProps {
   abierto: boolean
@@ -243,20 +243,18 @@ export function CategoriaProductoDialog({ abierto, onCerrar, onGuardar, categori
             </div>
           </div>
 
-          {/* Funcionalidad de campos dinámicos deshabilitada
           <Separator className="my-6" />
 
           <div className="space-y-2">
-            <h3 className="text-lg font-semibold">Campos Dinámicos</h3>
+            <h3 className="text-lg font-semibold">Campos dinámicos</h3>
             <p className="text-sm text-muted-foreground">
-              Define campos adicionales que se pedirán al registrar prendas de esta categoría
+              Define campos adicionales del formulario. Útil para soporte y depuración de altas.
             </p>
             <DynamicFieldsManager
               fields={formData.camposDinamicos || []}
               onChange={(fields) => setFormData({ ...formData, camposDinamicos: fields })}
             />
           </div>
-          */}
 
           <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0 pt-4">
             <Button 

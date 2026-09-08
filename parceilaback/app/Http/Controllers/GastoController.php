@@ -209,6 +209,27 @@ class GastoController extends Controller
         ]);
     }
 
+    public function preview(Request $request): JsonResponse
+    {
+        $request->validate([
+            'gas_ids' => 'required|array',
+            'gas_ids.*' => 'integer|exists:gastos,id_gasto',
+            'monto_otorgado' => 'required|numeric|min:0',
+        ]);
+
+        $gastos = Gasto::whereIn('id_gasto', $request->gas_ids)->activos()->get();
+        $resultado = $this->gastosService->calcularValoresGastos($gastos, (float) $request->monto_otorgado);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'gastos' => $resultado['gastos'],
+                'total_gastos' => $resultado['total_gastos'],
+                'monto_otorgado' => (float) $request->monto_otorgado,
+            ],
+        ]);
+    }
+
     /**
      * Calcular valor de un gasto para un monto dado
      *

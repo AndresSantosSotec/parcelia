@@ -3,10 +3,13 @@ import { Users, Calculator, CreditCard as CreditCardIcon, Package, Wallet, Chart
 export const navigation = [
   { id: 'fincas', label: 'Fincas & Lotes', icon: TreeStructure },
   { id: 'negociaciones', label: 'Ventas & Contratos', icon: Handshake },
+  { id: 'tasas_inmobiliarias', label: 'Tasas & Mora', icon: Percent },
   { id: 'clientes', label: 'Compradores', icon: Users },
   { id: 'simulador', label: 'Simulador Cuotas', icon: Calculator },
   { id: 'caja', label: 'Caja & Cobros', icon: Wallet },
   { id: 'recibos', label: 'Recibos', icon: Receipt },
+  { id: 'otros_gastos', label: 'Otros ingresos', icon: CurrencyDollar },
+  { id: 'gastos', label: 'Catálogo de Gastos', icon: ReceiptX },
   { id: 'reportes', label: 'Reportes Inmobiliarios', icon: ChartBar },
   { id: 'personalizacion', label: 'Personalización & Logo', icon: PaintBrush },
   { id: 'usuarios', label: 'Usuarios & Asesores', icon: UserCircle },

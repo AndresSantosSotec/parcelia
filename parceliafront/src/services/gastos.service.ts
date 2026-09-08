@@ -186,7 +186,7 @@ class GastosService {
    * Vista previa de gastos para un monto dado (sin guardar)
    */
   async previewGastos(gastoIds: number[], montoOtorgado: number): Promise<{ success: boolean; data: GastosCreditoResponse }> {
-    return this.request('/creditos/preview-gastos', {
+    return this.request('/gastos/preview', {
       method: 'POST',
       body: JSON.stringify({
         gas_ids: gastoIds,

@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Traits\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class TasaInteres extends Model
 {
-    use HasFactory;
+    use HasFactory, Auditable;
+
+    protected string $auditoriaModulo = 'tasas_inmobiliarias';
 
     protected $table = 'tasas_interes_inmobiliarias';
 

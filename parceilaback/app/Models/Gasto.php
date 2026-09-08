@@ -72,6 +72,18 @@ class Gasto extends Model
         ->withTimestamps();
     }
 
+    public function negociaciones(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            Negociacion::class,
+            'negociacion_gasto',
+            'gasto_id',
+            'negociacion_id'
+        )
+        ->withPivot('valor_calculado')
+        ->withTimestamps();
+    }
+
     /**
      * Calcular el valor del gasto para un monto dado
      *
@@ -112,7 +124,7 @@ class Gasto extends Model
      */
     public function tieneCreditos(): bool
     {
-        return $this->creditos()->exists();
+        return $this->creditos()->exists() || $this->negociaciones()->exists();
     }
 
     /**

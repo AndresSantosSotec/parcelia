@@ -51,7 +51,14 @@ export function ReportesModule() {
     cargarReportes()
   }, [])
 
-  // Imprimir Reporte Consolidado
+  const descargar = async (endpoint: string, formato: 'pdf' | 'xlsx', filename: string) => {
+    try {
+      const sep = endpoint.includes('?') ? '&' : '?'
+      await api.downloadFile(`${endpoint}${sep}formato=${formato}`, filename)
+    } catch {
+      toast.error('No se pudo descargar el reporte')
+    }
+  }
   const handleImprimirReporteGeneral = () => {
     const fechaHoy = format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es })
     const cuerpoHTML = `
@@ -110,17 +117,17 @@ export function ReportesModule() {
   return (
     <div className="space-y-6 animate-fade-in-up pb-10">
       {/* Encabezado */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card/70 backdrop-blur-md p-6 rounded-2xl border border-border/80 shadow-sm">
-        <div>
-          <div className="flex items-center gap-2">
-            <ChartBar size={28} className="text-primary" weight="duotone" />
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Reportes & Estadísticas Inmobiliarias</h1>
+      <div className="page-toolbar bg-card/70 backdrop-blur-md p-4 sm:p-6 rounded-2xl border border-border/80 shadow-sm">
+        <div className="min-w-0">
+          <div className="flex items-start gap-2">
+            <ChartBar size={24} className="text-primary shrink-0 mt-0.5" weight="duotone" />
+            <h1 className="font-bold tracking-tight text-foreground">Reportes & Estadísticas Inmobiliarias</h1>
           </div>
           <p className="text-muted-foreground text-sm">
             Información en tiempo real de inventario de lotes, ventas, cobranza de cartera e ingresos de caja.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="page-toolbar-actions">
           <Button variant="outline" onClick={cargarReportes} disabled={cargando} className="gap-2">
             <ArrowsClockwise size={16} className={cargando ? 'animate-spin' : ''} />
             Actualizar
@@ -224,14 +231,39 @@ export function ReportesModule() {
         {/* TAB INVENTARIO */}
         <TabsContent value="inventario">
           <Card className="border-border/80 shadow-sm">
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+            <CardHeader className="pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <CardTitle className="text-base">Detalle de Lotes en Base de Datos ({inventario?.lotes?.length || 0})</CardTitle>
-                <CardDescription className="text-xs">Estado de cada lote, área y precio de venta</CardDescription>
+                <CardDescription className="text-xs">Estado de cada lote, área y precio de venta. La descarga la genera Laravel.</CardDescription>
+              </div>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => descargar('/reportes-inmobiliarios/inventario', 'pdf', 'inventario-lotes.pdf')}>PDF</Button>
+                <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => descargar('/reportes-inmobiliarios/inventario', 'xlsx', 'inventario-lotes.xlsx')}>Excel</Button>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
+              <div className="md:hidden divide-y">
+                {inventario?.lotes?.map((lote: any) => (
+                  <div key={lote.id} className="py-3 space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-bold text-primary">{lote.codigo_unico}</p>
+                        <p className="font-semibold">Lote {lote.numero_lote}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {lote.parcela?.finca?.nombre || 'Finca'} · {lote.parcela?.nombre_identificador}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{lote.frente_metros}m × {lote.fondo_metros}m · {lote.area_m2} m²</p>
+                      </div>
+                      {lote.estado === 'disponible' && <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 shrink-0">Disponible</Badge>}
+                      {lote.estado === 'vendido' && <Badge className="bg-blue-500/15 text-blue-600 border-blue-500/30 shrink-0">Vendido</Badge>}
+                      {lote.estado === 'reservado' && <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 shrink-0">Reservado</Badge>}
+                      {lote.estado === 'pagado' && <Badge className="bg-teal-500/15 text-teal-600 border-teal-500/30 shrink-0">Liquidado</Badge>}
+                    </div>
+                    <p className="text-right font-bold">Q{Number(lote.precio_venta).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden md:block overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -274,12 +306,44 @@ export function ReportesModule() {
         {/* TAB VENTAS */}
         <TabsContent value="ventas">
           <Card className="border-border/80 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Contratos Cerrados & Financiamientos</CardTitle>
-              <CardDescription className="text-xs">Registro histórico de transacciones realizadas</CardDescription>
+            <CardHeader className="pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base">Contratos Cerrados & Financiamientos</CardTitle>
+                <CardDescription className="text-xs">Registro histórico de transacciones realizadas</CardDescription>
+              </div>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => descargar('/reportes-inmobiliarios/ventas', 'pdf', 'ventas-terrenos.pdf')}>PDF</Button>
+                <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => descargar('/reportes-inmobiliarios/ventas', 'xlsx', 'ventas-terrenos.xlsx')}>Excel</Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
+              <div className="md:hidden divide-y">
+                {ventas?.ventas?.map((v: any) => (
+                  <div key={v.id} className="py-3 space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-bold text-primary">{v.codigo_negociacion}</p>
+                        <p className="font-medium truncate">
+                          {v.cliente?.nombres ? `${v.cliente.nombres} ${v.cliente.apellidos}` : 'Cliente'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{v.lote?.codigo_unico || 'Lote'} · {v.plazo_meses} meses</p>
+                      </div>
+                      <Badge variant="outline" className="capitalize shrink-0">{v.estado}</Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <p className="text-muted-foreground">Precio</p>
+                        <p className="font-bold">Q{Number(v.precio_final).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Financiado</p>
+                        <p className="font-bold text-amber-600">Q{Number(v.monto_financiado || 0).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden md:block overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -320,12 +384,46 @@ export function ReportesModule() {
         {/* TAB COBRANZA */}
         <TabsContent value="cobranza">
           <Card className="border-border/80 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Seguimiento de Cartera & Amortizaciones</CardTitle>
-              <CardDescription className="text-xs">Saldos pendientes y estado de mora</CardDescription>
+            <CardHeader className="pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base">Seguimiento de Cartera & Amortizaciones</CardTitle>
+                <CardDescription className="text-xs">Saldos pendientes y estado de mora</CardDescription>
+              </div>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => descargar('/reportes-inmobiliarios/cobranza', 'pdf', 'cartera-terrenos.pdf')}>PDF</Button>
+                <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => descargar('/reportes-inmobiliarios/cobranza', 'xlsx', 'cartera-terrenos.xlsx')}>Excel</Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
+              <div className="md:hidden divide-y">
+                {cobranza?.contratos?.map((c: any) => (
+                  <div key={c.id} className="py-3 space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-mono text-xs font-bold">{c.codigo_negociacion}</p>
+                        <p className="font-medium truncate">{c.cliente?.nombres} {c.cliente?.apellidos}</p>
+                        <p className="text-xs text-muted-foreground">{c.cuotas_pagadas}/{c.plazo_meses} cuotas</p>
+                      </div>
+                      {c.dias_mora_actual > 0 ? (
+                        <Badge className="bg-red-500/15 text-red-600 border-red-500/30 shrink-0">Mora: {c.dias_mora_actual} días</Badge>
+                      ) : (
+                        <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 shrink-0">Al Día</Badge>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <p className="text-muted-foreground">Pagado</p>
+                        <p className="font-semibold text-emerald-600">Q{Number(c.total_capital_pagado || 0).toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Saldo</p>
+                        <p className="font-bold text-amber-600">Q{Number(c.saldo_capital_pendiente).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden md:block overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -366,13 +464,37 @@ export function ReportesModule() {
         {/* TAB CAJA DIARIA */}
         <TabsContent value="caja">
           <Card className="border-border/80 shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Recibos Emitidos Hoy en Caja ({ingresosHoy?.total_recibos || 0})</CardTitle>
-              <CardDescription className="text-xs">Movimientos registrados en la jornada actual</CardDescription>
+            <CardHeader className="pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base">Recibos Emitidos Hoy en Caja ({ingresosHoy?.total_recibos || 0})</CardTitle>
+                <CardDescription className="text-xs">Movimientos registrados en la jornada actual</CardDescription>
+              </div>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => descargar('/reportes-inmobiliarios/ingresos-diarios', 'pdf', 'ingresos-terrenos.pdf')}>PDF</Button>
+                <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => descargar('/reportes-inmobiliarios/ingresos-diarios', 'xlsx', 'ingresos-terrenos.xlsx')}>Excel</Button>
+              </div>
             </CardHeader>
             <CardContent>
               {ingresosHoy?.pagos?.length > 0 ? (
-                <div className="overflow-x-auto">
+                <>
+                <div className="md:hidden divide-y">
+                  {ingresosHoy.pagos.map((p: any) => (
+                    <div key={p.id} className="py-3 space-y-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-mono text-xs font-bold text-primary">{p.numero_recibo}</p>
+                          <p className="font-medium truncate">{p.cliente?.nombres} {p.cliente?.apellidos}</p>
+                          <p className="text-xs text-muted-foreground truncate">{p.concepto}</p>
+                          <p className="text-xs text-muted-foreground capitalize">{format(new Date(p.fecha_pago), 'HH:mm')} · {p.metodo_pago}</p>
+                        </div>
+                        <p className="font-bold text-emerald-600 shrink-0">
+                          Q{Number(p.monto_total).toLocaleString('es-GT', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden md:block overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -400,6 +522,7 @@ export function ReportesModule() {
                     </TableBody>
                   </Table>
                 </div>
+                </>
               ) : (
                 <div className="text-center py-10 text-muted-foreground text-sm">
                   No se han registrado pagos en caja el día de hoy.

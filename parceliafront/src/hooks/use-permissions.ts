@@ -66,6 +66,12 @@ export const MODULOS = [
   'contabilidad',
   'planes_interes',
   'transferencias',
+  'fincas',
+  'lotes',
+  'negociaciones',
+  'pagos_terreno',
+  'tasas_inmobiliarias',
+  'reportes_inmobiliarios',
 ] as const
 
 export type Modulo = typeof MODULOS[number]
@@ -97,6 +103,12 @@ export const MODULO_NAV_MAP: Record<Modulo, string> = {
   contabilidad: 'contabilidad',
   planes_interes: 'planes_interes',
   transferencias: 'transferencias',
+  fincas: 'fincas',
+  lotes: 'fincas',
+  negociaciones: 'negociaciones',
+  pagos_terreno: 'pagos_terreno',
+  tasas_inmobiliarias: 'fincas',
+  reportes_inmobiliarios: 'reportes',
 }
 
 // Acciones por módulo
@@ -126,6 +138,12 @@ export const ACCIONES_POR_MODULO: Record<Modulo, string[]> = {
   contabilidad: ['ver', 'configurar', 'asientos', 'reportes'],
   planes_interes: ['ver', 'crear', 'editar', 'eliminar'],
   transferencias: ['ver', 'crear', 'aprobar', 'anular'],
+  fincas: ['ver', 'crear', 'editar', 'desactivar'],
+  lotes: ['ver', 'crear', 'editar', 'eliminar', 'servicios', 'imagenes'],
+  negociaciones: ['ver', 'crear', 'ajustar_condiciones', 'rescindir', 'contrato'],
+  pagos_terreno: ['ver', 'cobrar', 'anular'],
+  tasas_inmobiliarias: ['ver', 'crear', 'editar', 'desactivar'],
+  reportes_inmobiliarios: ['generar', 'exportar'],
 }
 
 // Nombres legibles de acciones
@@ -166,6 +184,14 @@ export const ACCION_LABELS: Record<string, string> = {
   descargar_plantilla: 'Descargar Plantilla',
   configurar: 'Configurar Cuentas',
   asientos: 'Ver Asientos',
+  asignar_credito: 'Asignar a crédito',
+  ajustar_condiciones: 'Ajustar condiciones',
+  rescindir: 'Rescindir',
+  cobrar: 'Cobrar',
+  desactivar: 'Desactivar',
+  servicios: 'Servicios',
+  imagenes: 'Imágenes',
+  contrato: 'Contrato',
 }
 
 // Nombres legibles de módulos
@@ -173,7 +199,7 @@ export const MODULO_LABELS: Record<Modulo, string> = {
   dashboard: 'Dashboard',
   clientes: 'Clientes',
   sucursales: 'Sucursales',
-  categorias_productos: 'Categorías de Productos',
+  categorias_productos: 'Formularios',
   simulador: 'Simulador',
   creditos: 'Créditos',
   prendas: 'Prendas',
@@ -191,10 +217,16 @@ export const MODULO_LABELS: Record<Modulo, string> = {
   migracion: 'Migración de Datos',
   cotizaciones: 'Cotizaciones',
   gastos: 'Catálogo de Gastos',
-  otros_gastos: 'Otros Gastos',
+  otros_gastos: 'Otros ingresos',
   contabilidad: 'Contabilidad',
   planes_interes: 'Productos Crediticios',
   transferencias: 'Transferencias',
+  fincas: 'Fincas y lotes',
+  lotes: 'Lotes',
+  negociaciones: 'Negociaciones',
+  pagos_terreno: 'Pagos de terrenos',
+  tasas_inmobiliarias: 'Tasas inmobiliarias',
+  reportes_inmobiliarios: 'Reportes inmobiliarios',
 }
 
 interface UsePermissionsResult {
@@ -216,14 +248,29 @@ interface UsePermissionsResult {
 
 export function usePermissions(user: UserWithPermissions | null | undefined): UsePermissionsResult {
   const permisos = useMemo(() => normalizePermisosInput(user?.permisos ?? []), [user?.permisos])
-  // En etapa de desarrollo: Acceso 100% libre a todos los módulos y acciones
-  const isAdmin = true
-  const isSuperAdmin = true
+  const rol = (user?.rol || '').toLowerCase()
+  const isSuperAdmin = rol === 'superadmin'
+  const isAdmin = isSuperAdmin || rol === 'administrador'
 
-  const hasPermission = (_modulo: Modulo, _accion: string): boolean => true
-  const hasModuleAccess = (_modulo: Modulo): boolean => true
-  const getModuleActions = (modulo: Modulo): string[] => ACCIONES_POR_MODULO[modulo] || ['ver', 'crear', 'editar', 'eliminar', 'exportar']
-  const accessibleModules = [...MODULOS]
+  const hasPermission = (modulo: Modulo, accion: string): boolean => {
+    if (isAdmin) return true
+    const found = permisos.find((p) => p.modulo === modulo)
+    return !!found && found.acciones.includes(accion)
+  }
+
+  const hasModuleAccess = (modulo: Modulo): boolean => {
+    if (isAdmin) return true
+    return permisos.some((p) => p.modulo === modulo)
+  }
+
+  const getModuleActions = (modulo: Modulo): string[] => {
+    if (isAdmin) return ACCIONES_POR_MODULO[modulo] || ['ver']
+    return permisos.find((p) => p.modulo === modulo)?.acciones ?? []
+  }
+
+  const accessibleModules = isAdmin
+    ? [...MODULOS]
+    : MODULOS.filter((m) => hasModuleAccess(m))
 
   return {
     hasPermission,

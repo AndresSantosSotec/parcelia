@@ -17,10 +17,13 @@ import {
   ACCION_LABELS,
   Modulo 
 } from '@/hooks/use-permissions'
+import { isModuloVisible, isModuloEmpeno, EMPENOS_ENABLED } from '@/lib/empenos'
+
+const MODULOS_VISIBLES = MODULOS.filter((modulo) => isModuloVisible(modulo))
 
 // Permisos por defecto según el rol (copia de seguridad local)
 const PERMISOS_POR_ROL: Record<string, Permiso[]> = {
-  administrador: MODULOS.map(modulo => ({
+  administrador: MODULOS_VISIBLES.map(modulo => ({
     modulo,
     acciones: ACCIONES_POR_MODULO[modulo],
   })),
@@ -38,6 +41,9 @@ const PERMISOS_POR_ROL: Record<string, Permiso[]> = {
     { modulo: 'historial', acciones: ['ver'] },
     { modulo: 'otros_gastos', acciones: ['ver', 'crear'] },
     { modulo: 'planes_interes', acciones: ['ver'] },
+    { modulo: 'fincas', acciones: ['ver'] },
+    { modulo: 'negociaciones', acciones: ['ver'] },
+    { modulo: 'pagos_terreno', acciones: ['ver', 'cobrar'] },
   ],
   tasador: [
     { modulo: 'dashboard', acciones: ['ver'] },
@@ -60,6 +66,11 @@ const PERMISOS_POR_ROL: Record<string, Permiso[]> = {
     { modulo: 'cobros', acciones: ['realizar', 'ver', 'imprimir_recibo'] },
     { modulo: 'recibos', acciones: ['ver', 'crear', 'imprimir'] },
     { modulo: 'historial', acciones: ['ver'] },
+    { modulo: 'fincas', acciones: ['ver', 'crear', 'editar'] },
+    { modulo: 'negociaciones', acciones: ['ver', 'crear', 'contrato'] },
+    { modulo: 'pagos_terreno', acciones: ['ver', 'cobrar'] },
+    { modulo: 'gastos', acciones: ['ver'] },
+    { modulo: 'otros_gastos', acciones: ['ver', 'crear'] },
   ],
   supervisor: [
     { modulo: 'dashboard', acciones: ['ver'] },
@@ -108,6 +119,7 @@ export function PermisosDialog({
 }: PermisosDialogProps) {
   const [permisos, setPermisos] = useState<Permiso[]>([])
   const [permisosOriginales, setPermisosOriginales] = useState<Permiso[]>([])
+  const [permisosEmpenoConservados, setPermisosEmpenoConservados] = useState<Permiso[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [usandoLocal, setUsandoLocal] = useState(false)
@@ -125,6 +137,7 @@ export function PermisosDialog({
     const permisosRol = PERMISOS_POR_ROL[usuario.rol] || PERMISOS_POR_ROL['cajero']
     setPermisos(JSON.parse(JSON.stringify(permisosRol)))
     setPermisosOriginales(JSON.parse(JSON.stringify(permisosRol)))
+    setPermisosEmpenoConservados([])
     setUsandoLocal(true)
   }
 
@@ -139,8 +152,15 @@ export function PermisosDialog({
       if (response.success && response.data) {
         // Si hay permisos del servidor, usarlos
         if (response.data.length > 0) {
-          setPermisos(response.data)
-          setPermisosOriginales(JSON.parse(JSON.stringify(response.data)))
+          const visibles = EMPENOS_ENABLED
+            ? response.data
+            : response.data.filter((p) => isModuloVisible(p.modulo))
+          const ocultos = EMPENOS_ENABLED
+            ? []
+            : response.data.filter((p) => isModuloEmpeno(p.modulo))
+          setPermisos(visibles)
+          setPermisosOriginales(JSON.parse(JSON.stringify(visibles)))
+          setPermisosEmpenoConservados(ocultos)
         } else {
           // Si no hay permisos asignados, cargar los por defecto del rol
           cargarPermisosLocales()
@@ -232,7 +252,10 @@ export function PermisosDialog({
     
     setSaving(true)
     try {
-      await permissionService.updateUserPermissions(usuario.id, permisos)
+      await permissionService.updateUserPermissions(usuario.id, [
+        ...permisos,
+        ...permisosEmpenoConservados,
+      ])
       toast.success('Permisos actualizados correctamente')
       if (
         currentSessionUserId &&
@@ -319,7 +342,7 @@ export function PermisosDialog({
             <TabsContent value="modulos">
               <ScrollArea className="h-[400px] pr-4">
                 <div className="space-y-4">
-                  {MODULOS.map(modulo => (
+                  {MODULOS_VISIBLES.map(modulo => (
                     <Card key={modulo}>
                       <CardHeader className="py-3">
                         <div className="flex items-center justify-between">

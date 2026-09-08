@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Cliente;
 use App\Models\ClienteReferencia;
 use App\Models\CreditoPrendario;
+use App\Models\Negociacion;
+use App\Models\PlanPagoTerreno;
 use App\Http\Requests\StoreClienteRequest;
 use App\Http\Requests\UpdateClienteRequest;
 use Illuminate\Http\Request;
@@ -25,15 +27,7 @@ class ClienteController extends Controller
         try {
             $query = Cliente::query()
                 ->with('referencias')
-                ->withCount([
-                'creditosPrendarios as total_creditos',
-                'creditosPrendarios as activos_creditos' => function($q) {
-                    $q->whereIn('estado', ['vigente', 'en_mora']);
-                },
-                'creditosPrendarios as vencidos_creditos' => function($q) {
-                    $q->where('estado', 'vencido');
-                }
-            ]);
+                ->withCount($this->conteoNegociaciones());
 
             // Filtros
             if ($request->has('estado') && $request->estado !== '' && $request->estado !== 'todos') {
@@ -228,6 +222,7 @@ class ClienteController extends Controller
     public function show(string $id): JsonResponse
     {
         $cliente = Cliente::with('referencias')
+            ->withCount($this->conteoNegociaciones())
             ->where('id', $id)
             ->where('eliminado', false)
             ->first();
@@ -331,6 +326,7 @@ class ClienteController extends Controller
     public function ficha(string $id): JsonResponse
     {
         $cliente = Cliente::with('referencias')
+            ->withCount($this->conteoNegociaciones())
             ->where('id', $id)
             ->where('eliminado', false)
             ->first();
@@ -342,107 +338,33 @@ class ClienteController extends Controller
             ], 404);
         }
 
-        // Estadísticas de créditos
-        $creditos = CreditoPrendario::where('cliente_id', $cliente->id)->get();
+        $resumen = $this->resumenTerrenosCliente($cliente->id);
+        $stats = $resumen['stats'];
+        $comportamiento = $resumen['comportamiento'];
+        $negociaciones = $resumen['negociaciones'];
 
-        $stats = [
-            'total_historial' => $creditos->count(),
-            'activos' => $creditos->whereIn('estado', ['vigente', 'en_mora', 'aprobado'])->count(),
-            'pagados' => $creditos->where('estado', 'pagado')->count(),
-            'vencidos' => $creditos->where('estado', 'vencido')->count(),
-            'monto_total_prestado' => (float) $creditos->sum('monto_aprobado'),
-            'monto_capital_pendiente' => (float) $creditos->sum('capital_pendiente'),
-            'total_interes_pagado' => (float) $creditos->sum('interes_pagado'),
-            'total_mora_pagada' => (float) $creditos->sum('mora_pagada'),
-            'saldo_actual_total' => (float) $creditos->sum(function($c) {
-                return $c->capital_pendiente + ($c->interes_generado - $c->interes_pagado) + ($c->mora_generada - $c->mora_pagada);
-            }),
-            'ultima_operacion' => $creditos->max('updated_at')?->toISOString(),
-            'primer_credito' => $creditos->min('fecha_solicitud')?->format('Y-m-d'),
-        ];
-
-        // Comportamiento de pago (Credit Score Simple)
-        $movimientosPago = \App\Models\CreditoMovimiento::whereIn('credito_prendario_id', $creditos->pluck('id'))
-            ->where('tipo_movimiento', '!=', 'desembolso')
-            ->get();
-
-        $pagosPuntuales = 0;
-        $pagosTotal = $movimientosPago->count();
-
-        // Calcular puntualidad - considera pagos a tiempo O adelantados
-        foreach ($movimientosPago as $mov) {
-            $cuota = \App\Models\CreditoPlanPago::find($mov->cuota_id);
-            if ($cuota) {
-                // Pago puntual = hecho antes o el mismo día del vencimiento
-                if ($mov->fecha_movimiento <= $cuota->fecha_vencimiento) {
-                    $pagosPuntuales++;
-                }
-            }
-        }
-
-        $tasaPuntualidad = $pagosTotal > 0 ? ($pagosPuntuales / $pagosTotal) * 100 : null;
-
-        $comportamiento = [
-            'pagos_puntuales' => $pagosPuntuales,
-            'pagos_total' => $pagosTotal,
-            'tasa_puntualidad' => $tasaPuntualidad,
-            'comportamiento' => 'SIN DATOS',
-        ];
-
-        if ($tasaPuntualidad !== null) {
-            if ($tasaPuntualidad >= 90) {
-                $comportamiento['comportamiento'] = 'Puntual';
-            } elseif ($tasaPuntualidad >= 70) {
-                $comportamiento['comportamiento'] = 'Regular';
-            } else {
-                $comportamiento['comportamiento'] = 'Moroso';
-            }
-        }
-
-        // Score de riesgo
-        $score = [
-            'puntos' => 100,
-            'nivel' => 'Excelente',
-            'color' => 'green',
-        ];
-
-        if ($stats['vencidos'] > 0) {
-            $score['puntos'] -= ($stats['vencidos'] * 20);
-        }
-
-        // Penalización por mora activa
-        $creditosMora = $creditos->where('estado', 'en_mora')->count();
-        if ($creditosMora > 0) {
-            $score['puntos'] -= ($creditosMora * 10);
-        }
-
-        if ($score['puntos'] < 40) {
-            $score['nivel'] = 'Riesgoso';
-            $score['color'] = 'red';
-        } elseif ($score['puntos'] < 70) {
-            $score['nivel'] = 'Regular';
-            $score['color'] = 'orange';
-        }
-
-        // Añadir saldo_pendiente_actual a stats
-        $stats['saldo_pendiente_actual'] = $stats['saldo_actual_total'];
+        $recientes = $negociaciones->take(5)->map(function (Negociacion $n) {
+            return [
+                'id' => (string) $n->id,
+                'numero' => $n->codigo_negociacion,
+                'codigo' => $n->codigo_negociacion,
+                'lote' => $n->lote?->codigo_unico,
+                'tipo' => $n->tipo_negociacion,
+                'monto' => (float) $n->precio_final,
+                'fecha' => $n->fecha_negociacion?->format('Y-m-d'),
+                'estado' => $n->estado,
+                'saldo' => (float) $n->saldo_capital_pendiente,
+            ];
+        })->values();
 
         return response()->json([
             'success' => true,
             'data' => [
                 'cliente' => $this->formatCliente($cliente),
-                'stats' => $stats, // Cambiar de resumen_financiero a stats
-                'comportamiento' => array_merge($comportamiento, $score),
-                'creditos_recientes' => $creditos->sortByDesc('fecha_solicitud')->take(5)->map(function($c) {
-                    return [
-                        'id' => (string) $c->id,
-                        'numero' => $c->numero_credito,
-                        'monto' => (float) $c->monto_aprobado,
-                        'fecha' => $c->fecha_solicitud?->format('Y-m-d'),
-                        'estado' => $c->estado,
-                        'saldo' => (float) ($c->capital_pendiente + ($c->interes_generado - $c->interes_pagado) + ($c->mora_generada - $c->mora_pagada))
-                    ];
-                })->values()
+                'stats' => $stats,
+                'comportamiento' => $comportamiento,
+                'negociaciones_recientes' => $recientes,
+                'creditos_recientes' => $recientes,
             ]
         ]);
     }
@@ -454,88 +376,14 @@ class ClienteController extends Controller
     {
         try {
             $cliente = Cliente::with('referencias')->findOrFail($id);
-
-            // Obtener todos los créditos del cliente (activos y archivados)
-            $creditos = \App\Models\CreditoPrendario::where('cliente_id', $id)
-                ->with(['prendas', 'planPagos', 'movimientos'])
-                ->get();
-
-            // Estadísticas financieras
-            $stats = [
-                'total_historial' => $creditos->count(),
-                'activos' => $creditos->where('estado', '!=', 'liquidado')->where('eliminado', false)->count(),
-                'liquidados' => $creditos->where('estado', 'liquidado')->count(),
-                'vencidos' => $creditos->where('estado', 'vencido')->count(),
-                'monto_total_prestado' => $creditos->sum('monto_aprobado'),
-                'saldo_actual_total' => $creditos->where('estado', '!=', 'liquidado')->sum(function($c) {
-                    return $c->capital_pendiente + ($c->interes_generado - $c->interes_pagado) + ($c->mora_generada - $c->mora_pagada);
-                }),
-            ];
-
-            // Comportamiento de pago
-            $movimientosPago = \App\Models\CreditoMovimiento::whereIn('credito_prendario_id', $creditos->pluck('id'))
-                ->where('tipo_movimiento', '!=', 'desembolso')
-                ->get();
-
-            $pagosPuntuales = 0;
-            $pagosTotal = $movimientosPago->count();
-
-            foreach ($movimientosPago as $mov) {
-                $cuota = \App\Models\CreditoPlanPago::find($mov->cuota_id);
-                if ($cuota && $mov->fecha_movimiento <= $cuota->fecha_vencimiento) {
-                    $pagosPuntuales++;
-                }
-            }
-
-            $tasaPuntualidad = $pagosTotal > 0 ? ($pagosPuntuales / $pagosTotal) * 100 : null;
-
-            $comportamiento = [
-                'pagos_puntuales' => $pagosPuntuales,
-                'pagos_total' => $pagosTotal,
-                'tasa_puntualidad' => $tasaPuntualidad,
-                'comportamiento' => 'SIN DATOS',
-            ];
-
-            if ($tasaPuntualidad !== null) {
-                if ($tasaPuntualidad >= 90) {
-                    $comportamiento['comportamiento'] = 'Puntual';
-                } elseif ($tasaPuntualidad >= 70) {
-                    $comportamiento['comportamiento'] = 'Regular';
-                } else {
-                    $comportamiento['comportamiento'] = 'Moroso';
-                }
-            }
-
-            // Score de riesgo
-            $score = [
-                'puntos' => 100,
-                'nivel' => 'Excelente',
-                'color' => 'green',
-            ];
-
-            if ($stats['vencidos'] > 0) {
-                $score['puntos'] -= ($stats['vencidos'] * 20);
-            }
-
-            $creditosMora = $creditos->where('estado', 'en_mora')->count();
-            if ($creditosMora > 0) {
-                $score['puntos'] -= ($creditosMora * 10);
-            }
-
-            if ($score['puntos'] < 40) {
-                $score['nivel'] = 'Riesgoso';
-                $score['color'] = 'red';
-            } elseif ($score['puntos'] < 70) {
-                $score['nivel'] = 'Regular';
-                $score['color'] = 'orange';
-            }
+            $resumen = $this->resumenTerrenosCliente($cliente->id);
 
             $data = [
                 'cliente' => $cliente,
-                'stats' => $stats,
-                'comportamiento' => array_merge($comportamiento, $score),
-                'creditos_activos' => $creditos->where('estado', '!=', 'liquidado')->where('eliminado', false)->sortByDesc('fecha_solicitud')->take(10),
-                'creditos_liquidados' => $creditos->where('estado', 'liquidado')->sortByDesc('fecha_solicitud')->take(5),
+                'stats' => $resumen['stats'],
+                'comportamiento' => $resumen['comportamiento'],
+                'negociaciones_activas' => $resumen['negociaciones_activas']->take(10)->values(),
+                'negociaciones_pagadas' => $resumen['negociaciones_pagadas']->take(5)->values(),
                 'fechaGeneracion' => now()->format('d/m/Y H:i:s'),
             ];
 
@@ -693,6 +541,18 @@ class ClienteController extends Controller
             ], 404);
         }
 
+        $tieneNegociaciones = \App\Models\Negociacion::where('cliente_id', $cliente->id)->exists();
+        $tienePagosTerreno = \App\Models\PagoTerreno::where('cliente_id', $cliente->id)->exists();
+        $tieneCreditos = method_exists($cliente, 'creditosPrendarios')
+            && $cliente->creditosPrendarios()->exists();
+
+        if ($tieneNegociaciones || $tienePagosTerreno || $tieneCreditos) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se puede eliminar un comprador con terrenos, ventas o pagos asociados.',
+            ], 422);
+        }
+
         $cliente->update([
             'eliminado' => true,
             'eliminado_en' => now()
@@ -701,6 +561,44 @@ class ClienteController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Cliente eliminado exitosamente'
+        ]);
+    }
+
+    public function restore(string $id): JsonResponse
+    {
+        $cliente = Cliente::where('id', $id)
+            ->where('eliminado', true)
+            ->first();
+
+        if (!$cliente) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cliente eliminado no encontrado',
+            ], 404);
+        }
+
+        if ($cliente->dpi) {
+            $duplicado = Cliente::where('dpi', $cliente->dpi)
+                ->where('eliminado', false)
+                ->where('id', '!=', $cliente->id)
+                ->exists();
+            if ($duplicado) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede restaurar: ya existe un cliente activo con el mismo DPI.',
+                ], 422);
+            }
+        }
+
+        $cliente->update([
+            'eliminado' => false,
+            'eliminado_en' => null,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cliente restaurado exitosamente',
+            'data' => $this->formatCliente($cliente->fresh()),
         ]);
     }
 
@@ -796,12 +694,7 @@ class ClienteController extends Controller
     {
         $query = Cliente::query()
             ->where('eliminado', false)
-            ->withCount([
-                'creditosPrendarios as total_creditos',
-                'creditosPrendarios as activos_creditos' => function($q) {
-                    $q->whereIn('estado', ['vigente', 'en_mora']);
-                },
-            ]);
+            ->withCount($this->conteoNegociaciones());
 
         if ($request->has('estado') && $request->estado !== '' && $request->estado !== 'todos') {
             $query->where('estado', $request->estado);
@@ -833,7 +726,7 @@ class ClienteController extends Controller
             fputcsv($file, [
                 'ID', 'Nombres', 'Apellidos', 'DPI', 'NIT', 'Género',
                 'Teléfono', 'Email', 'Dirección', 'Sucursal',
-                'Estado', 'Total Créditos', 'Créditos Activos', 'Fecha Registro',
+                'Estado', 'Total Terrenos', 'Terrenos Activos', 'Fecha Registro',
             ]);
             foreach ($clientes as $c) {
                 fputcsv($file, [
@@ -917,6 +810,11 @@ class ClienteController extends Controller
                 'activos' => $cliente->activos_creditos ?? 0,
                 'vencidos' => $cliente->vencidos_creditos ?? 0,
             ],
+            'negociacionesInfo' => [
+                'total' => $cliente->total_creditos ?? 0,
+                'activos' => $cliente->activos_creditos ?? 0,
+                'en_mora' => $cliente->vencidos_creditos ?? 0,
+            ],
             'referencias' => $cliente->referencias
                 ? $cliente->referencias->map(function (ClienteReferencia $ref) {
                     return [
@@ -927,6 +825,121 @@ class ClienteController extends Controller
                     ];
                 })->values()->all()
                 : [],
+        ];
+    }
+
+    /**
+     * Conteos de terrenos/negociaciones reutilizados en listado, ficha y CSV.
+     * Los alias total_creditos / activos_creditos se mantienen para compatibilidad del API.
+     */
+    private function conteoNegociaciones(): array
+    {
+        return [
+            'negociaciones as total_creditos',
+            'negociaciones as activos_creditos' => function ($q) {
+                $q->whereIn('estado', ['activa', 'reservada', 'en_mora']);
+            },
+            'negociaciones as vencidos_creditos' => function ($q) {
+                $q->where('estado', 'en_mora');
+            },
+        ];
+    }
+
+    /**
+     * Resumen de terrenos solicitados y financiados de un comprador.
+     */
+    private function resumenTerrenosCliente(int|string $clienteId): array
+    {
+        $negociaciones = Negociacion::with(['lote.parcela.finca'])
+            ->where('cliente_id', $clienteId)
+            ->orderByDesc('fecha_negociacion')
+            ->orderByDesc('id')
+            ->get();
+
+        $activas = $negociaciones->whereIn('estado', ['activa', 'reservada', 'en_mora']);
+        $pagadas = $negociaciones->where('estado', 'pagada_total');
+        $enMora = $negociaciones->where('estado', 'en_mora');
+        $saldoActual = (float) $activas->sum('saldo_capital_pendiente');
+
+        $stats = [
+            'total_historial' => $negociaciones->count(),
+            'activos' => $activas->count(),
+            'pagados' => $pagadas->count(),
+            'liquidados' => $pagadas->count(),
+            'vencidos' => $enMora->count(),
+            'monto_total_prestado' => (float) $negociaciones->sum('precio_final'),
+            'monto_capital_pendiente' => $saldoActual,
+            'total_interes_pagado' => (float) $negociaciones->sum('total_interes_pagado'),
+            'total_mora_pagada' => (float) $negociaciones->sum('total_mora_pagada'),
+            'saldo_actual_total' => $saldoActual,
+            'saldo_pendiente_actual' => $saldoActual,
+            'ultima_operacion' => optional($negociaciones->max('updated_at'))?->toISOString(),
+            'primer_credito' => optional($negociaciones->min('fecha_negociacion'))?->format('Y-m-d'),
+        ];
+
+        $ids = $negociaciones->pluck('id');
+        $cuotasPagadas = $ids->isEmpty()
+            ? collect()
+            : PlanPagoTerreno::whereIn('negociacion_id', $ids)
+                ->where('estado', 'pagada')
+                ->whereNotNull('fecha_pagado')
+                ->get();
+
+        $pagosTotal = $cuotasPagadas->count();
+        $pagosPuntuales = $cuotasPagadas->filter(function (PlanPagoTerreno $cuota) {
+            if (!$cuota->fecha_pagado || !$cuota->fecha_vencimiento) {
+                return false;
+            }
+            return $cuota->fecha_pagado->lte($cuota->fecha_vencimiento);
+        })->count();
+
+        $tasaPuntualidad = $pagosTotal > 0 ? ($pagosPuntuales / $pagosTotal) * 100 : null;
+
+        $comportamiento = [
+            'pagos_puntuales' => $pagosPuntuales,
+            'pagos_total' => $pagosTotal,
+            'tasa_puntualidad' => $tasaPuntualidad,
+            'comportamiento' => 'SIN DATOS',
+        ];
+
+        if ($tasaPuntualidad !== null) {
+            if ($tasaPuntualidad >= 90) {
+                $comportamiento['comportamiento'] = 'Puntual';
+            } elseif ($tasaPuntualidad >= 70) {
+                $comportamiento['comportamiento'] = 'Regular';
+            } else {
+                $comportamiento['comportamiento'] = 'Moroso';
+            }
+        }
+
+        $score = [
+            'puntos' => 100,
+            'nivel' => 'Excelente',
+            'color' => 'green',
+        ];
+
+        if ($stats['vencidos'] > 0) {
+            $score['puntos'] -= ($stats['vencidos'] * 20);
+        }
+        if ($enMora->count() > 0) {
+            $score['puntos'] -= ($enMora->count() * 10);
+        }
+        $score['puntos'] = max(0, $score['puntos']);
+
+        if ($score['puntos'] < 40) {
+            $score['nivel'] = 'Riesgoso';
+            $score['color'] = 'red';
+        } elseif ($score['puntos'] < 70) {
+            $score['nivel'] = 'Regular';
+            $score['color'] = 'orange';
+        }
+
+        return [
+            'stats' => $stats,
+            'comportamiento' => array_merge($comportamiento, $score),
+            'negociaciones' => $negociaciones,
+            'negociaciones_activas' => $activas->values(),
+            'negociaciones_pagadas' => $pagadas->values(),
         ];
     }
 

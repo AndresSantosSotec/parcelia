@@ -4,15 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\Auditable;
 
 class LoteServicio extends Model
 {
-    use HasFactory;
+    use HasFactory, Auditable;
 
     protected $table = 'lote_servicios';
 
     protected $fillable = [
         'lote_id',
+        'catalogo_servicio_id',
         'nombre_servicio',
         'estado',
         'costo_adicional',

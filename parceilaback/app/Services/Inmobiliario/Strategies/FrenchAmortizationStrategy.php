@@ -11,6 +11,8 @@ use Carbon\Carbon;
  */
 class FrenchAmortizationStrategy implements InterestCalculationStrategyInterface
 {
+    use BuildsAmortizationRows;
+
     public function calcularPlan(
         float $montoFinanciado,
         float $tasaAnual,
@@ -43,44 +45,20 @@ class FrenchAmortizationStrategy implements InterestCalculationStrategyInterface
         $fechaVencimiento = Carbon::parse($fechaInicio);
 
         for ($i = 1; $i <= $plazoMeses; $i++) {
+            $saldoInicial = $saldoCapital;
             $interesCuota = $tasaMensual == 0 ? 0.0 : round($saldoCapital * $tasaMensual, 2);
             $capitalCuota = round($cuotaFija - $interesCuota, 2);
 
-            // Ajuste en la última cuota para cuadrar redondeos
             if ($i === $plazoMeses) {
                 $capitalCuota = round($saldoCapital, 2);
-                $cuotaFijaReal = round($capitalCuota + $interesCuota, 2);
-            } else {
-                $cuotaFijaReal = $cuotaFija;
             }
 
             $saldoCapital = max(0.0, round($saldoCapital - $capitalCuota, 2));
             $totalInteresAcumulado += $interesCuota;
-
-            $cuotas[] = [
-                'numero_cuota' => $i,
-                'tipo_cuota' => 'ordinaria',
-                'fecha_vencimiento' => $fechaVencimiento->format('Y-m-d'),
-                'cuota_capital' => $capitalCuota,
-                'cuota_interes' => $interesCuota,
-                'otros_cargos' => 0.0,
-                'cuota_monto_total' => $cuotaFijaReal,
-                'saldo_capital_restante' => $saldoCapital,
-                'estado' => 'pendiente'
-            ];
-
+            $cuotas[] = $this->filaCuota($i, $fechaVencimiento->format('Y-m-d'), $saldoInicial, $capitalCuota, $interesCuota, $saldoCapital);
             $fechaVencimiento->addMonth();
         }
 
-        return [
-            'metodo' => 'frances_sobre_saldos',
-            'monto_financiado' => round($montoFinanciado, 2),
-            'tasa_anual' => $tasaAnual,
-            'plazo_meses' => $plazoMeses,
-            'cuota_mensual' => $cuotaFija,
-            'total_intereses' => round($totalInteresAcumulado, 2),
-            'total_a_pagar' => round($montoFinanciado + $totalInteresAcumulado, 2),
-            'cuotas' => $cuotas
-        ];
+        return $this->resumen('frances_sobre_saldos', $montoFinanciado, $tasaAnual, $plazoMeses, $cuotaFija, $totalInteresAcumulado, $cuotas);
     }
 }

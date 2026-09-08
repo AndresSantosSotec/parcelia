@@ -149,7 +149,7 @@ export function GastosCreditoSelector({
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2 text-foreground dark:text-slate-100">
             <Receipt className="h-5 w-5" />
-            Gastos Adicionales
+            Gastos del plan de pagos
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -169,7 +169,7 @@ export function GastosCreditoSelector({
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2 text-foreground dark:text-slate-100">
             <Receipt className="h-5 w-5" />
-            Gastos Adicionales
+            Gastos del plan de pagos
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -187,7 +187,7 @@ export function GastosCreditoSelector({
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2 text-foreground dark:text-slate-100">
             <Receipt className="h-5 w-5" />
-            Gastos Adicionales
+            Gastos del plan de pagos
           </CardTitle>
           {gastosSeleccionados.length > 0 && (
             <Badge variant="secondary">
@@ -196,11 +196,11 @@ export function GastosCreditoSelector({
           )}
         </div>
         <p className="text-xs text-muted-foreground dark:text-slate-400 mt-1">
-          Los gastos se prorratean en las cuotas y no generan interés.
+          Los gastos se prorratean en las cuotas del terreno y no generan interés.
         </p>
       </CardHeader>
       <CardContent>
-        <div className="border rounded-lg overflow-hidden">
+        <div className="border rounded-lg overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>

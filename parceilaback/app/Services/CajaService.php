@@ -146,6 +146,34 @@ class CajaService
     }
 
     /**
+     * Ingreso por cobro de terreno (enganche, cuota o contado).
+     */
+    public static function registrarPagoTerreno(
+        float $monto,
+        string $numeroRecibo,
+        string $codigoLote,
+        string $tipoPago,
+        string $metodoPago,
+        ?string $clienteNombre = null,
+        ?int $userId = null
+    ): ?MovimientoCaja {
+        $concepto = "Pago terreno {$numeroRecibo} - {$tipoPago} - Lote {$codigoLote}";
+        if ($clienteNombre) {
+            $concepto .= " - {$clienteNombre}";
+        }
+
+        return self::registrarIngreso($monto, $concepto, [
+            'tipo_operacion' => 'pago_terreno',
+            'numero_recibo' => $numeroRecibo,
+            'codigo_lote' => $codigoLote,
+            'tipo_pago' => $tipoPago,
+            'metodo_pago' => $metodoPago,
+            'cliente' => $clienteNombre,
+            'fecha' => now()->toDateTimeString(),
+        ], $userId);
+    }
+
+    /**
      * Registrar egreso por desembolso de crédito
      */
     public static function registrarDesembolso(

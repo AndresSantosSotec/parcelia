@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 @import "tw-animate-css";
 @import './styles/responsive.css';
+@import './styles/responsive-enhanced.css';
 @import './styles/modern-ui.css';
 
 @layer base {

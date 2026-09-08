@@ -2,13 +2,16 @@
 
 namespace App\Models;
 
+use App\Traits\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Negociacion extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, SoftDeletes, Auditable;
+
+    protected string $auditoriaModulo = 'negociaciones';
 
     protected $table = 'negociaciones';
 
@@ -28,6 +31,14 @@ class Negociacion extends Model
         'enganche_pagado',
         'monto_financiado',
         'tasa_interes_anual',
+        'sistema_amortizacion',
+        'politica_abono_extra',
+        'tasa_interes_id',
+        'parametrizacion_mora_id',
+        'tipo_mora_aplicada',
+        'mora_porcentaje_diario_snapshot',
+        'mora_monto_fijo_diario_snapshot',
+        'mora_dias_gracia_snapshot',
         'plazo_meses',
         'cuota_mensual',
         'total_intereses_proyectados',
@@ -44,6 +55,9 @@ class Negociacion extends Model
         'fecha_vencimiento_contrato',
         'estado',
         'observaciones',
+        'motivo_rescision',
+        'origen_fondos',
+        'ive_efectivo_reportable',
     ];
 
     protected $casts = [
@@ -98,6 +112,11 @@ class Negociacion extends Model
         return $this->belongsTo(Sucursal::class, 'sucursal_id');
     }
 
+    public function parametrizacionMora()
+    {
+        return $this->belongsTo(ParametrizacionMoraInmobiliaria::class, 'parametrizacion_mora_id');
+    }
+
     public function planPagos()
     {
         return $this->hasMany(PlanPagoTerreno::class, 'negociacion_id')->orderBy('numero_cuota');
@@ -106,5 +125,17 @@ class Negociacion extends Model
     public function pagos()
     {
         return $this->hasMany(PagoTerreno::class, 'negociacion_id')->orderBy('fecha_pago', 'desc');
+    }
+
+    public function gastos()
+    {
+        return $this->belongsToMany(
+            Gasto::class,
+            'negociacion_gasto',
+            'negociacion_id',
+            'gasto_id'
+        )
+            ->withPivot('valor_calculado')
+            ->withTimestamps();
     }
 }

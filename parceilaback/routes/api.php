@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\FincaController;
 use App\Http\Controllers\Api\LoteController;
 use App\Http\Controllers\Api\NegociacionController;
 use App\Http\Controllers\Api\PagoTerrenoController;
+use App\Support\EmpenosAccess;
 use Illuminate\Support\Facades\DB;
 
 /*
@@ -101,46 +102,60 @@ Route::prefix('v1')->group(function () {
     });
 
 
+    Route::get('/publico/terrenos/{token}', [LoteController::class, 'publico'])->middleware('throttle:60,1');
+    Route::get('/publico/media/lotes/{id}', [LoteController::class, 'media'])->middleware('throttle:120,1');
+
     // Rutas protegidas
     Route::middleware('auth:sanctum')->group(function () {
         // ==========================================
         // 🏡 MÓDULO INMOBILIARIO: FINCAS, PARCELAS & LOTES
         // ==========================================
-        Route::get('/fincas', [FincaController::class, 'index']);
-        Route::post('/fincas', [FincaController::class, 'store']);
-        Route::get('/fincas/{id}', [FincaController::class, 'show']);
-        Route::post('/fincas/{fincaId}/parcelas', [FincaController::class, 'storeParcela']);
-        Route::post('/parcelas/{parcelaId}/lotes', [FincaController::class, 'storeLote']);
+        Route::middleware('sucursal.scope')->group(function () {
+            Route::get('/fincas', [FincaController::class, 'index'])->middleware('permiso:fincas,ver');
+            Route::post('/fincas', [FincaController::class, 'store'])->middleware('permiso:fincas,crear');
+            Route::get('/fincas/{id}', [FincaController::class, 'show'])->middleware('permiso:fincas,ver');
+            Route::put('/fincas/{id}', [FincaController::class, 'update'])->middleware('permiso:fincas,editar');
+            Route::post('/fincas/{id}/desactivar', [FincaController::class, 'desactivar'])->middleware('permiso:fincas,desactivar');
+            Route::post('/fincas/{fincaId}/parcelas', [FincaController::class, 'storeParcela'])->middleware('permiso:fincas,crear');
+            Route::post('/parcelas/{parcelaId}/lotes', [FincaController::class, 'storeLote'])->middleware('permiso:lotes,crear');
 
-        Route::get('/lotes', [LoteController::class, 'index']);
-        Route::get('/lotes/disponibles', [LoteController::class, 'disponibles']);
-        Route::get('/lotes/{id}', [LoteController::class, 'show']);
-        Route::put('/lotes/{id}', [LoteController::class, 'update']);
-        Route::post('/lotes/{loteId}/servicios', [LoteController::class, 'storeServicio']);
+            Route::get('/lotes', [LoteController::class, 'index'])->middleware('permiso:lotes,ver');
+            Route::get('/lotes/disponibles', [LoteController::class, 'disponibles'])->middleware('permiso:lotes,ver');
+            Route::get('/lotes/{id}', [LoteController::class, 'show'])->middleware('permiso:lotes,ver');
+            Route::put('/lotes/{id}', [LoteController::class, 'update'])->middleware('permiso:lotes,editar');
+            Route::delete('/lotes/{id}', [LoteController::class, 'destroy'])->middleware('permiso:lotes,eliminar');
+            Route::post('/lotes/{loteId}/servicios', [LoteController::class, 'storeServicio'])->middleware('permiso:lotes,servicios');
+            Route::post('/lotes/{loteId}/imagenes', [LoteController::class, 'storeImagen'])->middleware('permiso:lotes,imagenes');
+            Route::delete('/lotes/{loteId}/imagenes/{imagenId}', [LoteController::class, 'destroyImagen'])->middleware('permiso:lotes,imagenes');
 
-        // ==========================================
-        // 💼 MÓDULO NEGOCIACIONES, SIMULADOR & FINANCIAMIENTO
-        // ==========================================
-        Route::post('/simulador/calcular', [NegociacionController::class, 'simular']);
-        Route::get('/negociaciones', [NegociacionController::class, 'index']);
-        Route::post('/negociaciones', [NegociacionController::class, 'store']);
-        Route::get('/negociaciones/{id}', [NegociacionController::class, 'show']);
+            Route::post('/simulador/calcular', [NegociacionController::class, 'simular'])->middleware('permiso:negociaciones,ver');
+            Route::get('/negociaciones', [NegociacionController::class, 'index'])->middleware('permiso:negociaciones,ver');
+            Route::post('/negociaciones', [NegociacionController::class, 'store'])->middleware('permiso:negociaciones,crear');
+            Route::get('/negociaciones/{id}', [NegociacionController::class, 'show'])->middleware('permiso:negociaciones,ver');
+            Route::post('/negociaciones/{id}/cancelar-reserva', [NegociacionController::class, 'cancelarReserva'])->middleware('permiso:negociaciones,rescindir');
+            Route::post('/negociaciones/{id}/rescindir', [NegociacionController::class, 'rescindir'])->middleware('permiso:negociaciones,rescindir');
 
-        // ==========================================
-        // 💵 MÓDULO DE PAGOS, CAJA & RECIBOS DE TERRENOS
-        // ==========================================
-        Route::get('/pagos-terrenos', [PagoTerrenoController::class, 'index']);
-        Route::post('/pagos-terrenos', [PagoTerrenoController::class, 'store']);
+            Route::get('/catalogo-servicios-inmobiliarios', [\App\Http\Controllers\Api\InmobiliarioCatalogoController::class, 'servicios'])->middleware('permiso:lotes,ver');
+            Route::get('/parametrizacion-mora-inmobiliaria', [\App\Http\Controllers\Api\InmobiliarioCatalogoController::class, 'moraIndex'])->middleware('permiso:tasas_inmobiliarias,ver');
+            Route::post('/parametrizacion-mora-inmobiliaria', [\App\Http\Controllers\Api\InmobiliarioCatalogoController::class, 'moraStore'])->middleware('permiso:tasas_inmobiliarias,crear');
+            Route::put('/parametrizacion-mora-inmobiliaria/{id}', [\App\Http\Controllers\Api\InmobiliarioCatalogoController::class, 'moraUpdate'])->middleware('permiso:tasas_inmobiliarias,editar');
+            Route::get('/tasas-inmobiliarias', [\App\Http\Controllers\Api\InmobiliarioCatalogoController::class, 'tasasIndex'])->middleware('permiso:tasas_inmobiliarias,ver');
+            Route::post('/tasas-inmobiliarias', [\App\Http\Controllers\Api\InmobiliarioCatalogoController::class, 'tasasStore'])->middleware('permiso:tasas_inmobiliarias,crear');
+            Route::put('/tasas-inmobiliarias/{id}', [\App\Http\Controllers\Api\InmobiliarioCatalogoController::class, 'tasasUpdate'])->middleware('permiso:tasas_inmobiliarias,editar');
+            Route::post('/tasas-inmobiliarias/{id}/desactivar', [\App\Http\Controllers\Api\InmobiliarioCatalogoController::class, 'tasasDesactivar'])->middleware('permiso:tasas_inmobiliarias,desactivar');
 
-        // ==========================================
-        // 📑 ESTADOS DE CUENTA, CONTRATOS & REPORTES
-        // ==========================================
-        Route::get('/negociaciones/{id}/estado-cuenta', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'estadoCuenta']);
-        Route::get('/negociaciones/{id}/contrato-html', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'contratoHtml']);
-        Route::get('/reportes-inmobiliarios/inventario', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'inventario']);
-        Route::get('/reportes-inmobiliarios/ventas', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'ventas']);
-        Route::get('/reportes-inmobiliarios/cobranza', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'cobranza']);
-        Route::get('/reportes-inmobiliarios/ingresos-diarios', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'ingresosDiarios']);
+            Route::get('/pagos-terrenos', [PagoTerrenoController::class, 'index'])->middleware('permiso:pagos_terreno,ver');
+            Route::post('/pagos-terrenos', [PagoTerrenoController::class, 'store'])->middleware('permiso:pagos_terreno,cobrar');
+            Route::post('/pagos-terrenos/{id}/anular', [PagoTerrenoController::class, 'anular'])->middleware('permiso:pagos_terreno,anular');
+
+            Route::get('/negociaciones/{id}/estado-cuenta', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'estadoCuenta'])->middleware('permiso:negociaciones,ver');
+            Route::get('/negociaciones/{id}/plan-pagos-pdf', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'planPagosPdf'])->middleware('permiso:negociaciones,ver');
+            Route::get('/negociaciones/{id}/contrato-html', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'contratoHtml'])->middleware('permiso:negociaciones,contrato');
+            Route::get('/reportes-inmobiliarios/inventario', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'inventario'])->middleware('permiso:reportes_inmobiliarios,generar');
+            Route::get('/reportes-inmobiliarios/ventas', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'ventas'])->middleware('permiso:reportes_inmobiliarios,generar');
+            Route::get('/reportes-inmobiliarios/cobranza', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'cobranza'])->middleware('permiso:reportes_inmobiliarios,generar');
+            Route::get('/reportes-inmobiliarios/ingresos-diarios', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'ingresosDiarios'])->middleware('permiso:reportes_inmobiliarios,generar');
+        });
 
         // ==========================================
         // 🎨 CONFIGURACIÓN DE EMPRESA, MARCA & LOGO
@@ -161,8 +176,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/auth/refresh-token', [AuthController::class, 'refreshToken']);
         Route::post('/auth/cambiar-sucursal', [AuthController::class, 'cambiarSucursal']);
 
-        // Auditoría (solo superadmin - sin scope de sucursal)
-        Route::prefix('auditoria')->group(function () {
+        // Auditoría y depuración (solo superadmin de soporte)
+        Route::middleware('superadmin')->prefix('auditoria')->group(function () {
             Route::get('/', [AuditoriaController::class, 'index']);
             Route::get('/estadisticas', [AuditoriaController::class, 'estadisticas']);
             Route::get('/modulos', [AuditoriaController::class, 'modulos']);
@@ -172,8 +187,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/{id}', [AuditoriaController::class, 'show']);
         });
 
-        // Errores de Sistema (solo superadmin)
-        Route::prefix('system-errors')->group(function () {
+        Route::middleware('superadmin')->prefix('system-errors')->group(function () {
             Route::get('/', [\App\Http\Controllers\SystemErrorController::class, 'index']);
             Route::get('/{id}', [\App\Http\Controllers\SystemErrorController::class, 'show']);
             Route::post('/clear', [\App\Http\Controllers\SystemErrorController::class, 'clear']);
@@ -235,16 +249,23 @@ Route::prefix('v1')->group(function () {
             Route::post('/clientes', [ClienteController::class, 'store']);
             Route::put('/clientes/{id}', [ClienteController::class, 'update']);
             Route::delete('/clientes/{id}', [ClienteController::class, 'destroy']);
+            Route::post('/clientes/{id}/restaurar', [ClienteController::class, 'restore']);
             Route::post('/clientes/{id}/foto', [ClienteController::class, 'uploadPhoto']);
 
-            // Categorías de Productos
-            Route::get('/categorias-productos', [CategoriaProductoController::class, 'index']);
-            Route::get('/categorias-productos/activas', [CategoriaProductoController::class, 'getActivas']);
-            Route::get('/categorias-productos/{id}', [CategoriaProductoController::class, 'show']);
-            Route::post('/categorias-productos', [CategoriaProductoController::class, 'store']);
-            Route::put('/categorias-productos/{id}', [CategoriaProductoController::class, 'update']);
-            Route::delete('/categorias-productos/{id}', [CategoriaProductoController::class, 'destroy']);
-            Route::post('/categorias-productos/{id}/toggle-activa', [CategoriaProductoController::class, 'toggleActiva']);
+            // Generador de formularios (categorías + campos dinámicos).
+            // Con empeños apagado es exclusivo del superadmin de soporte.
+            Route::group(
+                \App\Support\EmpenosAccess::enabled() ? [] : ['middleware' => 'superadmin'],
+                function () {
+                    Route::get('/categorias-productos', [CategoriaProductoController::class, 'index']);
+                    Route::get('/categorias-productos/activas', [CategoriaProductoController::class, 'getActivas']);
+                    Route::get('/categorias-productos/{id}', [CategoriaProductoController::class, 'show']);
+                    Route::post('/categorias-productos', [CategoriaProductoController::class, 'store']);
+                    Route::put('/categorias-productos/{id}', [CategoriaProductoController::class, 'update']);
+                    Route::delete('/categorias-productos/{id}', [CategoriaProductoController::class, 'destroy']);
+                    Route::post('/categorias-productos/{id}/toggle-activa', [CategoriaProductoController::class, 'toggleActiva']);
+                }
+            );
 
             // Planes de Interés por Categoría
             Route::get('/planes-interes', [PlanInteresCategoriaController::class, 'index']);
@@ -358,6 +379,7 @@ Route::prefix('v1')->group(function () {
 
             // ========== GASTOS (Módulo de cargos para créditos) ==========
             // Catálogo de gastos
+            Route::post('/gastos/preview', [\App\Http\Controllers\GastoController::class, 'preview']);
             Route::get('/gastos', [\App\Http\Controllers\GastoController::class, 'index']);
             Route::post('/gastos', [\App\Http\Controllers\GastoController::class, 'store']);
             Route::get('/gastos/{id}', [\App\Http\Controllers\GastoController::class, 'show']);
@@ -636,6 +658,8 @@ Route::prefix('v1')->group(function () {
         });
 });
 
+// Catálogo público de prendas: solo si empeños está habilitado.
+if (EmpenosAccess::enabled()) {
 // 🔒 Rutas E-commerce con Rate Limiting (público pero limitado)
 Route::middleware('throttle:60,1')->prefix('ecommerce')->group(function () {
 
@@ -660,5 +684,6 @@ Route::middleware('throttle:60,1')->prefix('ecommerce')->group(function () {
     });
 
 });
+}
 
 

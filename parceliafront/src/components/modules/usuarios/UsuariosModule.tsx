@@ -255,14 +255,14 @@ export function UsuariosModule({
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Header con título y botón */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Usuarios y Roles</h1>
-          <p className="text-sm sm:text-base text-muted-foreground">
+      <div className="page-toolbar">
+        <div className="min-w-0">
+          <h1 className="font-bold tracking-tight">Usuarios y Roles</h1>
+          <p className="text-sm text-muted-foreground">
             Gestión de {stats?.total || 0} usuarios del sistema
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="page-toolbar-actions">
           <Button
             variant="outline"
             size="icon"

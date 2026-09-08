@@ -150,6 +150,16 @@ class Cliente extends Model
     {
         return $this->hasMany(ClienteReferencia::class, 'cliente_id');
     }
+
+    public function negociaciones()
+    {
+        return $this->hasMany(Negociacion::class, 'cliente_id');
+    }
+
+    public function pagosTerreno()
+    {
+        return $this->hasMany(PagoTerreno::class, 'cliente_id');
+    }
 }
 
 

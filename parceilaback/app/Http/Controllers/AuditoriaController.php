@@ -296,40 +296,36 @@ class AuditoriaController extends Controller
 
         // Test 3: Crear y eliminar un registro de prueba (trigger Auditable trait)
         try {
-            // Crear un gasto de prueba que será auditado automáticamente
-            $gasto = \App\Models\Gasto::create([
-                'sucursal_id' => $request->user()->sucursal_id ?? 1,
-                'user_id' => $request->user()->id,
-                'concepto' => 'TEST_AUDITORIA_' . time(),
-                'monto' => 0.01,
-                'tipo' => 'caja',
-                'fecha' => now()->format('Y-m-d'),
-                'descripcion' => 'Este gasto se crea y elimina para probar auditoría automática',
+            $finca = \App\Models\Finca::create([
+                'nombre' => 'TEST_AUDITORIA_'.time(),
+                'codigo' => 'QA-AUD-'.substr((string) time(), -6),
+                'municipio' => 'Guatemala',
+                'departamento' => 'Guatemala',
+                'area_total_m2' => 100,
+                'activo' => true,
             ]);
 
             $resultados[] = [
                 'test' => 'Auditable Trait - CREATE',
-                'descripcion' => "Gasto #{$gasto->id} creado (auditado automáticamente)",
+                'descripcion' => "Finca #{$finca->id} creada (auditada automáticamente)",
                 'status' => 'ok'
             ];
 
-            // Actualizar el gasto
-            $gasto->monto = 0.02;
-            $gasto->save();
+            $finca->area_total_m2 = 120;
+            $finca->save();
 
             $resultados[] = [
                 'test' => 'Auditable Trait - UPDATE',
-                'descripcion' => "Gasto #{$gasto->id} actualizado (auditado automáticamente)",
+                'descripcion' => "Finca #{$finca->id} actualizada (auditada automáticamente)",
                 'status' => 'ok'
             ];
 
-            // Eliminar el gasto
-            $gastoId = $gasto->id;
-            $gasto->delete();
+            $fincaId = $finca->id;
+            $finca->forceDelete();
 
             $resultados[] = [
                 'test' => 'Auditable Trait - DELETE',
-                'descripcion' => "Gasto #{$gastoId} eliminado (auditado automáticamente)",
+                'descripcion' => "Finca #{$fincaId} eliminada (auditada automáticamente)",
                 'status' => 'ok'
             ];
 

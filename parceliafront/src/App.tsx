@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { MainApp } from './components/MainApp'
 import { LoginScreen } from './components/LoginScreen'
+import { TerrenoPublicoPage } from './components/modules/fincas/TerrenoPublicoPage'
 import { Toaster } from '@/components/ui/sonner'
 import { useKV } from '@/hooks/use-kv'
 import { authService, api, resetAuthFlag } from '@/lib/api'
@@ -14,6 +15,10 @@ interface UserSession {
 }
 
 function App() {
+    const publicToken = typeof window !== 'undefined'
+      ? window.location.pathname.match(/^\/t\/([A-Za-z0-9]+)/)?.[1]
+      : undefined
+
     const [session, setSession] = useKV<UserSession | null>('user-session', null)
     const [isAuthenticated, setIsAuthenticated] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
@@ -118,7 +123,7 @@ function App() {
     }, [setSession])
 
     // Mostrar loading mientras se verifica la sesión
-    if (isLoading) {
+    if (isLoading && !publicToken) {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -128,7 +133,9 @@ function App() {
 
     return (
         <>
-            {isAuthenticated && session ? (
+            {publicToken ? (
+                <TerrenoPublicoPage token={publicToken} />
+            ) : isAuthenticated && session ? (
                 <MainApp
                     userSession={session}
                     onLogout={handleLogout}

@@ -87,14 +87,14 @@ export function PersonalizacionModule() {
   return (
     <div className="space-y-6 animate-fade-in-up pb-10">
       {/* Encabezado del Módulo */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-card/70 backdrop-blur-md p-6 rounded-2xl border border-border/80 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-emerald-500/20">
+      <div className="page-toolbar bg-card/70 backdrop-blur-md p-4 sm:p-6 rounded-2xl border border-border/80 shadow-sm">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-md shadow-emerald-500/20">
             <PaintBrush size={26} weight="duotone" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight text-foreground">Personalización & Marca</h1>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="font-bold tracking-tight text-foreground">Personalización & Marca</h1>
               <Badge variant="outline" className="border-emerald-500/30 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 text-xs">
                 Modo Standalone
               </Badge>
@@ -105,7 +105,7 @@ export function PersonalizacionModule() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="page-toolbar-actions">
           <Button variant="outline" onClick={handleRestaurar} className="gap-2 border-border/70 hover:bg-muted">
             <ArrowCounterClockwise size={16} />
             Restaurar

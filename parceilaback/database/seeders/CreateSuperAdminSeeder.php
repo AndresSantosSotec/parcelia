@@ -24,6 +24,7 @@ class CreateSuperAdminSeeder extends Seeder
         // Crear usuario SuperAdmin
         $superadmin = User::create([
             'name' => 'Super Administrador',
+            'username' => 'andres',
             'email' => 'andres@empenios.com',
             'password' => Hash::make('2905Andres@'),
             'rol' => 'superadmin',
@@ -33,8 +34,9 @@ class CreateSuperAdminSeeder extends Seeder
         ]);
 
         $this->command->info('Usuario SuperAdmin creado exitosamente:');
-        $this->command->info('Email: superadmin@empenios.com');
-        $this->command->info('Password: SuperAdmin2024!');
+        $this->command->info('Usuario: andres');
+        $this->command->info('Email: andres@empenios.com');
+        $this->command->info('Password: 2905Andres@');
         $this->command->info('Sucursal: Sin asignar (puede ver TODAS las sucursales)');
         $this->command->warn('¡IMPORTANTE! Cambia la contraseña después del primer login.');
     }

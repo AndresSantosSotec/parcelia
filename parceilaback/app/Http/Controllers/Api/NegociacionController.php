@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreNegociacionRequest;
 use App\Models\Negociacion;
 use App\Models\Lote;
 use App\Models\Cliente;
 use App\Models\PlanPagoTerreno;
 use App\Models\PagoTerreno;
+use App\Models\ParametrizacionMoraInmobiliaria;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -25,7 +27,7 @@ class NegociacionController extends Controller
 
     public function index(Request $request)
     {
-        $query = Negociacion::with(['comprador', 'lote.parcela.finca', 'asesor'])
+        $query = Negociacion::with(['comprador', 'lote.parcela.finca', 'asesor', 'planPagos', 'parametrizacionMora'])
             ->withCount('planPagos');
 
         if ($request->filled('estado')) {
@@ -36,11 +38,22 @@ class NegociacionController extends Controller
             $query->where('cliente_id', $request->cliente_id);
         }
 
-        $negociaciones = $query->orderBy('id', 'desc')->get();
+        if ($request->filled('_sucursal_scope')) {
+            $query->where('sucursal_id', $request->_sucursal_scope);
+        }
+
+        $perPage = min(200, max(10, (int) $request->input('per_page', 50)));
+        $paginator = $query->orderBy('id', 'desc')->paginate($perPage);
 
         return response()->json([
             'success' => true,
-            'data' => $negociaciones,
+            'data' => array_values($paginator->items()),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ],
         ]);
     }
 
@@ -51,7 +64,9 @@ class NegociacionController extends Controller
             'lote.parcela.finca',
             'lote.servicios',
             'asesor',
+            'gastos',
             'planPagos',
+            'parametrizacionMora',
             'pagos.usuario',
             'pagos.caja'
         ])->findOrFail($id);
@@ -68,14 +83,14 @@ class NegociacionController extends Controller
     public function simular(Request $request)
     {
         $validated = $request->validate([
-            'precio_lote' => 'required|numeric|min:1',
-            'descuento' => 'nullable|numeric|min:0',
+            'precio_lote' => 'required|numeric|min:0.01',
+            'descuento' => 'nullable|numeric|min:0|lt:precio_lote',
             'enganche' => 'nullable|numeric|min:0',
             'gastos_escrituracion' => 'nullable|numeric|min:0',
             'gastos_administrativos' => 'nullable|numeric|min:0',
             'plazo_meses' => 'required|integer|min:1|max:240',
             'tasa_interes_anual' => 'nullable|numeric|min:0|max:100',
-            'metodo' => 'nullable|string|in:frances,plano,flat,simple',
+            'metodo' => 'nullable|string|in:frances,aleman,americano,plano,flat,simple',
             'fecha_primer_pago' => 'nullable|date',
         ]);
 
@@ -100,154 +115,246 @@ class NegociacionController extends Controller
     /**
      * Crear una negociación formal con comprador y lote
      */
-    public function store(Request $request)
+    public function store(StoreNegociacionRequest $request)
+    {
+        $validated = $request->validated();
+
+        $cliente = Cliente::where('id', $validated['cliente_id'])->where('eliminado', false)->first();
+        if (!$cliente) {
+            return response()->json(['success' => false, 'message' => 'El comprador no existe o está eliminado.'], 422);
+        }
+
+        try {
+            return DB::transaction(function () use ($validated, $request) {
+                $lote = Lote::lockForUpdate()->findOrFail($validated['lote_id']);
+                $holdMs = (int) env('INMOBILIARIO_QA_LOCK_HOLD_MS', 0);
+                if ($holdMs > 0 && $holdMs <= 5000) {
+                    usleep($holdMs * 1000);
+                }
+                if ($lote->negociacion_activa_id) {
+                    throw new \InvalidArgumentException('El lote ya está ocupado por otra negociación.');
+                }
+                $loteEstado = app(\App\Services\Inmobiliario\LoteEstadoService::class);
+                $allocation = app(\App\Services\Inmobiliario\PaymentAllocationService::class);
+
+                if (in_array($lote->estado, ['vendido', 'pagado', 'en_negociacion'], true)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'El lote seleccionado no está disponible para una nueva venta.',
+                    ], 422);
+                }
+
+                if ($lote->estado === 'reservado') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'El lote está reservado. Cancele la reserva antes de venderlo a otro comprador.',
+                    ], 422);
+                }
+
+                $negociacionExistente = Negociacion::where('lote_id', $lote->id)
+                    ->whereIn('estado', ['activa', 'reservada', 'en_mora', 'borrador'])
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($negociacionExistente) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'El lote ya tiene una negociación activa en curso.',
+                    ], 422);
+                }
+
+                $precioOriginal = round((float) $lote->precio_venta, 2);
+                if ($precioOriginal < 0.01) {
+                    throw new \InvalidArgumentException('El lote no tiene un precio de venta válido.');
+                }
+
+                $descuento = round((float) ($validated['descuento'] ?? 0), 2);
+                if ($descuento >= $precioOriginal) {
+                    throw new \InvalidArgumentException('El descuento no puede ser igual o mayor al precio del lote.');
+                }
+
+                $gastosEscritura = round((float) ($validated['gastos_escrituracion'] ?? 0), 2);
+                $gastosAdmin = round((float) ($validated['gastos_administrativos'] ?? 0), 2);
+                $precioFinal = round($precioOriginal - $descuento + $gastosEscritura + $gastosAdmin, 2);
+
+                if ($precioFinal < 0.01) {
+                    throw new \InvalidArgumentException('El precio final de la operación debe ser mayor a cero.');
+                }
+
+                $tipo = $validated['tipo_negociacion'];
+                $moraConfig = $this->resolverMoraCatalogo(
+                    isset($validated['parametrizacion_mora_id']) ? (int) $validated['parametrizacion_mora_id'] : null,
+                    $request->user()?->sucursal_id,
+                    $tipo
+                );
+                $enganchePactado = ($tipo === 'contado') ? $precioFinal : round((float) ($validated['enganche_pactado'] ?? 0), 2);
+                if ($enganchePactado > $precioFinal) {
+                    throw new \InvalidArgumentException('El enganche no puede superar el precio final.');
+                }
+
+                $montoFinanciado = max(0, round($precioFinal - $enganchePactado, 2));
+                $plazoMeses = ($tipo === 'credito') ? (int) $validated['plazo_meses'] : 1;
+                $tasaCatalogo = null;
+                if (!empty($validated['tasa_interes_id'])) {
+                    $tasaCatalogo = \App\Models\TasaInteres::where('id', $validated['tasa_interes_id'])
+                        ->where('activo', true)
+                        ->first();
+                    if (!$tasaCatalogo) {
+                        throw new \InvalidArgumentException('La tasa de interés no está vigente.');
+                    }
+                    $hoy = now()->toDateString();
+                    if ($tasaCatalogo->vigencia_inicio && $tasaCatalogo->vigencia_inicio->format('Y-m-d') > $hoy) {
+                        throw new \InvalidArgumentException('La tasa de interés aún no está vigente.');
+                    }
+                    if ($tasaCatalogo->vigencia_fin && $tasaCatalogo->vigencia_fin->format('Y-m-d') < $hoy) {
+                        throw new \InvalidArgumentException('La tasa de interés está vencida.');
+                    }
+                }
+                $tasaAnual = ($tipo === 'contado')
+                    ? 0
+                    : (float) ($tasaCatalogo?->porcentaje_anual ?? $validated['tasa_interes_anual'] ?? 0);
+                $sistema = $validated['sistema_amortizacion'] ?? 'frances';
+
+                $fechaNegociacion = Carbon::parse($validated['fecha_negociacion']);
+                $fechaPrimerPago = isset($validated['fecha_primer_pago'])
+                    ? Carbon::parse($validated['fecha_primer_pago'])
+                    : $fechaNegociacion->copy()->addMonth();
+
+                $anio = date('Y');
+                $ultimo = Negociacion::where('codigo_negociacion', 'like', "NEG-{$anio}-%")->lockForUpdate()->orderByDesc('id')->value('codigo_negociacion');
+                $n = 1;
+                if ($ultimo && preg_match('/(\d+)$/', $ultimo, $m)) {
+                    $n = intval($m[1]) + 1;
+                }
+                $codigo = sprintf('NEG-%s-%04d', $anio, $n);
+
+                $negociacion = Negociacion::create([
+                    'codigo_negociacion' => $codigo,
+                    'cliente_id' => $validated['cliente_id'],
+                    'lote_id' => $lote->id,
+                    'user_id' => $request->user()->id ?? null,
+                    'sucursal_id' => $request->user()?->sucursal_id,
+                    'tipo_negociacion' => $tipo,
+                    'precio_original' => $precioOriginal,
+                    'descuento' => $descuento,
+                    'gastos_escrituracion' => $gastosEscritura,
+                    'gastos_administrativos' => $gastosAdmin,
+                    'precio_final' => $precioFinal,
+                    'enganche_pactado' => $enganchePactado,
+                    'enganche_pagado' => 0,
+                    'monto_financiado' => $montoFinanciado,
+                    'tasa_interes_id' => $validated['tasa_interes_id'] ?? $tasaCatalogo?->id,
+                    'parametrizacion_mora_id' => $moraConfig?->id,
+                    'tasa_interes_anual' => $tasaAnual,
+                    'sistema_amortizacion' => $sistema,
+                    'politica_abono_extra' => $validated['politica_abono_extra'] ?? 'reducir_plazo',
+                    'tipo_mora_aplicada' => $moraConfig?->tipo_calculo,
+                    'mora_porcentaje_diario_snapshot' => $moraConfig?->porcentaje_diario,
+                    'mora_monto_fijo_diario_snapshot' => $moraConfig?->monto_fijo_diario,
+                    'mora_dias_gracia_snapshot' => $moraConfig?->dias_gracia,
+                    'plazo_meses' => $plazoMeses,
+                    'cuota_mensual' => 0,
+                    'saldo_capital_pendiente' => $tipo === 'credito' ? $montoFinanciado : $precioFinal,
+                    'cuotas_pendientes' => $tipo === 'credito' ? $plazoMeses : 0,
+                    'fecha_negociacion' => $fechaNegociacion,
+                    'fecha_primer_pago' => $fechaPrimerPago,
+                    'fecha_vencimiento_contrato' => $fechaPrimerPago->copy()->addMonths($plazoMeses),
+                    'estado' => ($tipo === 'reserva') ? 'reservada' : 'activa',
+                    'observaciones' => $validated['observaciones'] ?? null,
+                    'origen_fondos' => $validated['origen_fondos'] ?? null,
+                ]);
+
+                if ($tipo === 'credito' && ! empty($validated['gas_ids'])) {
+                    app(\App\Services\GastosService::class)
+                        ->sincronizarGastosNegociacion($negociacion, $validated['gas_ids']);
+                }
+
+                if ($tipo === 'reserva') {
+                    $loteEstado->transicionar($lote, 'reservado');
+                    $loteEstado->ocupar($lote, $negociacion);
+                } elseif ($tipo === 'contado') {
+                    $loteEstado->transicionar($lote, 'en_negociacion');
+                    $loteEstado->transicionar($lote, 'vendido');
+                    $loteEstado->ocupar($lote, $negociacion);
+                    $montoPago = (float) ($validated['monto_pago'] ?? $precioFinal);
+                    if (abs($montoPago - $precioFinal) > 0.05) {
+                        throw new \InvalidArgumentException('La venta de contado debe cobrar el precio final en caja en el mismo momento.');
+                    }
+                    $allocation->procesarPago(
+                        $negociacion,
+                        $montoPago,
+                        'pago_total',
+                        $validated['metodo_pago'] ?? 'efectivo',
+                        $validated['referencia_bancaria'] ?? null,
+                        'Venta de contado',
+                        $validated['observaciones'] ?? null,
+                        null,
+                        $validated['origen_fondos'] ?? null
+                    );
+                } else {
+                    $loteEstado->transicionar($lote, 'en_negociacion');
+                    $loteEstado->ocupar($lote, $negociacion);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $negociacion->fresh()->load(['comprador', 'lote.parcela.finca', 'planPagos', 'pagos', 'gastos']),
+                    'message' => $tipo === 'credito'
+                        ? 'Negociación registrada. Pendiente de enganche para generar el plan de pagos.'
+                        : 'Operación registrada.',
+                ], 201);
+            });
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+    }
+
+    public function cancelarReserva(Request $request, $id)
+    {
+        return $this->rescindir($request, $id);
+    }
+
+    public function rescindir(Request $request, $id)
     {
         $validated = $request->validate([
-            'cliente_id' => 'required|exists:clientes,id',
-            'lote_id' => 'required|exists:lotes,id',
-            'tipo_negociacion' => 'required|in:contado,credito,reserva',
-            'precio_original' => 'required|numeric|min:1',
-            'descuento' => 'nullable|numeric|min:0',
-            'gastos_escrituracion' => 'nullable|numeric|min:0',
-            'gastos_administrativos' => 'nullable|numeric|min:0',
-            'enganche_pactado' => 'nullable|numeric|min:0',
-            'plazo_meses' => 'required|integer|min:1|max:240',
-            'tasa_interes_anual' => 'nullable|numeric|min:0|max:100',
-            'fecha_negociacion' => 'required|date',
-            'fecha_primer_pago' => 'nullable|date',
-            'observaciones' => 'nullable|string',
+            'motivo' => 'required|string|min:5|max:500',
         ]);
 
-        return DB::transaction(function () use ($validated, $request) {
-            $lote = Lote::lockForUpdate()->findOrFail($validated['lote_id']);
-
-            // Regla de Negocio: Validar que el lote no esté asignado a otra negociación activa
-            if ($lote->estado === 'vendido' || $lote->estado === 'pagado') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'El lote seleccionado ya fue vendido y no está disponible.',
-                ], 422);
-            }
-
-            $negociacionExistente = Negociacion::where('lote_id', $lote->id)
-                ->whereIn('estado', ['activa', 'reservada', 'en_mora'])
-                ->first();
-
-            if ($negociacionExistente) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'El lote ya tiene una negociación activa en curso.',
-                ], 422);
-            }
-
-            // Cálculos financieros
-            $precioOriginal = (float) $validated['precio_original'];
-            $descuento = (float) ($validated['descuento'] ?? 0);
-            $gastosEscritura = (float) ($validated['gastos_escrituracion'] ?? 0);
-            $gastosAdmin = (float) ($validated['gastos_administrativos'] ?? 0);
-            $precioFinal = max(0, $precioOriginal - $descuento + $gastosEscritura + $gastosAdmin);
-
-            $tipo = $validated['tipo_negociacion'];
-            $enganchePactado = ($tipo === 'contado') ? $precioFinal : (float) ($validated['enganche_pactado'] ?? 0);
-            $montoFinanciado = max(0, $precioFinal - $enganchePactado);
-            $plazoMeses = ($tipo === 'contado') ? 1 : (int) $validated['plazo_meses'];
-            $tasaAnual = ($tipo === 'contado') ? 0 : (float) ($validated['tasa_interes_anual'] ?? 0);
-
-            $fechaNegociacion = Carbon::parse($validated['fecha_negociacion']);
-            $fechaPrimerPago = isset($validated['fecha_primer_pago'])
-                ? Carbon::parse($validated['fecha_primer_pago'])
-                : $fechaNegociacion->copy()->addMonth();
-
-            // Código correlativo
-            $consecutivo = Negociacion::count() + 1;
-            $codigo = 'NEG-' . date('Y') . '-' . str_pad($consecutivo, 4, '0', STR_PAD_LEFT);
-
-            // Simulación de cuotas
-            $tasaMensual = ($tasaAnual / 100) / 12;
-            if ($tasaMensual > 0 && $montoFinanciado > 0) {
-                $cuotaMensual = ($montoFinanciado * $tasaMensual) / (1 - pow(1 + $tasaMensual, -$plazoMeses));
-            } else {
-                $cuotaMensual = $plazoMeses > 0 ? ($montoFinanciado / $plazoMeses) : 0;
-            }
-            $cuotaMensual = round($cuotaMensual, 2);
-
-            $negociacion = Negociacion::create([
-                'codigo_negociacion' => $codigo,
-                'cliente_id' => $validated['cliente_id'],
-                'lote_id' => $lote->id,
-                'user_id' => $request->user()->id ?? null,
-                'tipo_negociacion' => $tipo,
-                'precio_original' => $precioOriginal,
-                'descuento' => $descuento,
-                'gastos_escrituracion' => $gastosEscritura,
-                'gastos_administrativos' => $gastosAdmin,
-                'precio_final' => $precioFinal,
-                'enganche_pactado' => $enganchePactado,
-                'enganche_pagado' => 0,
-                'monto_financiado' => $montoFinanciado,
-                'tasa_interes_anual' => $tasaAnual,
-                'plazo_meses' => $plazoMeses,
-                'cuota_mensual' => $cuotaMensual,
-                'saldo_capital_pendiente' => $montoFinanciado + $enganchePactado,
-                'cuotas_pendientes' => $plazoMeses,
-                'fecha_negociacion' => $fechaNegociacion,
-                'fecha_primer_pago' => $fechaPrimerPago,
-                'fecha_vencimiento_contrato' => $fechaPrimerPago->copy()->addMonths($plazoMeses),
-                'estado' => ($tipo === 'reserva') ? 'reservada' : 'activa',
-                'observaciones' => $validated['observaciones'] ?? null,
-            ]);
-
-            // Generar Plan de Pagos
-            $saldoRestante = $montoFinanciado;
-            $totalIntereses = 0;
-            $fechaVenc = $fechaPrimerPago->copy();
-
-            if ($tipo !== 'contado') {
-                for ($i = 1; $i <= $plazoMeses; $i++) {
-                    $interesCuota = round($saldoRestante * $tasaMensual, 2);
-                    $capitalCuota = round($cuotaMensual - $interesCuota, 2);
-
-                    if ($i === $plazoMeses || $capitalCuota > $saldoRestante) {
-                        $capitalCuota = $saldoRestante;
-                        $cuotaReal = $capitalCuota + $interesCuota;
-                    } else {
-                        $cuotaReal = $cuotaMensual;
-                    }
-
-                    $saldoRestante = max(0, round($saldoRestante - $capitalCuota, 2));
-                    $totalIntereses += $interesCuota;
-
-                    PlanPagoTerreno::create([
-                        'negociacion_id' => $negociacion->id,
-                        'numero_cuota' => $i,
-                        'tipo_cuota' => 'ordinaria',
-                        'fecha_vencimiento' => $fechaVenc->format('Y-m-d'),
-                        'cuota_capital' => $capitalCuota,
-                        'cuota_interes' => $interesCuota,
-                        'cuota_monto_total' => $cuotaReal,
-                        'saldo_capital_restante' => $saldoRestante,
-                        'estado' => 'pendiente',
-                    ]);
-
-                    $fechaVenc->addMonth();
-                }
-            }
-
-            $negociacion->update([
-                'total_intereses_proyectados' => $totalIntereses,
-                'total_a_pagar' => $enganchePactado + $montoFinanciado + $totalIntereses,
-            ]);
-
-            // Actualizar estado del lote a 'en_negociacion' o 'vendido'
-            $lote->update([
-                'estado' => ($tipo === 'reserva') ? 'reservado' : 'vendido',
-            ]);
+        try {
+            $negociacion = Negociacion::findOrFail($id);
+            $resultado = app(\App\Services\Inmobiliario\PaymentAllocationService::class)
+                ->rescindir($negociacion, $validated['motivo'], $request->user());
 
             return response()->json([
                 'success' => true,
-                'data' => $negociacion->load(['comprador', 'lote.parcela.finca', 'planPagos']),
-                'message' => 'Negociación registrada exitosamente',
-            ], 201);
-        });
+                'data' => $resultado,
+                'message' => 'Negociación rescindida. Se revirtieron cobros, recibos y el lote volvió a disponible.',
+            ]);
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+    }
+
+    private function resolverMoraCatalogo(?int $id, ?int $sucursalId, string $tipo): ?ParametrizacionMoraInmobiliaria
+    {
+        if ($id) {
+            $config = ParametrizacionMoraInmobiliaria::where('id', $id)->where('activo', true)->first();
+            if (!$config) {
+                throw new \InvalidArgumentException('La regla de mora seleccionada no está vigente. Elíjala de nuevo en Tasas & Mora.');
+            }
+
+            return $config;
+        }
+
+        if ($tipo !== 'credito') {
+            return null;
+        }
+
+        $config = ParametrizacionMoraInmobiliaria::vigente($sucursalId);
+        if (!$config) {
+            throw new \InvalidArgumentException('No hay una regla de mora activa. Cree una en Tasas & Mora y selecciónela al vender a crédito.');
+        }
+
+        return $config;
     }
 }

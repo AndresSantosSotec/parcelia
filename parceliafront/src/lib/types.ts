@@ -36,6 +36,11 @@ export interface Cliente {
     activos: number
     vencidos: number
   }
+  negociacionesInfo?: {
+    total: number
+    activos: number
+    en_mora: number
+  }
   referencias?: ClienteReferencia[]
 }
 

@@ -7,7 +7,7 @@ import { VentasModule } from './modules/ventas/VentasModule'
 import { CreditosModule } from './modules/creditos/CreditosModule'
 import { CajaModule } from './modules/caja/CajaModule'
 import { CobrosModule } from './modules/cobros/CobrosModule'
-import { ReportesContablesModule } from './modules/reportes/ReportesContablesModule'
+import { ReportesModule } from './modules/reportes/ReportesModule'
 import { PrendasModule } from './modules/prendas/PrendasModule'
 import { HistorialModule } from './modules/historial/HistorialModule'
 import { UsuariosModule } from './modules/usuarios/UsuariosModule'
@@ -29,6 +29,7 @@ import { TransferenciasModule } from './modules/transferencias/TransferenciasMod
 import { PersonalizacionModule } from './modules/personalizacion/PersonalizacionModule'
 import { FincasModule } from './modules/fincas/FincasModule'
 import { NegociacionesModule } from './modules/negociaciones/NegociacionesModule'
+import { TasasInmobiliariasModule } from './modules/tasas/TasasInmobiliariasModule'
 import { useEmpresaConfig } from '@/hooks/useEmpresaConfig'
 import { ChatbotHelper } from './ChatbotHelper'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -55,6 +56,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import { sucursalService, dashboardService, DashboardData, authService } from '@/lib/api'
+import { isModuloOcultoEnOperacion } from '@/lib/empenos'
 
 interface UserSession {
   username: string
@@ -92,7 +94,7 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
   const [refrescarSucursales, setRefrescarSucursales] = useKV<number>('refrescar-sucursales-trigger', 0)
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [cargandoDashboard, setCargandoDashboard] = useState(false)
-  const { isMobile, isTablet, isDesktop } = useResponsive()
+  const { isDesktop } = useResponsive()
   const { theme, setTheme } = useTheme()
   const { config: empresaConfig } = useEmpresaConfig()
 
@@ -140,7 +142,7 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
       nombre: userSession.username,
       username: userSession.username,
       email: '',
-      rol: userSession.role.toLowerCase() === 'superadmin' ? 'superadmin' :
+      rol: userSession.role.toLowerCase() === 'superadmin' || userSession.role.toLowerCase() === 'soporte' ? 'superadmin' :
         userSession.role.toLowerCase() === 'administrador' ? 'administrador' :
           userSession.role.toLowerCase() === 'cajero' ? 'cajero' :
             userSession.role.toLowerCase() === 'tasador' ? 'tasador' :
@@ -153,6 +155,17 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
 
   const { hasModuleAccess, accessibleModules } = usePermissions(userWithPermissions)
 
+  const esSuperAdmin =
+    userWithPermissions.rol === 'superadmin' ||
+    userSession.role === 'superadmin' ||
+    userSession.role?.toLowerCase() === 'soporte' ||
+    userSession.userData?.rol === 'superadmin'
+
+  const esModuloSoloSoporte = (modulo: string) =>
+    modulo === 'auditoria' ||
+    modulo === 'migracion' ||
+    modulo === 'contabilidad'
+
   const creditosActivos = (creditos || []).filter(c => c.estado === 'activo')
   const creditosVencidos = (creditos || []).filter(c => c.estado === 'vencido')
 
@@ -160,6 +173,14 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
   const totalSaldo = creditosActivos.reduce((sum, c) => sum + c.saldoActual, 0)
 
   const handleNavegacion = useCallback((modulo: string) => {
+    if (isModuloOcultoEnOperacion(modulo, esSuperAdmin)) {
+      toast.error('Este módulo no está disponible en la operación actual')
+      return
+    }
+    if (esModuloSoloSoporte(modulo) && !esSuperAdmin) {
+      toast.error('Este módulo es exclusivo de soporte (superadmin)')
+      return
+    }
     // Verificar permiso antes de navegar
     if (modulo !== 'dashboard' && !hasModuleAccess(modulo as Modulo)) {
       toast.error('No tienes permiso para acceder a este módulo')
@@ -167,7 +188,7 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
     }
     setModuloActivo(modulo)
     setMenuAbierto(false)
-  }, [hasModuleAccess])
+  }, [hasModuleAccess, esSuperAdmin])
 
   // Escuchar solicitudes de navegación desde componentes hijos
   const [navigateRequest] = useKV<{ modulo: string } | null>('navigate-module-request', null)
@@ -183,17 +204,39 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
     return navigation.filter(item => {
       const modulo = item.id as Modulo
 
-      // Módulos exclusivos de superadmin
-      if (modulo === 'auditoria' || modulo === 'migracion' || modulo === 'contabilidad') {
-        const esSuperAdmin = userSession.role === 'superadmin' || userSession.userData?.rol === 'superadmin'
+      if (isModuloOcultoEnOperacion(item.id, esSuperAdmin)) {
+        return false
+      }
+
+      if (esModuloSoloSoporte(item.id)) {
         return esSuperAdmin
       }
 
       return hasModuleAccess(modulo)
     })
-  }, [hasModuleAccess, userSession])
+  }, [hasModuleAccess, esSuperAdmin])
 
   const renderModulo = () => {
+    if (isModuloOcultoEnOperacion(moduloActivo, esSuperAdmin)) {
+      return (
+        <Card className="p-12 text-center">
+          <Lock className="mx-auto mb-4 text-muted-foreground" size={64} />
+          <p className="text-lg font-medium mb-2">Módulo no disponible</p>
+          <p className="text-muted-foreground">La operación de empeños no está habilitada en este sistema.</p>
+        </Card>
+      )
+    }
+
+    if (esModuloSoloSoporte(moduloActivo) && !esSuperAdmin) {
+      return (
+        <Card className="p-12 text-center">
+          <Lock className="mx-auto mb-4 text-muted-foreground" size={64} />
+          <p className="text-lg font-medium mb-2">Acceso exclusivo de soporte</p>
+          <p className="text-muted-foreground">Auditoría, formularios y depuración son para el superadmin de soporte.</p>
+        </Card>
+      )
+    }
+
     // Verificar permisos para el módulo actual
     if (moduloActivo !== 'dashboard' && !hasModuleAccess(moduloActivo as Modulo)) {
       return (
@@ -223,7 +266,7 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
       case 'historial':
         return <HistorialModule />
       case 'reportes':
-        return <ReportesContablesModule />
+        return <ReportesModule />
       case 'usuarios':
         return (
           <UsuariosModule
@@ -263,6 +306,8 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
         return <FincasModule />
       case 'negociaciones':
         return <NegociacionesModule />
+      case 'tasas_inmobiliarias':
+        return <TasasInmobiliariasModule />
       case 'personalizacion':
         return <PersonalizacionModule />
       case 'perfil':
@@ -330,17 +375,17 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
     <div className="min-h-screen bg-background">
       <header className="modern-header">
         <div className="container mx-auto px-4 sm:px-6 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               {/* Botón de hamburguesa */}
-              {isMobile ? (
+              {!isDesktop ? (
                 <Sheet open={menuAbierto} onOpenChange={setMenuAbierto}>
                   <SheetTrigger asChild>
                     <Button variant="outline" size="icon">
                       <List size={24} />
                     </Button>
                   </SheetTrigger>
-                  <SheetContent side="left" className="w-[280px] sm:w-[320px] p-0 sheet-modern-content">
+                  <SheetContent side="left" className="w-[min(86vw,320px)] p-0 sheet-modern-content">
                     <SheetHeader className="p-4 pb-2 border-b border-border/10">
                       <SheetTitle className="text-base">Menú de Navegación</SheetTitle>
                     </SheetHeader>
@@ -387,19 +432,19 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
                   <List size={24} />
                 </Button>
               )}
-              <div className="flex items-center gap-3 cursor-pointer" onClick={() => setModuloActivo('dashboard')}>
+              <div className="flex items-center gap-2 sm:gap-3 cursor-pointer min-w-0" onClick={() => setModuloActivo('dashboard')}>
                 {empresaConfig.logoUrl ? (
-                  <div className="h-10 max-w-[120px] flex items-center justify-center p-1 rounded-xl bg-card border border-border/80 shadow-sm overflow-hidden">
+                  <div className="h-8 sm:h-10 max-w-[72px] sm:max-w-[120px] shrink-0 flex items-center justify-center p-1 rounded-xl bg-card border border-border/80 shadow-sm overflow-hidden">
                     <img src={empresaConfig.logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
                   </div>
                 ) : (
-                  <div className="modern-header-logo">
+                  <div className="modern-header-logo shrink-0">
                     <Wallet className="text-white" size={22} weight="duotone" />
                   </div>
                 )}
-                <div>
-                  <h1 className="text-lg sm:text-xl font-bold tracking-tight text-foreground">{empresaConfig.nombreEmpresa || 'Parcelia'}</h1>
-                  <p className="text-[0.6875rem] text-muted-foreground hidden sm:block tracking-wide">{empresaConfig.slogan || 'Sistema de gestión de empeños'}</p>
+                <div className="min-w-0">
+                  <h1 className="text-base sm:text-lg md:text-xl font-bold tracking-tight text-foreground truncate">{empresaConfig.nombreEmpresa || 'Parcelia'}</h1>
+                  <p className="text-[0.6875rem] text-muted-foreground hidden sm:block tracking-wide truncate">{empresaConfig.slogan || 'Administración y venta de terrenos'}</p>
                 </div>
               </div>
             </div>
@@ -463,7 +508,7 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
                         <DropdownMenuItem
                           onClick={() => handleCambiarSucursal(null)}
                           className={!sucursalActiva ? 'bg-accent' : ''}
-                          disabled={userSession.role !== 'superadmin' && userSession.userData?.rol !== 'superadmin'}
+                          disabled={!esSuperAdmin}
                         >
                           Todas las Sucursales
                           {!sucursalActiva && ' ✓'}
@@ -473,7 +518,7 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
                             key={sucursal.id}
                             onClick={() => handleCambiarSucursal(sucursal.id)}
                             className={sucursalActiva === sucursal.id ? 'bg-accent' : ''}
-                            disabled={userSession.role !== 'superadmin' && userSession.userData?.rol !== 'superadmin'}
+                            disabled={!esSuperAdmin}
                           >
                             {sucursal.codigo} - {sucursal.nombre}
                             {sucursalActiva === sucursal.id && ' ✓'}
@@ -499,15 +544,15 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
         </div>
       </header>
 
-      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-6 relative z-10">
+      <div className="container mx-auto px-3 sm:px-6 py-3 sm:py-6 relative z-10">
         <div className="flex gap-6 lg:gap-8 items-start">
           {/* Sidebar colapsable para desktop - Estilo Tarjeta Flotante */}
-          {!isMobile && (
+          {isDesktop && (
             <aside
-              className={`shrink-0 transition-all duration-300 ease-in-out modern-sidebar-card ${sidebarColapsado ? 'w-[4.5rem] px-2' : 'w-64'
+              className={`shrink-0 sticky top-4 max-h-[calc(100vh-7rem)] overflow-hidden transition-all duration-300 ease-in-out modern-sidebar-card ${sidebarColapsado ? 'w-[4.5rem] px-2' : 'w-56 md:w-64'
                 }`}
             >
-              <nav className="modern-sidebar modern-scrollbar overflow-y-auto space-y-1 h-full">
+              <nav className="modern-sidebar modern-scrollbar overflow-y-auto space-y-1 max-h-[calc(100vh-8rem)]">
                 <button
                   className={`sidebar-nav-item ${moduloActivo === 'dashboard' ? 'active' : ''} ${sidebarColapsado ? 'justify-center px-2' : ''}`}
                   onClick={() => handleNavegacion('dashboard')}
@@ -545,12 +590,12 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
             </aside>
           )}
 
-          <main className="flex-1 min-w-0 page-transition" key={moduloActivo}>
+          <main className="flex-1 min-w-0 page-transition pb-20 lg:pb-0" key={moduloActivo}>
             {renderModulo()}
           </main>
         </div>
       </div>
-      <ChatbotHelper />
+      <ChatbotHelper rol={userSession.userData?.rol || userSession.role} />
     </div>
   )
 }

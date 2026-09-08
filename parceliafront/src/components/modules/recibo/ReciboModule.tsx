@@ -312,14 +312,14 @@ export function ReciboModule() {
   return (
     <div className="space-y-4">
       {/* Header con título y menú de acciones */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">RECIBOS</h1>
+      <div className="page-toolbar pb-4 border-b">
+        <div className="min-w-0">
+          <h1 className="font-bold tracking-tight">RECIBOS</h1>
           <p className="text-sm text-muted-foreground">Emisión y control de recibos de caja</p>
         </div>
 
         {/* Menú de acciones estilo MicroSystem */}
-        <div className="flex flex-wrap gap-2">
+        <div className="page-toolbar-actions">
           {/* Dropdown Acciones con Recibos */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -538,6 +538,57 @@ function VistaListaRecibos({
           <CardTitle className="text-base">Recibos Emitidos</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
+          <div className="md:hidden divide-y">
+            {recibos.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground">
+                <Receipt size={40} className="mx-auto mb-3 opacity-50" />
+                <p>No hay recibos para mostrar</p>
+              </div>
+            ) : recibos.map((recibo: Recibo) => (
+              <div key={recibo.id} className={`p-3 space-y-2 ${recibo.estado === 'anulado' ? 'opacity-70' : ''}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-mono font-medium text-sm">{recibo.numero_recibo}</p>
+                    <p className="text-xs text-muted-foreground">{format(new Date(recibo.fecha), 'dd/MM/yyyy')}</p>
+                    <p className="text-sm truncate">
+                      {recibo.cliente ? `${recibo.cliente.nombre} ${recibo.cliente.apellidos}` : 'Sin cliente'}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">{recibo.concepto}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <Badge variant={recibo.tipo === 'ingreso' ? 'default' : 'destructive'}>
+                      {reciboService.getTipoLabel(recibo.tipo)}
+                    </Badge>
+                    <Badge variant={
+                      recibo.estado === 'emitido' ? 'default' :
+                      recibo.estado === 'anulado' ? 'destructive' : 'secondary'
+                    }>
+                      {reciboService.getEstadoLabel(recibo.estado)}
+                    </Badge>
+                  </div>
+                </div>
+                <p className={`text-right font-bold ${recibo.tipo === 'ingreso' ? 'text-green-600' : 'text-red-600'}`}>
+                  {simboloMoneda} {Number(recibo.monto).toFixed(2)}
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button size="sm" variant="outline" onClick={() => onVer(recibo)}>
+                    <Eye size={14} className="mr-1" /> Ver
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => onImprimir(recibo)}>
+                    <Printer size={14} className="mr-1" /> Imprimir
+                  </Button>
+                  {recibo.estado === 'emitido' ? (
+                    <Button size="sm" variant="outline" className="text-destructive" onClick={() => onAnular(recibo)}>
+                      <XCircle size={14} className="mr-1" /> Anular
+                    </Button>
+                  ) : (
+                    <span />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -609,6 +660,7 @@ function VistaListaRecibos({
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -626,9 +678,11 @@ function VistaNuevoRecibo({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="page-toolbar">
         <h2 className="text-xl font-bold">Nuevo Recibo Individual</h2>
-        <Button variant="outline" onClick={onCancelar}>← Cancelar</Button>
+        <div className="page-toolbar-actions">
+          <Button variant="outline" onClick={onCancelar}>← Cancelar</Button>
+        </div>
       </div>
 
       <Card>

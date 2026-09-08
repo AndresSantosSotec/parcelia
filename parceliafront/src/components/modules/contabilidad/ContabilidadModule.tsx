@@ -33,8 +33,8 @@ export function ContabilidadModule() {
         <div className="space-y-6">
             <div className="flex flex-col gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-                        <Book size={32} className="text-primary" />
+                    <h1 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2">
+                        <Book size={28} className="text-primary shrink-0" />
                         Módulo Contable
                     </h1>
                     <p className="text-muted-foreground">

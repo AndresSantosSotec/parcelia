@@ -60,12 +60,18 @@ class Permission extends Model
         'ventas' => ['ver', 'tasar', 'vender', 'apartar', 'crear_plan_pago', 'modificar_precio', 'aplicar_descuento'],
         'caja' => ['abrir', 'cerrar', 'ver_movimientos', 'gestionar_cajas'],
         'reportes' => ['generar', 'exportar'],
+        'fincas' => ['ver', 'crear', 'editar', 'desactivar'],
+        'lotes' => ['ver', 'crear', 'editar', 'eliminar', 'servicios', 'imagenes'],
+        'negociaciones' => ['ver', 'crear', 'ajustar_condiciones', 'rescindir', 'contrato'],
+        'pagos_terreno' => ['ver', 'cobrar', 'anular'],
+        'tasas_inmobiliarias' => ['ver', 'crear', 'editar', 'desactivar'],
+        'reportes_inmobiliarios' => ['generar', 'exportar'],
         'usuarios' => ['ver', 'crear', 'editar', 'eliminar', 'asignar_permisos'],
         'compras' => ['ver', 'crear', 'editar', 'eliminar'],
         'remates' => ['ver', 'crear', 'cancelar'],
-        'categorias_productos' => ['ver', 'crear', 'editar', 'eliminar', 'toggle_activa'],
+        'auditoria' => ['ver', 'exportar'], // Solo superadmin de soporte
+        'categorias_productos' => ['ver', 'crear', 'editar', 'eliminar', 'toggle_activa'], // Generador de formularios (soporte si empeños off)
         'gastos' => ['ver', 'crear', 'editar', 'eliminar', 'asignar_credito'],
-        'auditoria' => ['ver', 'exportar'], // Solo para superadmin
         'boveda' => ['ver', 'crear', 'editar', 'eliminar', 'movimientos', 'aprobar', 'reportes'],
         'migracion' => ['ver', 'importar', 'descargar_plantilla'],
         'contabilidad' => ['ver', 'configurar', 'asientos', 'reportes'],
@@ -82,8 +88,8 @@ class Permission extends Model
      * Permisos por rol por defecto
      */
     public static array $permisosPorRol = [
-        'superadmin' => '*', // Todos los permisos, acceso a auditoría y cambio de sucursales
-        'administrador' => '*', // Todos los permisos excepto auditoría
+        'superadmin' => '*', // Soporte: auditoría, logs, generador de formularios y operación completa
+        'administrador' => '*', // Operación completa; la UI oculta auditoría/formularios de soporte
         'cajero' => [
             'dashboard' => ['ver'],
             'clientes' => ['ver', 'crear'],
@@ -91,6 +97,11 @@ class Permission extends Model
             'refrendos' => ['ver', 'validar', 'calcular', 'procesar'],
             'compras' => ['ver', 'crear'],
             'caja' => ['abrir', 'cerrar', 'ver_movimientos'],
+            'fincas' => ['ver'],
+            'lotes' => ['ver'],
+            'negociaciones' => ['ver'],
+            'pagos_terreno' => ['ver', 'cobrar'],
+            'reportes_inmobiliarios' => ['generar'],
             'prendas' => ['ver'],
             'gastos' => ['ver', 'asignar_credito'],
             'cobros' => ['realizar', 'ver', 'imprimir_recibo'],
@@ -111,6 +122,14 @@ class Permission extends Model
         'vendedor' => [
             'dashboard' => ['ver'],
             'clientes' => ['ver', 'crear'],
+            'fincas' => ['ver', 'crear', 'editar'],
+            'lotes' => ['ver', 'crear', 'editar', 'eliminar', 'servicios', 'imagenes'],
+            'negociaciones' => ['ver', 'crear', 'contrato'],
+            'pagos_terreno' => ['ver', 'cobrar'],
+            'gastos' => ['ver'],
+            'otros_gastos' => ['ver', 'crear'],
+            'tasas_inmobiliarias' => ['ver'],
+            'reportes_inmobiliarios' => ['generar', 'exportar'],
             'ventas' => ['ver', 'vender', 'apartar', 'crear_plan_pago', 'aplicar_descuento'],
             'compras' => ['ver'],
             'prendas' => ['ver'],

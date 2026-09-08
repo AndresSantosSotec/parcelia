@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Gasto;
 use App\Models\CreditoPrendario;
+use App\Models\Negociacion;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -253,6 +254,26 @@ class GastosService
                 'soft_delete' => false,
                 'message' => 'Gasto eliminado permanentemente',
             ];
+        });
+    }
+
+    public function sincronizarGastosNegociacion(Negociacion $negociacion, array $gastoIds): array
+    {
+        return DB::transaction(function () use ($negociacion, $gastoIds) {
+            $base = (float) ($negociacion->monto_financiado ?: $negociacion->precio_final ?: 0);
+            $syncData = [];
+            $gastos = Gasto::whereIn('id_gasto', $gastoIds)->activos()->get();
+
+            foreach ($gastos as $gasto) {
+                $syncData[$gasto->id_gasto] = [
+                    'valor_calculado' => $gasto->calcularValor($base),
+                ];
+            }
+
+            $negociacion->gastos()->sync($syncData);
+            $negociacion->load('gastos');
+
+            return $this->calcularValoresGastos($negociacion->gastos, $base);
         });
     }
 }

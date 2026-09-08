@@ -339,20 +339,20 @@ export function OtrosGastosModule() {
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-2">
             <Receipt className="h-6 w-6 text-primary" />
-            Otros Gastos
+            Otros ingresos
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Ingresos y egresos adicionales que afectan la caja diaria
+            Ingresos y egresos adicionales que afectan la caja diaria, sin lote ni contrato.
           </p>
         </div>
-        <Button onClick={() => setDlgMovimiento(true)} className="flex items-center gap-2">
+        <Button onClick={() => setDlgMovimiento(true)} className="flex items-center gap-2 w-full sm:w-auto">
           <Plus className="h-4 w-4" />
           Registrar Movimiento
         </Button>
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
-        <TabsList>
+        <TabsList className="flex flex-wrap h-auto">
           <TabsTrigger value="movimientos" className="flex items-center gap-1.5">
             <CurrencyDollar className="h-4 w-4" />Movimientos
           </TabsTrigger>

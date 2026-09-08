@@ -9,10 +9,10 @@ import {
   Plus, Pencil, Trash, Power, 
   MagnifyingGlass, FunnelSimple, CaretUp, CaretDown,
   CaretLeft, CaretRight, Tag, CheckCircle, XCircle,
-  ArrowsClockwise
+  ArrowsClockwise, ListBullets
 } from '@phosphor-icons/react'
 import { CategoriaProductoDialog } from './CategoriaProductoDialog'
-// import { VerCamposDinamicosDialog } from './VerCamposDinamicosDialog' // Funcionalidad deshabilitada
+import { VerCamposDinamicosDialog } from './VerCamposDinamicosDialog'
 import { categoriaProductoService, CategoriaProductoFilters } from '@/lib/api'
 import { toast } from 'sonner'
 import { formatDateShort } from '@/lib/helpers'
@@ -50,7 +50,7 @@ export function CategoriasProductosModule() {
   const [dialogAbierto, setDialogAbierto] = useState(false)
   const [categoriaEditar, setCategoriaEditar] = useState<CategoriaProducto | undefined>(undefined)
   const [categoriaEliminar, setCategoriaEliminar] = useState<CategoriaProducto | null>(null)
-  // const [categoriaVerCampos, setCategoriaVerCampos] = useState<CategoriaProducto | null>(null) // Funcionalidad deshabilitada
+  const [categoriaVerCampos, setCategoriaVerCampos] = useState<CategoriaProducto | null>(null)
   
   // Debounce para búsqueda
   const busquedaDebounced = useDebounce(busqueda, 300)
@@ -157,7 +157,6 @@ export function CategoriasProductosModule() {
     }
   }
 
-  /* Funcionalidad de campos dinámicos deshabilitada
   const handleGuardarCamposDinamicos = async (campos: CampoDinamico[]) => {
     if (!categoriaVerCampos) return
     try {
@@ -166,7 +165,7 @@ export function CategoriasProductosModule() {
         camposDinamicos: campos,
       }
       await categoriaProductoService.update(categoriaVerCampos.id, categoriaActualizada)
-      toast.success('Campos dinámicos actualizados exitosamente')
+      toast.success('Campos dinámicos actualizados')
       setCategoriaVerCampos(null)
       cargarCategorias()
     } catch (error: any) {
@@ -174,15 +173,14 @@ export function CategoriasProductosModule() {
       throw error
     }
   }
-  */
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Categorías de Productos</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Formularios y campos dinámicos</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Gestión completa de categorías de productos de empeños
+            Herramienta de soporte: categorías y generador de campos para depurar formularios del sistema.
           </p>
         </div>
         <Button onClick={() => { setCategoriaEditar(undefined); setDialogAbierto(true) }}>
@@ -371,6 +369,14 @@ export function CategoriasProductosModule() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            title="Campos dinámicos"
+                            onClick={() => setCategoriaVerCampos(categoria)}
+                          >
+                            <ListBullets size={16} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => { setCategoriaEditar(categoria); setDialogAbierto(true) }}
                           >
                             <Pencil size={16} />
@@ -459,7 +465,6 @@ export function CategoriasProductosModule() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Funcionalidad de campos dinámicos deshabilitada
       <VerCamposDinamicosDialog
         abierto={!!categoriaVerCampos}
         onCerrar={() => setCategoriaVerCampos(null)}
@@ -468,7 +473,6 @@ export function CategoriasProductosModule() {
         categoriaId={categoriaVerCampos?.id}
         onGuardar={handleGuardarCamposDinamicos}
       />
-      */}
     </div>
   )
 }

@@ -5,9 +5,43 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Plus, TreeStructure, Compass, MapPin, CurrencyDollar, CheckCircle, WarningCircle, Drop, Lightning, RoadHorizon, ArrowsOutLineVertical, Tag } from '@phosphor-icons/react'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Plus, TreeStructure, Compass, Camera, Trash, Pencil, Power, WarningCircle, MapPin, ShareNetwork } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { fincaService, loteService, Finca, Parcela, Lote } from '@/lib/api'
+import { MapPickerField, type GeoCoords } from '@/components/ui/MapPickerField'
+import { urlFichaTerreno, urlFotoLote } from '@/lib/media'
+
+const formFincaVacio = {
+  nombre: '',
+  municipio: 'Guatemala',
+  departamento: 'Guatemala',
+  area_total_m2: 50000,
+  ubicacion: '',
+  numero_finca: '',
+  folio: '',
+  libro: '',
+  descripcion: ''
+}
+
+const formLoteVacio = {
+  numero_lote: '',
+  area_m2: 200,
+  frente_metros: 10,
+  fondo_metros: 20,
+  precio_m2: 450,
+  precio_venta: 90000,
+  tipo_terreno: 'Residencial',
+  colindancias: '',
+  observaciones: '',
+  latitud: '' as number | '',
+  longitud: '' as number | '',
+  altitud: '' as number | '',
+  precision_metros: '' as number | '',
+  referencia_geo: '',
+  publicado: true,
+}
 
 export function FincasModule() {
   const [fincas, setFincas] = useState<Finca[]>([])
@@ -15,25 +49,24 @@ export function FincasModule() {
   const [parcelaSeleccionada, setParcelaSeleccionada] = useState<Parcela | null>(null)
   const [lotes, setLotes] = useState<Lote[]>([])
   const [cargando, setCargando] = useState(false)
+  const [guardando, setGuardando] = useState(false)
   const [filtroEstado, setFiltroEstado] = useState<string>('todos')
 
   // Modales
   const [modalFinca, setModalFinca] = useState(false)
+  const [fincaEditando, setFincaEditando] = useState<Finca | null>(null)
+  const [fincaADesactivar, setFincaADesactivar] = useState<Finca | null>(null)
   const [modalParcela, setModalParcela] = useState(false)
   const [modalLote, setModalLote] = useState(false)
+  const [modalFotos, setModalFotos] = useState(false)
+  const [loteFotos, setLoteFotos] = useState<Lote | null>(null)
+  const [subiendoFoto, setSubiendoFoto] = useState(false)
+  const [fotosNuevoLote, setFotosNuevoLote] = useState<{ file: File; preview: string }[]>([])
+  const [loteEditando, setLoteEditando] = useState<Lote | null>(null)
+  const [loteAEliminar, setLoteAEliminar] = useState<Lote | null>(null)
 
   // Formularios
-  const [formFinca, setFormFinca] = useState({
-    nombre: '',
-    municipio: 'Guatemala',
-    departamento: 'Guatemala',
-    area_total_m2: 50000,
-    ubicacion: '',
-    numero_finca: '',
-    folio: '',
-    libro: '',
-    descripcion: ''
-  })
+  const [formFinca, setFormFinca] = useState(formFincaVacio)
 
   const [formParcela, setFormParcela] = useState({
     nombre_identificador: '',
@@ -45,30 +78,33 @@ export function FincasModule() {
     descripcion: ''
   })
 
-  const [formLote, setFormLote] = useState({
-    numero_lote: '',
-    area_m2: 200,
-    frente_metros: 10,
-    fondo_metros: 20,
-    precio_m2: 450,
-    precio_venta: 90000,
-    tipo_terreno: 'Residencial',
-    colindancias: '',
-    observaciones: ''
-  })
+  const [formLote, setFormLote] = useState(formLoteVacio)
 
   const cargarFincas = async () => {
     setCargando(true)
     try {
       const res = await fincaService.getAll()
       if (res.success && res.data) {
-        setFincas(res.data)
-        if (res.data.length > 0 && !fincaSeleccionada) {
-          setFincaSeleccionada(res.data[0])
-          if (res.data[0].parcelas && res.data[0].parcelas.length > 0) {
-            setParcelaSeleccionada(res.data[0].parcelas[0])
+        const lista = res.data
+        setFincas(lista)
+        setFincaSeleccionada((prev) => {
+          if (lista.length === 0) return null
+          if (!prev) {
+            const first = lista[0]
+            if (first.parcelas && first.parcelas.length > 0) {
+              setParcelaSeleccionada(first.parcelas[0])
+            }
+            return first
           }
-        }
+          const fresh = lista.find((f) => f.id === prev.id)
+          if (!fresh) return prev
+          setParcelaSeleccionada((parcelaPrev) => {
+            if (!fresh.parcelas?.length) return null
+            if (!parcelaPrev) return fresh.parcelas[0]
+            return fresh.parcelas.find((p) => p.id === parcelaPrev.id) ?? fresh.parcelas[0]
+          })
+          return fresh
+        })
       }
     } catch (e) {
       console.error(e)
@@ -102,24 +138,89 @@ export function FincasModule() {
     }
   }, [fincaSeleccionada, parcelaSeleccionada, filtroEstado])
 
-  const handleCrearFinca = async (e: React.FormEvent) => {
+  const abrirNuevaFinca = () => {
+    setFincaEditando(null)
+    setFormFinca(formFincaVacio)
+    setModalFinca(true)
+  }
+
+  const abrirEditarFinca = (finca: Finca, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setFincaEditando(finca)
+    setFormFinca({
+      nombre: finca.nombre || '',
+      municipio: finca.municipio || 'Guatemala',
+      departamento: finca.departamento || 'Guatemala',
+      area_total_m2: Number(finca.area_total_m2 || 0),
+      ubicacion: finca.ubicacion || '',
+      numero_finca: finca.numero_finca || '',
+      folio: finca.folio || '',
+      libro: finca.libro || '',
+      descripcion: finca.descripcion || ''
+    })
+    setModalFinca(true)
+  }
+
+  const handleGuardarFinca = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (guardando) return
+    setGuardando(true)
     try {
-      const res = await fincaService.create(formFinca)
+      const res = fincaEditando
+        ? await fincaService.update(fincaEditando.id, formFinca)
+        : await fincaService.create(formFinca)
       if (res.success) {
-        toast.success('Finca registrada con éxito')
+        toast.success(fincaEditando ? 'Finca actualizada' : 'Finca registrada con éxito')
         setModalFinca(false)
-        setFormFinca({ nombre: '', municipio: 'Guatemala', departamento: 'Guatemala', area_total_m2: 50000, ubicacion: '', numero_finca: '', folio: '', libro: '', descripcion: '' })
-        cargarFincas()
+        setFincaEditando(null)
+        setFormFinca(formFincaVacio)
+        await cargarFincas()
       }
-    } catch (e: any) {
-      toast.error('Error al registrar la finca')
+    } catch (err: any) {
+      toast.error(err?.message || (fincaEditando ? 'Error al actualizar la finca' : 'Error al registrar la finca'))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const handleDesactivarFinca = async () => {
+    if (!fincaADesactivar || guardando) return
+    setGuardando(true)
+    try {
+      const res = await fincaService.desactivar(fincaADesactivar.id)
+      if (res.success) {
+        toast.success('Finca desactivada')
+        setFincaADesactivar(null)
+        await cargarFincas()
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'No se pudo desactivar la finca')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const handleReactivarFinca = async (finca: Finca, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (guardando) return
+    setGuardando(true)
+    try {
+      const res = await fincaService.update(finca.id, { activo: true })
+      if (res.success) {
+        toast.success('Finca reactivada')
+        await cargarFincas()
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'No se pudo reactivar la finca')
+    } finally {
+      setGuardando(false)
     }
   }
 
   const handleCrearParcela = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!fincaSeleccionada) return
+    if (!fincaSeleccionada || guardando) return
+    setGuardando(true)
     try {
       const res = await fincaService.createParcela(fincaSeleccionada.id, formParcela)
       if (res.success) {
@@ -129,27 +230,230 @@ export function FincasModule() {
         cargarFincas()
       }
     } catch (e: any) {
-      toast.error('Error al registrar la parcela')
+      toast.error(e?.message || 'Error al registrar la parcela')
+    } finally {
+      setGuardando(false)
     }
   }
 
-  const handleCrearLote = async (e: React.FormEvent) => {
+  const limpiarFotosNuevoLote = () => {
+    setFotosNuevoLote((prev) => {
+      prev.forEach((f) => URL.revokeObjectURL(f.preview))
+      return []
+    })
+  }
+
+  const abrirModalLote = () => {
+    setLoteEditando(null)
+    setFormLote(formLoteVacio)
+    limpiarFotosNuevoLote()
+    setModalLote(true)
+  }
+
+  const abrirEditarLote = (lote: Lote) => {
+    setLoteEditando(lote)
+    setFormLote({
+      ...formLoteVacio,
+      numero_lote: lote.numero_lote,
+      area_m2: Number(lote.area_m2) || 0,
+      frente_metros: Number(lote.frente_metros) || 0,
+      fondo_metros: Number(lote.fondo_metros) || 0,
+      precio_m2: Number(lote.precio_m2) || 0,
+      precio_venta: Number(lote.precio_venta) || 0,
+      tipo_terreno: lote.tipo_terreno || 'Residencial',
+      colindancias: lote.colindancias || '',
+      observaciones: lote.observaciones || '',
+      latitud: lote.latitud != null && lote.latitud !== '' ? Number(lote.latitud) : '',
+      longitud: lote.longitud != null && lote.longitud !== '' ? Number(lote.longitud) : '',
+      altitud: lote.altitud != null && lote.altitud !== '' ? Number(lote.altitud) : '',
+      precision_metros: lote.precision_metros != null && lote.precision_metros !== '' ? Number(lote.precision_metros) : '',
+      referencia_geo: lote.referencia_geo || '',
+      publicado: lote.publicado !== false,
+    })
+    limpiarFotosNuevoLote()
+    setModalLote(true)
+  }
+
+  const agregarFotosNuevoLote = (files: FileList | null) => {
+    if (!files?.length) return
+    const nuevas: { file: File; preview: string }[] = []
+    Array.from(files).forEach((file) => {
+      if (!file.type.startsWith('image/')) {
+        toast.error(`${file.name} no es una imagen`)
+        return
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`${file.name} supera 5 MB`)
+        return
+      }
+      nuevas.push({ file, preview: URL.createObjectURL(file) })
+    })
+    if (nuevas.length) setFotosNuevoLote((prev) => [...prev, ...nuevas])
+  }
+
+  const quitarFotoNueva = (idx: number) => {
+    setFotosNuevoLote((prev) => {
+      const copy = [...prev]
+      URL.revokeObjectURL(copy[idx].preview)
+      copy.splice(idx, 1)
+      return copy
+    })
+  }
+
+  const payloadLote = (): Partial<Lote> => {
+    const payload: Partial<Lote> = {
+      numero_lote: formLote.numero_lote,
+      area_m2: formLote.area_m2,
+      frente_metros: formLote.frente_metros,
+      fondo_metros: formLote.fondo_metros,
+      precio_m2: formLote.precio_m2,
+      precio_venta: formLote.precio_venta,
+      tipo_terreno: formLote.tipo_terreno,
+      colindancias: formLote.colindancias,
+      observaciones: formLote.observaciones,
+      publicado: formLote.publicado,
+    }
+    if (formLote.latitud !== '' && formLote.longitud !== '') {
+      payload.latitud = formLote.latitud
+      payload.longitud = formLote.longitud
+    }
+    if (formLote.altitud !== '') payload.altitud = formLote.altitud
+    if (formLote.precision_metros !== '') payload.precision_metros = formLote.precision_metros
+    payload.referencia_geo = formLote.referencia_geo.trim() || null
+    return payload
+  }
+
+  const subirFotosPendientes = async (loteId: number, yaTieneFotos: number) => {
+    let fotosOk = 0
+    for (let i = 0; i < fotosNuevoLote.length; i++) {
+      try {
+        await loteService.subirImagen(loteId, fotosNuevoLote[i].file, { es_principal: yaTieneFotos === 0 && i === 0 })
+        fotosOk += 1
+      } catch {
+        toast.error(`No se pudo subir ${fotosNuevoLote[i].file.name}`)
+      }
+    }
+    return fotosOk
+  }
+
+  const handleGuardarLote = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!parcelaSeleccionada) {
+    if (!loteEditando && !parcelaSeleccionada) {
       toast.error('Selecciona una parcela primero')
       return
     }
+    if (guardando) return
+    setGuardando(true)
     try {
-      const res = await fincaService.createLote(parcelaSeleccionada.id, formLote)
-      if (res.success) {
-        toast.success('Lote registrado con éxito en el inventario')
+      const payload = payloadLote()
+      if (loteEditando) {
+        const res = await loteService.update(loteEditando.id, payload)
+        if (res.success && res.data) {
+          const fotosOk = await subirFotosPendientes(res.data.id, loteEditando.imagenes?.length || 0)
+          toast.success(fotosOk ? `Lote actualizado y ${fotosOk} foto(s) nuevas` : 'Lote actualizado')
+          setModalLote(false)
+          setLoteEditando(null)
+          setFormLote(formLoteVacio)
+          limpiarFotosNuevoLote()
+          cargarLotes()
+          cargarFincas()
+        }
+        return
+      }
+
+      const res = await fincaService.createLote(parcelaSeleccionada!.id, payload)
+      if (res.success && res.data) {
+        const fotosOk = await subirFotosPendientes(res.data.id, 0)
+        toast.success(
+          fotosNuevoLote.length
+            ? `Lote registrado con ${fotosOk} foto${fotosOk === 1 ? '' : 's'}`
+            : 'Lote registrado con éxito en el inventario'
+        )
         setModalLote(false)
-        setFormLote({ numero_lote: '', area_m2: 200, frente_metros: 10, fondo_metros: 20, precio_m2: 450, precio_venta: 90000, tipo_terreno: 'Residencial', colindancias: '', observaciones: '' })
+        setFormLote(formLoteVacio)
+        limpiarFotosNuevoLote()
         cargarLotes()
         cargarFincas()
       }
     } catch (e: any) {
-      toast.error('Error al registrar el lote')
+      toast.error(e?.message || (loteEditando ? 'Error al actualizar el lote' : 'Error al registrar el lote'))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const handleEliminarLote = async () => {
+    if (!loteAEliminar || guardando) return
+    setGuardando(true)
+    try {
+      await loteService.eliminar(loteAEliminar.id)
+      toast.success(`Lote ${loteAEliminar.numero_lote} eliminado`)
+      setLoteAEliminar(null)
+      cargarLotes()
+      cargarFincas()
+    } catch (err: any) {
+      toast.error(err?.message || 'No se pudo eliminar el lote')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const compartirLote = async (lote: Lote) => {
+    if (!lote.token_publico) {
+      toast.error('Este lote aún no tiene ficha pública. Edítalo y guarda de nuevo.')
+      return
+    }
+    const url = urlFichaTerreno(lote.token_publico)
+    window.open(url, '_blank', 'noopener,noreferrer')
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success('Ficha abierta y enlace copiado')
+    } catch {
+      toast.success('Ficha pública abierta')
+    }
+  }
+
+  const urlFoto = (img: { id?: number; url: string; url_publica?: string }) => urlFotoLote(img)
+
+  const abrirFotos = async (lote: Lote) => {
+    try {
+      const res = await loteService.getById(lote.id)
+      setLoteFotos(res.success && res.data ? res.data : lote)
+      setModalFotos(true)
+    } catch {
+      setLoteFotos(lote)
+      setModalFotos(true)
+    }
+  }
+
+  const handleSubirFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !loteFotos) return
+    setSubiendoFoto(true)
+    try {
+      await loteService.subirImagen(loteFotos.id, file, { es_principal: (loteFotos.imagenes?.length || 0) === 0 })
+      toast.success('Foto guardada en disco')
+      const res = await loteService.getById(loteFotos.id)
+      if (res.success && res.data) setLoteFotos(res.data)
+      cargarLotes()
+    } catch (err: any) {
+      toast.error(err?.message || 'No se pudo subir la foto')
+    } finally {
+      setSubiendoFoto(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleEliminarFoto = async (imagenId: number) => {
+    if (!loteFotos) return
+    try {
+      await loteService.eliminarImagen(loteFotos.id, imagenId)
+      toast.success('Foto desactivada')
+      const res = await loteService.getById(loteFotos.id)
+      if (res.success && res.data) setLoteFotos(res.data)
+      cargarLotes()
+    } catch (err: any) {
+      toast.error(err?.message || 'No se pudo quitar la foto')
     }
   }
 
@@ -173,18 +477,18 @@ export function FincasModule() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <TreeStructure size={28} className="text-primary" weight="duotone" />
-            <h1 className="text-2xl font-bold tracking-tight">Fincas, Parcelas & Lotes</h1>
+      <div className="page-toolbar">
+        <div className="min-w-0">
+          <div className="flex items-start gap-2">
+            <TreeStructure size={24} className="text-primary shrink-0 mt-0.5" weight="duotone" />
+            <h1 className="font-bold tracking-tight">Fincas, Parcelas & Lotes</h1>
           </div>
           <p className="text-muted-foreground text-sm">
             Estructura jerárquica de proyectos inmobiliarios, administración territorial e inventario de terrenos.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={() => setModalFinca(true)} className="gap-2 shadow-sm">
+        <div className="page-toolbar-actions">
+          <Button onClick={abrirNuevaFinca} className="gap-2 shadow-sm">
             <Plus size={18} weight="bold" /> Nueva Finca
           </Button>
           {fincaSeleccionada && (
@@ -193,7 +497,7 @@ export function FincasModule() {
             </Button>
           )}
           {parcelaSeleccionada && (
-            <Button variant="secondary" onClick={() => setModalLote(true)} className="gap-2">
+            <Button variant="secondary" onClick={abrirModalLote} className="gap-2">
               <Plus size={18} weight="bold" /> Nuevo Lote
             </Button>
           )}
@@ -201,12 +505,17 @@ export function FincasModule() {
       </div>
 
       {/* Selector de Fincas */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {fincas.map((finca) => {
+      <div className="md:hidden space-y-2">
+        {fincas.length === 0 ? (
+          <p className="text-center text-muted-foreground py-6 text-sm">No hay fincas registradas.</p>
+        ) : fincas.map((finca) => {
           const isSelected = fincaSeleccionada?.id === finca.id
+          const inactiva = finca.activo === false
           return (
-            <Card
+            <div
               key={finca.id}
+              role="button"
+              tabIndex={0}
               onClick={() => {
                 setFincaSeleccionada(finca)
                 if (finca.parcelas && finca.parcelas.length > 0) {
@@ -215,31 +524,140 @@ export function FincasModule() {
                   setParcelaSeleccionada(null)
                 }
               }}
-              className={`cursor-pointer transition-all border-2 ${
-                isSelected ? 'border-primary bg-primary/5 shadow-md' : 'border-border/60 hover:border-primary/40'
-              }`}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setFincaSeleccionada(finca)
+                  if (finca.parcelas && finca.parcelas.length > 0) {
+                    setParcelaSeleccionada(finca.parcelas[0])
+                  } else {
+                    setParcelaSeleccionada(null)
+                  }
+                }
+              }}
+              className={`w-full text-left rounded-lg border p-3 space-y-2 cursor-pointer ${isSelected ? 'bg-primary/10 border-primary/40' : 'bg-card'} ${inactiva ? 'opacity-60' : ''}`}
             >
-              <CardContent className="p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                    {finca.codigo}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {finca.parcelas_count ?? finca.parcelas?.length ?? 0} Sectores
-                  </span>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-mono text-[0.6875rem] text-primary">{finca.codigo}</p>
+                  <p className="font-medium truncate">{finca.nombre}</p>
+                  <p className="text-xs text-muted-foreground">{finca.municipio}, {finca.departamento}</p>
                 </div>
-                <h3 className="font-bold text-base text-foreground line-clamp-1">{finca.nombre}</h3>
-                <p className="text-xs text-muted-foreground flex items-center gap-1 line-clamp-1">
-                  <MapPin size={14} className="shrink-0 text-primary" /> {finca.municipio}, {finca.departamento}
-                </p>
-                <div className="pt-2 border-t flex items-center justify-between text-xs font-medium">
-                  <span className="text-muted-foreground">Área: {Number(finca.area_total_m2 || 0).toLocaleString()} m²</span>
-                  <span className="text-emerald-600 font-semibold">{finca.lotes_disponibles_count ?? 0} Disp.</span>
-                </div>
-              </CardContent>
-            </Card>
+                {inactiva && <Badge variant="outline" className="text-[10px] shrink-0">Inactiva</Badge>}
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{Number(finca.area_total_m2 || 0).toLocaleString()} m²</span>
+                <span>{finca.parcelas_count ?? finca.parcelas?.length ?? 0} parcelas</span>
+                <span className="text-emerald-600 font-semibold">{finca.lotes_disponibles_count ?? 0} lotes</span>
+              </div>
+              <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Editar" onClick={(e) => abrirEditarFinca(finca, e)}>
+                  <Pencil size={14} />
+                </Button>
+                {inactiva ? (
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Reactivar" onClick={(e) => handleReactivarFinca(finca, e)}>
+                    <Power size={14} className="text-emerald-600" />
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0"
+                    title="Desactivar"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setFincaADesactivar(finca)
+                    }}
+                  >
+                    <Power size={14} className="text-destructive" />
+                  </Button>
+                )}
+              </div>
+            </div>
           )
         })}
+      </div>
+      <div className="hidden md:block border rounded-lg overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Código</TableHead>
+              <TableHead>Finca</TableHead>
+              <TableHead>Ubicación</TableHead>
+              <TableHead className="text-right">Área m²</TableHead>
+              <TableHead className="text-right">Parcelas</TableHead>
+              <TableHead className="text-right">Lotes disp.</TableHead>
+              <TableHead className="text-right">Acciones</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {fincas.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  No hay fincas registradas.
+                </TableCell>
+              </TableRow>
+            ) : fincas.map((finca) => {
+              const isSelected = fincaSeleccionada?.id === finca.id
+              const inactiva = finca.activo === false
+              return (
+                <TableRow
+                  key={finca.id}
+                  onClick={() => {
+                    setFincaSeleccionada(finca)
+                    if (finca.parcelas && finca.parcelas.length > 0) {
+                      setParcelaSeleccionada(finca.parcelas[0])
+                    } else {
+                      setParcelaSeleccionada(null)
+                    }
+                  }}
+                  className={`cursor-pointer ${isSelected ? 'bg-primary/10' : ''} ${inactiva ? 'opacity-60' : ''}`}
+                >
+                  <TableCell className="font-mono text-xs">{finca.codigo}</TableCell>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <span>{finca.nombre}</span>
+                      {inactiva && <Badge variant="outline" className="text-[10px]">Inactiva</Badge>}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-xs">
+                    {finca.municipio}, {finca.departamento}
+                  </TableCell>
+                  <TableCell className="text-right">{Number(finca.area_total_m2 || 0).toLocaleString()}</TableCell>
+                  <TableCell className="text-right">{finca.parcelas_count ?? finca.parcelas?.length ?? 0}</TableCell>
+                  <TableCell className="text-right text-emerald-600 font-semibold">
+                    {finca.lotes_disponibles_count ?? 0}
+                  </TableCell>
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Editar" onClick={(e) => abrirEditarFinca(finca, e)}>
+                        <Pencil size={14} />
+                      </Button>
+                      {inactiva ? (
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Reactivar" onClick={(e) => handleReactivarFinca(finca, e)}>
+                          <Power size={14} className="text-emerald-600" />
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0"
+                          title="Desactivar"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setFincaADesactivar(finca)
+                          }}
+                        >
+                          <Power size={14} className="text-destructive" />
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+          </TableBody>
+        </Table>
       </div>
 
       {/* Contenedor Principal: Parcelas y Grid de Lotes */}
@@ -302,7 +720,7 @@ export function FincasModule() {
             </div>
           </CardHeader>
 
-          <CardContent className="p-6">
+          <CardContent className="p-3 sm:p-6">
             {lotes.length === 0 ? (
               <div className="text-center py-12 space-y-3">
                 <WarningCircle size={48} className="mx-auto text-muted-foreground/50" />
@@ -311,83 +729,164 @@ export function FincasModule() {
                   Agrega sectores o parcelas y registra lotes individuales para comenzar a comercializar.
                 </p>
                 {parcelaSeleccionada && (
-                  <Button onClick={() => setModalLote(true)} size="sm" className="gap-2">
+                  <Button onClick={abrirModalLote} size="sm" className="gap-2">
                     <Plus size={16} /> Crear Primer Lote
                   </Button>
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <>
+              <div className="md:hidden space-y-3">
                 {lotes.map((lote) => (
-                  <div
-                    key={lote.id}
-                    className="p-4 rounded-xl border border-border/80 bg-card hover:border-primary/50 transition-all hover:shadow-md space-y-3"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-sm text-foreground bg-muted px-2 py-0.5 rounded">
-                        {lote.numero_lote}
-                      </span>
-                      {getBadgeEstado(lote.estado)}
-                    </div>
-
-                    <div>
-                      <h4 className="font-bold text-base text-foreground">
+                  <div key={lote.id} className="border rounded-xl p-3 space-y-2 bg-card">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {lote.imagenes?.[0] ? (
+                          <img src={urlFoto(lote.imagenes[0])} alt="" className="h-12 w-12 rounded object-cover border shrink-0" />
+                        ) : null}
+                        <div className="min-w-0">
+                          <p className="font-mono font-semibold">{lote.numero_lote}</p>
+                          <div className="mt-1">{getBadgeEstado(lote.estado)}</div>
+                        </div>
+                      </div>
+                      <p className="font-medium text-sm whitespace-nowrap">
                         Q{Number(lote.precio_venta).toLocaleString('es-GT', { minimumFractionDigits: 2 })}
-                      </h4>
-                      <p className="text-xs text-muted-foreground">
-                        Q{Number(lote.precio_m2 || 0).toLocaleString()} / m²
                       </p>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t">
-                      <div className="bg-muted/40 p-2 rounded-lg">
-                        <span className="text-muted-foreground block text-[0.6875rem]">Área</span>
-                        <span className="font-semibold text-foreground">{lote.area_m2} m²</span>
-                      </div>
-                      <div className="bg-muted/40 p-2 rounded-lg">
-                        <span className="text-muted-foreground block text-[0.6875rem]">Dimensiones</span>
-                        <span className="font-semibold text-foreground">
-                          {lote.frente_metros || '—'}m x {lote.fondo_metros || '—'}m
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Servicios del Lote */}
-                    <div className="flex items-center gap-1.5 pt-1">
-                      <span title="Agua Potable" className="p-1 rounded bg-blue-500/10 text-blue-600">
-                        <Drop size={14} weight="fill" />
-                      </span>
-                      <span title="Energía Eléctrica" className="p-1 rounded bg-amber-500/10 text-amber-600">
-                        <Lightning size={14} weight="fill" />
-                      </span>
-                      <span title="Acceso Vial" className="p-1 rounded bg-emerald-500/10 text-emerald-600">
-                        <RoadHorizon size={14} weight="fill" />
-                      </span>
-                      <span className="text-[0.6875rem] text-muted-foreground ml-auto">
-                        {lote.tipo_terreno}
-                      </span>
-                    </div>
-
-                    {lote.observaciones && (
-                      <p className="text-[0.6875rem] text-muted-foreground line-clamp-1 italic">
-                        {lote.observaciones}
-                      </p>
+                    <p className="text-xs text-muted-foreground">
+                      {lote.area_m2} m² · {lote.frente_metros || '—'} × {lote.fondo_metros || '—'} m
+                    </p>
+                    {lote.latitud != null && lote.longitud != null ? (
+                      <a
+                        href={`https://www.google.com/maps?q=${lote.latitud},${lote.longitud}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-primary"
+                      >
+                        <MapPin size={14} />
+                        {Number(lote.latitud).toFixed(5)}, {Number(lote.longitud).toFixed(5)}
+                      </a>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Sin GPS</p>
                     )}
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => abrirFotos(lote)}>
+                        <Camera size={14} /> {lote.imagenes?.length ?? 0}
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => abrirEditarLote(lote)}>
+                        <Pencil size={14} /> Editar
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => compartirLote(lote)}>
+                        <ShareNetwork size={14} /> Ficha
+                      </Button>
+                      {['disponible', 'cancelado'].includes(lote.estado) && (
+                        <Button size="sm" variant="outline" className="h-8 gap-1 text-xs text-destructive" onClick={() => setLoteAEliminar(lote)}>
+                          <Trash size={14} /> Borrar
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
+              <div className="hidden md:block overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Lote</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead className="text-right">Área m²</TableHead>
+                    <TableHead>Medidas</TableHead>
+                    <TableHead>Ubicación</TableHead>
+                    <TableHead className="text-right">Precio</TableHead>
+                    <TableHead>Observaciones</TableHead>
+                    <TableHead className="text-right">Fotos</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {lotes.map((lote) => (
+                    <TableRow key={lote.id}>
+                      <TableCell className="font-mono font-semibold">
+                        <div className="flex items-center gap-2">
+                          {lote.imagenes?.[0] ? (
+                            <img src={urlFoto(lote.imagenes[0])} alt="" className="h-10 w-10 rounded object-cover border" />
+                          ) : null}
+                          <span>{lote.numero_lote}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>{getBadgeEstado(lote.estado)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{lote.tipo_terreno}</TableCell>
+                      <TableCell className="text-right">{lote.area_m2}</TableCell>
+                      <TableCell className="text-xs">
+                        {lote.frente_metros || '—'} m × {lote.fondo_metros || '—'} m
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {lote.latitud != null && lote.longitud != null ? (
+                          <a
+                            href={`https://www.google.com/maps?q=${lote.latitud},${lote.longitud}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-primary hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MapPin size={14} />
+                            {Number(lote.latitud).toFixed(5)}, {Number(lote.longitud).toFixed(5)}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">Sin GPS</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        Q{Number(lote.precio_venta).toLocaleString('es-GT', { minimumFractionDigits: 2 })}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[220px] truncate">
+                        {lote.observaciones || '—'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button size="sm" variant="ghost" className="h-8 gap-1 text-xs" onClick={() => abrirFotos(lote)}>
+                          <Camera size={14} /> {lote.imagenes?.length ?? 0}
+                        </Button>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Editar" onClick={() => abrirEditarLote(lote)}>
+                            <Pencil size={14} />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Compartir ficha" onClick={() => compartirLote(lote)}>
+                            <ShareNetwork size={14} />
+                          </Button>
+                          {['disponible', 'cancelado'].includes(lote.estado) && (
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" title="Eliminar" onClick={() => setLoteAEliminar(lote)}>
+                              <Trash size={14} />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              </div>
+              </>
             )}
           </CardContent>
         </Card>
       )}
 
-      {/* Modal Nueva Finca */}
-      <Dialog open={modalFinca} onOpenChange={setModalFinca}>
+      {/* Modal Nueva / Editar Finca */}
+      <Dialog open={modalFinca} onOpenChange={(open) => {
+        setModalFinca(open)
+        if (!open) {
+          setFincaEditando(null)
+          setFormFinca(formFincaVacio)
+        }
+      }}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Registrar Nueva Finca Matriz</DialogTitle>
+            <DialogTitle>{fincaEditando ? 'Editar Finca' : 'Registrar Nueva Finca Matriz'}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleCrearFinca} className="space-y-4 py-2">
+          <form onSubmit={handleGuardarFinca} className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Nombre de la Finca / Proyecto *</Label>
               <Input
@@ -441,11 +940,32 @@ export function FincasModule() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setModalFinca(false)}>Cancelar</Button>
-              <Button type="submit">Guardar Finca</Button>
+              <Button type="submit" disabled={guardando}>
+                {guardando ? 'Guardando…' : (fincaEditando ? 'Guardar cambios' : 'Guardar Finca')}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!fincaADesactivar} onOpenChange={(open) => { if (!open) setFincaADesactivar(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desactivar finca</AlertDialogTitle>
+            <AlertDialogDescription>
+              {fincaADesactivar
+                ? `La finca «${fincaADesactivar.nombre}» dejará de estar activa. No se puede desactivar si tiene lotes reservados, vendidos o en negociación.`
+                : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDesactivarFinca} disabled={guardando}>
+              {guardando ? 'Desactivando…' : 'Desactivar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Modal Nueva Parcela */}
       <Dialog open={modalParcela} onOpenChange={setModalParcela}>
@@ -487,20 +1007,31 @@ export function FincasModule() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setModalParcela(false)}>Cancelar</Button>
-              <Button type="submit">Guardar Parcela</Button>
+              <Button type="submit" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar Parcela'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
       {/* Modal Nuevo Lote */}
-      <Dialog open={modalLote} onOpenChange={setModalLote}>
-        <DialogContent className="sm:max-w-[520px]">
+      <Dialog open={modalLote} onOpenChange={(open) => {
+        setModalLote(open)
+        if (!open) {
+          setLoteEditando(null)
+          setFormLote(formLoteVacio)
+          limpiarFotosNuevoLote()
+        }
+      }}>
+        <DialogContent className="sm:max-w-[720px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Registrar Lote en {parcelaSeleccionada?.nombre_identificador}</DialogTitle>
+            <DialogTitle>
+              {loteEditando
+                ? `Editar lote ${loteEditando.numero_lote}`
+                : `Registrar Lote en ${parcelaSeleccionada?.nombre_identificador}`}
+            </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleCrearLote} className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={handleGuardarLote} className="space-y-4 py-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Número / Identificador de Lote *</Label>
                 <Input
@@ -525,6 +1056,7 @@ export function FincasModule() {
                     })
                   }}
                 />
+                <p className="text-xs text-muted-foreground">Aprox. frente × fondo. Puede ajustarla.</p>
               </div>
             </div>
 
@@ -534,7 +1066,17 @@ export function FincasModule() {
                 <Input
                   type="number"
                   value={formLote.frente_metros}
-                  onChange={(e) => setFormLote({ ...formLote, frente_metros: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const frente = parseFloat(e.target.value) || 0
+                    const fondo = formLote.fondo_metros
+                    const aprox = frente > 0 && fondo > 0 ? Math.round(frente * fondo * 100) / 100 : formLote.area_m2
+                    setFormLote({
+                      ...formLote,
+                      frente_metros: frente,
+                      area_m2: aprox,
+                      precio_venta: aprox * formLote.precio_m2
+                    })
+                  }}
                 />
               </div>
               <div className="space-y-2">
@@ -542,7 +1084,17 @@ export function FincasModule() {
                 <Input
                   type="number"
                   value={formLote.fondo_metros}
-                  onChange={(e) => setFormLote({ ...formLote, fondo_metros: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const fondo = parseFloat(e.target.value) || 0
+                    const frente = formLote.frente_metros
+                    const aprox = frente > 0 && fondo > 0 ? Math.round(frente * fondo * 100) / 100 : formLote.area_m2
+                    setFormLote({
+                      ...formLote,
+                      fondo_metros: fondo,
+                      area_m2: aprox,
+                      precio_venta: aprox * formLote.precio_m2
+                    })
+                  }}
                 />
               </div>
             </div>
@@ -583,11 +1135,197 @@ export function FincasModule() {
               />
             </div>
 
+            <div className="space-y-2 border rounded-lg p-3">
+              <Label className="flex items-center gap-2">
+                <Camera size={16} className="text-primary" />
+                Fotos del lote
+              </Label>
+              <p className="text-xs text-muted-foreground">JPEG, PNG o WebP hasta 5 MB. Se guardan al registrar el lote.</p>
+              {fotosNuevoLote.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {fotosNuevoLote.map((foto, idx) => (
+                    <div key={foto.preview} className="relative border rounded-lg overflow-hidden bg-muted">
+                      <img src={foto.preview} alt={foto.file.name} className="h-24 w-full object-cover" />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="absolute top-1 right-1 h-7 w-7 p-0 bg-background/80"
+                        onClick={() => quitarFotoNueva(idx)}
+                      >
+                        <Trash size={14} />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Label className="cursor-pointer inline-flex">
+                <span className="inline-flex items-center gap-2 text-sm border rounded-md px-3 py-2">
+                  <Camera size={16} /> {fotosNuevoLote.length ? 'Agregar más fotos' : 'Cargar fotos'}
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    agregarFotosNuevoLote(e.target.files)
+                    e.target.value = ''
+                  }}
+                />
+              </Label>
+            </div>
+
+            {modalLote && (
+              <MapPickerField
+                label="Geolocalización del lote"
+                value={
+                  formLote.latitud !== '' && formLote.longitud !== ''
+                    ? { lat: Number(formLote.latitud), lng: Number(formLote.longitud) }
+                    : null
+                }
+                onChange={(coords: GeoCoords) => {
+                  setFormLote((prev) => ({
+                    ...prev,
+                    latitud: coords.lat,
+                    longitud: coords.lng,
+                    altitud: coords.altitud != null ? coords.altitud : prev.altitud,
+                    precision_metros: coords.precision_metros != null ? coords.precision_metros : prev.precision_metros,
+                  }))
+                }}
+                mapHeight={260}
+              />
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Latitud</Label>
+                <Input
+                  type="number"
+                  step="0.000001"
+                  placeholder="14.634900"
+                  value={formLote.latitud}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setFormLote({ ...formLote, latitud: v === '' ? '' : parseFloat(v) })
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Longitud</Label>
+                <Input
+                  type="number"
+                  step="0.000001"
+                  placeholder="-90.506900"
+                  value={formLote.longitud}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setFormLote({ ...formLote, longitud: v === '' ? '' : parseFloat(v) })
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Referencia en campo</Label>
+              <Input
+                placeholder="Ej. Entrada principal, pinte rojo, cerca del tanque"
+                value={formLote.referencia_geo}
+                onChange={(e) => setFormLote({ ...formLote, referencia_geo: e.target.value })}
+              />
+            </div>
+
+            {(formLote.altitud !== '' || formLote.precision_metros !== '') && (
+              <p className="text-xs text-muted-foreground">
+                {formLote.altitud !== '' ? `Altitud: ${formLote.altitud} m` : ''}
+                {formLote.altitud !== '' && formLote.precision_metros !== '' ? ' · ' : ''}
+                {formLote.precision_metros !== '' ? `Precisión GPS: ±${formLote.precision_metros} m` : ''}
+              </p>
+            )}
+
+            <div className="flex items-center gap-2">
+              <input
+                id="publicado-lote"
+                type="checkbox"
+                checked={formLote.publicado}
+                onChange={(e) => setFormLote({ ...formLote, publicado: e.target.checked })}
+                className="h-4 w-4"
+              />
+              <Label htmlFor="publicado-lote">Publicar ficha web para compartir fotos y geolocalización</Label>
+            </div>
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setModalLote(false)}>Cancelar</Button>
-              <Button type="submit">Registrar Lote</Button>
+              <Button type="submit" disabled={guardando}>
+                {guardando ? 'Guardando…' : (loteEditando ? 'Guardar cambios' : 'Registrar Lote')}
+              </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!loteAEliminar} onOpenChange={(open) => { if (!open) setLoteAEliminar(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar lote {loteAEliminar?.numero_lote}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se quitará del inventario. No se puede borrar si ya tiene una negociación activa o está vendido.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleEliminarLote} disabled={guardando}>
+              {guardando ? 'Eliminando…' : 'Eliminar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={modalFotos} onOpenChange={setModalFotos}>
+        <DialogContent className="sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle>Fotos del lote {loteFotos?.codigo_unico || loteFotos?.numero_lote}</DialogTitle>
+          </DialogHeader>
+          {loteFotos?.latitud != null && loteFotos?.longitud != null && (
+            <p className="text-xs">
+              <a
+                href={`https://www.google.com/maps?q=${loteFotos.latitud},${loteFotos.longitud}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-primary hover:underline"
+              >
+                <MapPin size={14} />
+                {Number(loteFotos.latitud).toFixed(6)}, {Number(loteFotos.longitud).toFixed(6)}
+              </a>
+              {loteFotos.referencia_geo ? ` · ${loteFotos.referencia_geo}` : ''}
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">Se guardan en disco, no en la base de datos. JPEG, PNG o WebP hasta 5 MB.</p>
+          <div className="grid grid-cols-2 gap-3 max-h-[360px] overflow-y-auto py-2">
+            {(loteFotos?.imagenes || []).map((img) => (
+              <div key={img.id} className="relative border rounded-lg overflow-hidden bg-muted">
+                <img src={urlFoto(img)} alt={img.descripcion || 'Lote'} className="h-36 w-full object-cover" />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="absolute top-1 right-1 h-7 w-7 p-0 bg-background/80"
+                  onClick={() => handleEliminarFoto(img.id)}
+                >
+                  <Trash size={14} />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="sm:justify-between">
+            <Label className="cursor-pointer">
+              <span className="inline-flex items-center gap-2 text-sm border rounded-md px-3 py-2">
+                <Camera size={16} /> {subiendoFoto ? 'Subiendo…' : 'Subir foto'}
+              </span>
+              <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={subiendoFoto} onChange={handleSubirFoto} />
+            </Label>
+            <Button type="button" variant="outline" onClick={() => setModalFotos(false)}>Cerrar</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

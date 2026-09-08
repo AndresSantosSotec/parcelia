@@ -17,6 +17,9 @@ class AccountStatementService
         $negociacion = Negociacion::with(['cliente', 'lote.parcela.finca', 'user', 'sucursal'])
             ->findOrFail($negociacionId);
 
+        app(MoraTerrenoService::class)->recargarNegociacion($negociacion);
+        $negociacion->refresh();
+
         $planPagos = PlanPagoTerreno::where('negociacion_id', $negociacion->id)
             ->orderBy('numero_cuota', 'asc')
             ->get();
@@ -36,27 +39,27 @@ class AccountStatementService
             
             // Datos del Comprador
             'cliente' => [
-                'id' => $negociacion->cliente->id,
-                'codigo' => $negociacion->cliente->codigo_cliente,
-                'nombre_completo' => $negociacion->cliente->nombres . ' ' . $negociacion->cliente->apellidos,
-                'dpi' => $negociacion->cliente->dpi,
-                'nit' => $negociacion->cliente->nit,
-                'telefono' => $negociacion->cliente->telefono,
-                'direccion' => $negociacion->cliente->direccion,
+                'id' => $negociacion->cliente?->id,
+                'codigo' => $negociacion->cliente?->codigo_cliente,
+                'nombre_completo' => trim(($negociacion->cliente?->nombres ?? '').' '.($negociacion->cliente?->apellidos ?? '')),
+                'dpi' => $negociacion->cliente?->dpi,
+                'nit' => $negociacion->cliente?->nit,
+                'telefono' => $negociacion->cliente?->telefono,
+                'direccion' => $negociacion->cliente?->direccion,
             ],
 
             // Datos del Inmueble
             'inmueble' => [
-                'finca' => $negociacion->lote->parcela->finca->nombre,
-                'numero_finca' => $negociacion->lote->parcela->finca->numero_finca,
-                'folio' => $negociacion->lote->parcela->finca->folio,
-                'libro' => $negociacion->lote->parcela->finca->libro,
-                'parcela' => $negociacion->lote->parcela->nombre_identificador,
-                'numero_lote' => $negociacion->lote->numero_lote,
-                'codigo_unico' => $negociacion->lote->codigo_unico,
-                'area_m2' => (float) $negociacion->lote->area_m2,
-                'frente_metros' => (float) $negociacion->lote->frente_metros,
-                'fondo_metros' => (float) $negociacion->lote->fondo_metros,
+                'finca' => $negociacion->lote?->parcela?->finca?->nombre,
+                'numero_finca' => $negociacion->lote?->parcela?->finca?->numero_finca,
+                'folio' => $negociacion->lote?->parcela?->finca?->folio,
+                'libro' => $negociacion->lote?->parcela?->finca?->libro,
+                'parcela' => $negociacion->lote?->parcela?->nombre_identificador,
+                'numero_lote' => $negociacion->lote?->numero_lote,
+                'codigo_unico' => $negociacion->lote?->codigo_unico,
+                'area_m2' => (float) ($negociacion->lote?->area_m2 ?? 0),
+                'frente_metros' => (float) ($negociacion->lote?->frente_metros ?? 0),
+                'fondo_metros' => (float) ($negociacion->lote?->fondo_metros ?? 0),
             ],
 
             // Resumen Financiero
@@ -78,8 +81,8 @@ class AccountStatementService
                 'saldo_capital_pendiente' => (float) $negociacion->saldo_capital_pendiente,
                 'cuotas_pagadas' => (int) $negociacion->cuotas_pagadas,
                 'cuotas_pendientes' => (int) $negociacion->cuotas_pendientes,
-                'porcentaje_pagado' => $negociacion->precio_final > 0 
-                    ? round((($negociacion->enganche_pagado + $negociacion->total_capital_pagado) / $negociacion->precio_final) * 100, 2)
+                'porcentaje_pagado' => $negociacion->precio_final > 0
+                    ? round((((float) $negociacion->precio_final - (float) $negociacion->saldo_capital_pendiente) / (float) $negociacion->precio_final) * 100, 2)
                     : 0
             ]
         ];
@@ -101,8 +104,27 @@ class AccountStatementService
         $saldoCorriente = (float) $negociacion->precio_final;
 
         foreach ($pagos as $p) {
+            if ($p->anulado) {
+                $movimientos[] = [
+                    'fecha' => $p->fecha_pago?->format('Y-m-d H:i') ?? $p->created_at->format('Y-m-d H:i'),
+                    'documento' => $p->numero_recibo,
+                    'concepto' => 'ANULADO: '.$p->concepto,
+                    'tipo_pago' => $p->tipo_pago,
+                    'cargo' => 0.0,
+                    'abono' => 0.0,
+                    'capital_aplicado' => 0.0,
+                    'interes_aplicado' => 0.0,
+                    'saldo' => $saldoCorriente,
+                    'metodo' => strtoupper($p->metodo_pago),
+                    'referencia' => $p->motivo_anulacion,
+                    'usuario' => $p->user?->name ?? 'Sistema',
+                    'anulado' => true,
+                ];
+                continue;
+            }
+
             $abono = (float) $p->monto_total;
-            $saldoCorriente = max(0.0, round($saldoCorriente - (float)$p->distribucion_capital, 2));
+            $saldoCorriente = max(0.0, round($saldoCorriente - (float) $p->distribucion_capital, 2));
 
             $movimientos[] = [
                 'fecha' => $p->fecha_pago?->format('Y-m-d H:i') ?? $p->created_at->format('Y-m-d H:i'),

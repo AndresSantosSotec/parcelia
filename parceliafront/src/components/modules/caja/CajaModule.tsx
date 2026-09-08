@@ -642,14 +642,14 @@ export function CajaModule({ userSession }: CajaModuleProps) {
   return (
     <div className="space-y-6">
       {/* Header con título y menú de acciones */}
-      <div className="pb-4 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">CAJA</h1>
+      <div className="page-toolbar pb-4 border-b border-border">
+        <div className="min-w-0">
+          <h1 className="font-bold tracking-tight">CAJA</h1>
           <p className="text-sm text-muted-foreground">Gestión de efectivo y arqueos diarios</p>
         </div>
 
         {/* Menú de acciones estilo MicroSystem */}
-        <div className="flex flex-wrap gap-2">
+        <div className="page-toolbar-actions">
           {/* Dropdown Operaciones de Caja */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1168,7 +1168,8 @@ function VistaDashboard({
           <CardDescription>Registro de operaciones del día</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border border-border overflow-hidden">
+          <MovimientosCards movimientos={movimientos} limit={5} />
+          <div className="hidden md:block rounded-md border border-border overflow-hidden">
             <Table>
               <TableHeader className="bg-table-header">
                 <TableRow>
@@ -1275,7 +1276,8 @@ function VistaDashboardAjena({ caja, movimientos, simboloMoneda, onCerrarCaja, o
           <CardDescription>Movimientos registrados por {caja.user?.name || 'el usuario'}</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border border-border overflow-hidden">
+          <MovimientosCards movimientos={movimientos} />
+          <div className="hidden md:block rounded-md border border-border overflow-hidden">
             <Table>
               <TableHeader className="bg-table-header">
                 <TableRow>
@@ -1506,9 +1508,11 @@ function VistaMovimientos({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="page-toolbar">
         <h2 className="text-xl font-bold">Movimientos de Caja</h2>
-        <Button variant="outline" onClick={onVolver}>← Volver</Button>
+        <div className="page-toolbar-actions">
+          <Button variant="outline" onClick={onVolver}>← Volver</Button>
+        </div>
       </div>
 
       {/* Resumen */}
@@ -1536,6 +1540,35 @@ function VistaMovimientos({
       {/* Tabla de movimientos */}
       <Card>
         <CardContent className="p-0">
+          <div className="md:hidden divide-y">
+            <div className="p-3 flex items-center justify-between gap-2">
+              <p className="font-medium">Saldo inicial</p>
+              <p className="font-bold text-green-600 dark:text-green-400">{simboloMoneda}{Number(cajaActual.saldo_inicial).toFixed(2)}</p>
+            </div>
+            {movimientos.map((mov: MovimientoCaja) => {
+              const ingreso = esIngresoMov(mov.tipo) && mov.estado === 'aplicado'
+              const egreso = ['decremento', 'egreso_desembolso'].includes(mov.tipo) && mov.estado === 'aplicado'
+              return (
+                <div key={mov.id} className="p-3 space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{mov.concepto}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{format(new Date(mov.created_at), 'HH:mm:ss')}</p>
+                    </div>
+                    <MovimientoBadge tipo={mov.tipo} />
+                  </div>
+                  <p className={`text-right font-bold ${ingreso ? 'text-green-600 dark:text-green-400' : egreso ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                    {ingreso ? `${simboloMoneda}${Number(mov.monto).toFixed(2)}` : egreso ? `${simboloMoneda}${Number(mov.monto).toFixed(2)}` : '—'}
+                  </p>
+                </div>
+              )
+            })}
+            <div className="p-3 flex items-center justify-between gap-2 bg-muted/40">
+              <p className="font-bold">Saldo final</p>
+              <p className="font-bold text-primary">{simboloMoneda}{totalEsperado.toFixed(2)}</p>
+            </div>
+          </div>
+          <div className="hidden md:block">
           <Table>
             <TableHeader className="bg-table-header">
               <TableRow>
@@ -1605,6 +1638,7 @@ function VistaMovimientos({
               </TableRow>
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -1915,13 +1949,48 @@ function VistaCierre({
 function VistaHistorial({ historial, simboloMoneda, onVolver }: any) {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="page-toolbar">
         <h2 className="text-xl font-bold text-foreground dark:text-slate-100">Historial de Cierres</h2>
-        <Button variant="outline" onClick={onVolver}>← Volver</Button>
+        <div className="page-toolbar-actions">
+          <Button variant="outline" onClick={onVolver}>← Volver</Button>
+        </div>
       </div>
 
       <Card>
         <CardContent className="p-0">
+          <div className="md:hidden divide-y">
+            {historial.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8 text-sm">No hay registros de cierre</p>
+            ) : historial.map((caja: Caja) => (
+              <div key={caja.id} className="p-3 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{caja.user_id}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Apertura {format(new Date(caja.fecha_apertura), 'dd/MM/yyyy')}
+                      {caja.fecha_cierre ? ` · Cierre ${format(new Date(caja.fecha_cierre), 'dd/MM/yyyy HH:mm')}` : ''}
+                    </p>
+                  </div>
+                  <span className={`px-2 py-1 rounded text-xs font-bold shrink-0 ${
+                    caja.estado === 'cerrada' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                  }`}>
+                    {caja.estado === 'cerrada' ? 'Cerrada' : 'Abierta'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <p className="text-muted-foreground">Inicial</p>
+                    <p className="font-semibold">{simboloMoneda}{Number(caja.saldo_inicial).toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Final</p>
+                    <p className="font-semibold">{caja.saldo_final ? `${simboloMoneda}${Number(caja.saldo_final).toFixed(2)}` : '—'}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block">
           <Table>
             <TableHeader className="bg-table-header">
               <TableRow>
@@ -1973,6 +2042,7 @@ function VistaHistorial({ historial, simboloMoneda, onVolver }: any) {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -2163,6 +2233,41 @@ function SummaryCard({ title, amount, color = "text-foreground", highlight = fal
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function esIngresoMov(tipo: string) {
+  return ['incremento', 'ingreso_pago'].includes(tipo)
+}
+
+function MovimientosCards({ movimientos, limit }: { movimientos: any[]; limit?: number }) {
+  const rows = typeof limit === 'number' ? movimientos.slice(0, limit) : movimientos
+  if (rows.length === 0) {
+    return <p className="md:hidden text-center text-muted-foreground py-8 text-sm">No hay movimientos registrados</p>
+  }
+  return (
+    <div className="md:hidden divide-y">
+      {rows.map((mov) => {
+        const ingreso = esIngresoMov(mov.tipo)
+        return (
+          <div key={mov.id} className="p-3 space-y-1.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-medium truncate">{mov.concepto}</p>
+                <p className="text-xs text-muted-foreground font-mono">
+                  {format(new Date(mov.created_at), 'HH:mm')}
+                </p>
+              </div>
+              <MovimientoBadge tipo={mov.tipo} />
+            </div>
+            <p className={`text-right font-bold ${ingreso ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+              {ingreso ? '+' : '-'}
+              <MoneyDisplay amount={mov.monto} inline />
+            </p>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

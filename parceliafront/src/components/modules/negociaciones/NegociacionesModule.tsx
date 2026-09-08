@@ -5,24 +5,83 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Plus, Handshake, Calculator, Receipt, User, Package, Calendar, CurrencyDollar, CheckCircle, Clock, ArrowRight, Eye, ShieldCheck, Wallet, Printer, FileText } from '@phosphor-icons/react'
+import { Plus, Handshake, Calculator, Receipt, User, Package, Calendar, CurrencyDollar, CheckCircle, Clock, ArrowRight, Eye, ShieldCheck, Wallet, Printer, FileText, XCircle, DownloadSimple } from '@phosphor-icons/react'
 import { toast } from 'sonner'
-import { api, negociacionService, loteService, clienteService, pagoTerrenoService, Negociacion, Lote, Cliente, SimuladorResponse } from '@/lib/api'
+import { api, negociacionService, loteService, clienteService, pagoTerrenoService, moraInmobiliariaService, Negociacion, Lote, Cliente, SimuladorResponse, ParametrizacionMoraInmo } from '@/lib/api'
 import { useEmpresaConfig } from '@/hooks/useEmpresaConfig'
 import { imprimirDocumentoHTML } from '@/utils/impresionDocumentos'
+import { GastosCreditoSelector } from '@/components/modules/gastos/GastosCreditoSelector'
+
+function cuotasPlan(neg: any): any[] {
+  const rows = neg?.planPagos ?? neg?.plan_pagos ?? []
+  return Array.isArray(rows) ? rows : []
+}
+
+function normalizarNegociacion(neg: any): Negociacion {
+  return {
+    ...neg,
+    planPagos: cuotasPlan(neg),
+  }
+}
+
+function formatFechaCorta(valor?: string | null) {
+  if (!valor) return '—'
+  const d = new Date(valor)
+  if (Number.isNaN(d.getTime())) return String(valor).slice(0, 10)
+  return d.toLocaleDateString('es-GT')
+}
+
+function etiquetaSistema(sistema?: string | null) {
+  switch (sistema) {
+    case 'aleman':
+      return 'Alemán (capital fijo)'
+    case 'americano':
+      return 'Americano (capital al final)'
+    case 'plano':
+      return 'Interés plano'
+    case 'frances':
+    default:
+      return 'Francés (cuota fija)'
+  }
+}
+
+function etiquetaMora(mora: ParametrizacionMoraInmo) {
+  const tipo = mora.tipo_calculo === 'monto_fijo_diario'
+    ? `Q${Number(mora.monto_fijo_diario).toFixed(2)} por día`
+    : `${Number(mora.porcentaje_diario).toFixed(4)}% diario sobre capital vencido`
+  return `${mora.nombre} · ${tipo} · ${mora.dias_gracia} día${mora.dias_gracia === 1 ? '' : 's'} de gracia`
+}
+
+function resumenMoraContrato(neg: Negociacion) {
+  const tipo = neg.tipo_mora_aplicada || neg.parametrizacion_mora?.tipo_calculo
+  if (!tipo) return null
+  const nombre = neg.parametrizacion_mora?.nombre
+  if (tipo === 'monto_fijo_diario') {
+    const monto = neg.mora_monto_fijo_diario_snapshot ?? neg.parametrizacion_mora?.monto_fijo_diario ?? 0
+    return `${nombre ? `${nombre} · ` : ''}Q${Number(monto).toFixed(2)}/día · ${neg.mora_dias_gracia_snapshot ?? 0} días de gracia`
+  }
+  const pct = neg.mora_porcentaje_diario_snapshot ?? neg.parametrizacion_mora?.porcentaje_diario ?? 0
+  return `${nombre ? `${nombre} · ` : ''}${Number(pct).toFixed(4)}% diario sobre capital vencido · ${neg.mora_dias_gracia_snapshot ?? 0} días de gracia`
+}
 
 export function NegociacionesModule() {
   const { config: empresaConfig } = useEmpresaConfig()
   const [negociaciones, setNegociaciones] = useState<Negociacion[]>([])
   const [lotesDisponibles, setLotesDisponibles] = useState<Lote[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
+  const [reglasMora, setReglasMora] = useState<ParametrizacionMoraInmo[]>([])
   const [cargando, setCargando] = useState(false)
 
   // Modales
   const [modalNuevaVenta, setModalNuevaVenta] = useState(false)
   const [modalEstadoCuenta, setModalEstadoCuenta] = useState(false)
   const [modalRegistrarPago, setModalRegistrarPago] = useState(false)
+  const [modalRescision, setModalRescision] = useState(false)
+  const [motivoRescision, setMotivoRescision] = useState('')
   const [negociacionSeleccionada, setNegociacionSeleccionada] = useState<Negociacion | null>(null)
+  const [cargandoEstadoCuenta, setCargandoEstadoCuenta] = useState(false)
+  const [descargandoDoc, setDescargandoDoc] = useState<string | null>(null)
+  const [kardexMovimientos, setKardexMovimientos] = useState<any[]>([])
 
   // Formulario Nueva Negociación
   const [formVenta, setFormVenta] = useState({
@@ -35,8 +94,12 @@ export function NegociacionesModule() {
     enganche_pactado: 10000,
     plazo_meses: 24,
     tasa_interes_anual: 6.0,
+    sistema_amortizacion: 'frances',
+    politica_abono_extra: 'reducir_plazo',
     fecha_negociacion: new Date().toISOString().split('T')[0],
-    observaciones: ''
+    observaciones: '',
+    gas_ids: [] as number[],
+    parametrizacion_mora_id: '',
   })
 
   // Simulación en Vivo
@@ -54,15 +117,27 @@ export function NegociacionesModule() {
   const cargarDatos = async () => {
     setCargando(true)
     try {
-      const [resNeg, resLotes, resCli] = await Promise.all([
+      const [resNeg, resLotes, resCli, resMora] = await Promise.all([
         negociacionService.getAll(),
         loteService.getDisponibles(),
-        clienteService.getActivos()
+        clienteService.getActivos(),
+        moraInmobiliariaService.getAll(true),
       ])
 
-      if (resNeg.success && resNeg.data) setNegociaciones(resNeg.data)
+      if (resNeg.success && resNeg.data) {
+        const lista = Array.isArray(resNeg.data) ? resNeg.data : []
+        setNegociaciones(lista.map(normalizarNegociacion))
+      }
       if (resLotes.success && resLotes.data) setLotesDisponibles(resLotes.data)
       if (resCli.success && resCli.data) setClientes(resCli.data)
+      if (resMora.success && resMora.data) {
+        const activas = Array.isArray(resMora.data) ? resMora.data : []
+        setReglasMora(activas)
+        setFormVenta((prev) => prev.parametrizacion_mora_id ? prev : {
+          ...prev,
+          parametrizacion_mora_id: activas[0] ? String(activas[0].id) : '',
+        })
+      }
     } catch (e) {
       console.error(e)
     } finally {
@@ -83,12 +158,13 @@ export function NegociacionesModule() {
         gastos_escrituracion: formVenta.gastos_escrituracion,
         enganche: formVenta.enganche_pactado,
         plazo_meses: formVenta.plazo_meses,
-        tasa_interes_anual: formVenta.tasa_interes_anual
+        tasa_interes_anual: formVenta.tasa_interes_anual,
+        metodo: formVenta.sistema_amortizacion as 'frances' | 'aleman' | 'americano' | 'plano',
       }).then(res => {
         if (res.success && res.data) setSimulacion(res.data)
       }).catch(console.error)
     }
-  }, [formVenta.precio_original, formVenta.descuento, formVenta.gastos_escrituracion, formVenta.enganche_pactado, formVenta.plazo_meses, formVenta.tasa_interes_anual])
+  }, [formVenta.precio_original, formVenta.descuento, formVenta.gastos_escrituracion, formVenta.enganche_pactado, formVenta.plazo_meses, formVenta.tasa_interes_anual, formVenta.sistema_amortizacion])
 
   const handleSeleccionarLote = (loteId: string) => {
     const lote = lotesDisponibles.find(l => l.id.toString() === loteId)
@@ -110,12 +186,19 @@ export function NegociacionesModule() {
       toast.error('Selecciona un comprador y un lote disponible')
       return
     }
+    if (formVenta.tipo_negociacion === 'credito' && !formVenta.parametrizacion_mora_id) {
+      toast.error('Selecciona el tipo de mora que se aplicará a este crédito')
+      return
+    }
 
     try {
       const res = await negociacionService.create({
         ...formVenta,
         cliente_id: parseInt(formVenta.cliente_id),
-        lote_id: parseInt(formVenta.lote_id)
+        lote_id: parseInt(formVenta.lote_id),
+        parametrizacion_mora_id: formVenta.parametrizacion_mora_id
+          ? parseInt(formVenta.parametrizacion_mora_id)
+          : undefined,
       })
 
       if (res.success) {
@@ -214,9 +297,55 @@ export function NegociacionesModule() {
     }
   }
 
-  const abrirEstadoCuenta = (neg: Negociacion) => {
-    setNegociacionSeleccionada(neg)
+  const abrirEstadoCuenta = async (neg: Negociacion) => {
+    setNegociacionSeleccionada(normalizarNegociacion(neg))
+    setKardexMovimientos([])
     setModalEstadoCuenta(true)
+    setCargandoEstadoCuenta(true)
+    try {
+      const [resDet, resEstado] = await Promise.all([
+        negociacionService.getById(neg.id),
+        negociacionService.getEstadoCuenta(neg.id),
+      ])
+      if (resDet.success && resDet.data) {
+        const detalle = normalizarNegociacion(resDet.data)
+        const planEstado = resEstado?.data?.plan_pagos
+        if ((!detalle.planPagos || detalle.planPagos.length === 0) && Array.isArray(planEstado)) {
+          detalle.planPagos = planEstado
+        }
+        setNegociacionSeleccionada(detalle)
+      }
+      if (resEstado.success && Array.isArray(resEstado.data?.kardex_movimientos)) {
+        setKardexMovimientos(resEstado.data.kardex_movimientos)
+      }
+    } catch (e) {
+      console.error(e)
+      toast.error('No se pudo cargar el plan de pagos de esta negociación')
+    } finally {
+      setCargandoEstadoCuenta(false)
+    }
+  }
+
+  const handleDescargarEstadoCuentaPdf = async (neg: Negociacion) => {
+    try {
+      setDescargandoDoc('estado')
+      await negociacionService.descargarEstadoCuentaPdf(neg.id, neg.codigo_negociacion)
+    } catch (e: any) {
+      toast.error(e.message || 'No se pudo descargar el estado de cuenta')
+    } finally {
+      setDescargandoDoc(null)
+    }
+  }
+
+  const handleDescargarPlanPagosPdf = async (neg: Negociacion) => {
+    try {
+      setDescargandoDoc('plan')
+      await negociacionService.descargarPlanPagosPdf(neg.id, neg.codigo_negociacion)
+    } catch (e: any) {
+      toast.error(e.message || 'No se pudo descargar el plan de pagos')
+    } finally {
+      setDescargandoDoc(null)
+    }
   }
 
   const handleImprimirContrato = async (neg: Negociacion) => {
@@ -280,17 +409,19 @@ export function NegociacionesModule() {
           </tr>
         </thead>
         <tbody>
-          ${(neg.planPagos || []).map((c: any) => `
+          ${cuotasPlan(neg).length === 0 ? `
+            <tr><td colspan="7" style="text-align:center;padding:12px;">Aún no hay cronograma. El plan se genera al completar el enganche.</td></tr>
+          ` : cuotasPlan(neg).map((c: any) => `
             <tr>
               <td>#${c.numero_cuota}</td>
-              <td>${c.fecha_vencimiento}</td>
+              <td>${formatFechaCorta(c.fecha_vencimiento)}</td>
               <td class="text-right">Q${Number(c.cuota_capital).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
               <td class="text-right">Q${Number(c.cuota_interes || 0).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
               <td class="text-right font-bold">Q${Number(c.cuota_monto_total).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
               <td class="text-right">Q${Number(c.saldo_capital_restante).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
               <td class="text-center">
                 <span class="badge ${c.estado === 'pagada' ? 'badge-success' : 'badge-warning'}">
-                  ${c.estado.toUpperCase()}
+                  ${String(c.estado || 'pendiente').toUpperCase()}
                 </span>
               </td>
             </tr>
@@ -314,22 +445,46 @@ export function NegociacionesModule() {
     setModalRegistrarPago(true)
   }
 
+  const abrirRescision = (neg: Negociacion) => {
+    setNegociacionSeleccionada(neg)
+    setMotivoRescision('')
+    setModalRescision(true)
+  }
+
+  const handleRescindir = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!negociacionSeleccionada || motivoRescision.trim().length < 5) {
+      toast.error('Indique un motivo de al menos 5 caracteres')
+      return
+    }
+    try {
+      await negociacionService.rescindir(negociacionSeleccionada.id, motivoRescision.trim())
+      toast.success('Venta rescindida. Cobros revertidos y lote disponible.')
+      setModalRescision(false)
+      cargarDatos()
+    } catch (err: any) {
+      toast.error(err?.message || 'No se pudo rescindir')
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <Handshake size={28} className="text-primary" weight="duotone" />
-            <h1 className="text-2xl font-bold tracking-tight">Negociaciones & Ventas de Terrenos</h1>
+      <div className="page-toolbar">
+        <div className="min-w-0">
+          <div className="flex items-start gap-2">
+            <Handshake size={24} className="text-primary shrink-0 mt-0.5" weight="duotone" />
+            <h1 className="font-bold tracking-tight">Negociaciones & Ventas de Terrenos</h1>
           </div>
           <p className="text-muted-foreground text-sm">
             Gestión de contratos de compraventa, financiamientos a plazos, enganches y estados de cuenta.
           </p>
         </div>
-        <Button onClick={() => setModalNuevaVenta(true)} className="gap-2 shadow-sm">
-          <Plus size={18} weight="bold" /> Nueva Negociación / Venta
-        </Button>
+        <div className="page-toolbar-actions">
+          <Button onClick={() => setModalNuevaVenta(true)} className="gap-2 shadow-sm">
+            <Plus size={18} weight="bold" /> Nueva Negociación / Venta
+          </Button>
+        </div>
       </div>
 
       {/* Listado de Negociaciones */}
@@ -339,7 +494,66 @@ export function NegociacionesModule() {
           <CardDescription className="text-xs">Seguimiento en tiempo real de saldos, cuotas y pagos de compradores.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          <div className="md:hidden divide-y">
+            {negociaciones.map((neg) => {
+              const total = Number(neg.precio_final || 1)
+              const pagado = Number(neg.total_capital_pagado || 0)
+              const porcentaje = Math.min(100, Math.round((pagado / total) * 100))
+              return (
+                <div key={neg.id} className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-mono font-bold text-xs text-primary">{neg.codigo_negociacion}</p>
+                      <p className="font-medium truncate">
+                        {neg.comprador?.nombres ? `${neg.comprador.nombres} ${neg.comprador.apellidos}` : neg.comprador?.nombre_completo || 'Cliente'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {neg.lote?.codigo_unico || 'Lote'} · {neg.plazo_meses} meses
+                      </p>
+                    </div>
+                    {neg.estado === 'activa' && <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 shrink-0">Al Día</Badge>}
+                    {neg.estado === 'en_mora' && <Badge className="bg-red-500/15 text-red-600 border-red-500/30 shrink-0">En mora</Badge>}
+                    {neg.estado === 'pagada_total' && <Badge className="bg-teal-500/15 text-teal-600 border-teal-500/30 shrink-0">Liquidado</Badge>}
+                    {neg.estado === 'reservada' && <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 shrink-0">Reservado</Badge>}
+                    {neg.estado === 'rescindida' && <Badge variant="outline" className="shrink-0">Rescindida</Badge>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <p className="text-[0.6875rem] text-muted-foreground">Precio</p>
+                      <p className="font-semibold">Q{Number(neg.precio_final).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                    <div>
+                      <p className="text-[0.6875rem] text-muted-foreground">Saldo</p>
+                      <p className="font-semibold text-amber-600">Q{Number(neg.saldo_capital_pendiente).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[0.6875rem] mb-1">
+                      <span>{porcentaje}%</span>
+                      <span className="text-muted-foreground">{neg.cuotas_pagadas}/{neg.plazo_meses} cuotas</span>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                      <div className="bg-primary h-1.5 rounded-full" style={{ width: `${porcentaje}%` }} />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Button size="sm" variant="outline" onClick={() => abrirEstadoCuenta(neg)} className="h-8 gap-1 text-xs flex-1">
+                      <Receipt size={14} /> Estado
+                    </Button>
+                    {neg.estado !== 'rescindida' && (
+                      <Button size="sm" onClick={() => abrirPago(neg)} className="h-8 gap-1 text-xs flex-1">
+                        <Wallet size={14} /> Cobrar
+                      </Button>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={() => handleImprimirContrato(neg)} className="h-8 gap-1 text-xs">
+                      <FileText size={14} /> Contrato
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-muted/50 border-y text-muted-foreground text-xs uppercase font-semibold">
                 <tr>
@@ -366,7 +580,13 @@ export function NegociacionesModule() {
                         {neg.codigo_negociacion}
                         <span className="block text-[0.6875rem] text-muted-foreground font-normal">
                           {neg.tipo_negociacion.toUpperCase()} · {neg.plazo_meses} meses
+                          {neg.tipo_negociacion === 'credito' ? ` · ${etiquetaSistema(neg.sistema_amortizacion)}` : ''}
                         </span>
+                        {resumenMoraContrato(neg) && (
+                          <span className="block text-[0.625rem] text-amber-700 dark:text-amber-400 font-normal mt-0.5">
+                            Mora: {resumenMoraContrato(neg)}
+                          </span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 font-medium">
                         {neg.comprador?.nombres ? `${neg.comprador.nombres} ${neg.comprador.apellidos}` : neg.comprador?.nombre_completo || 'Cliente'}
@@ -402,8 +622,10 @@ export function NegociacionesModule() {
                       </td>
                       <td className="py-3.5 px-4">
                         {neg.estado === 'activa' && <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30">Al Día</Badge>}
+                        {neg.estado === 'en_mora' && <Badge className="bg-red-500/15 text-red-600 border-red-500/30">En mora</Badge>}
                         {neg.estado === 'pagada_total' && <Badge className="bg-teal-500/15 text-teal-600 border-teal-500/30">Liquidado</Badge>}
                         {neg.estado === 'reservada' && <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30">Reservado</Badge>}
+                        {neg.estado === 'rescindida' && <Badge variant="outline">Rescindida</Badge>}
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
@@ -413,9 +635,19 @@ export function NegociacionesModule() {
                           <Button size="sm" variant="outline" onClick={() => abrirEstadoCuenta(neg)} className="h-8 gap-1 text-xs">
                             <Receipt size={14} /> Estado Cuenta
                           </Button>
-                          <Button size="sm" onClick={() => abrirPago(neg)} className="h-8 gap-1 text-xs">
-                            <Wallet size={14} /> Cobrar
+                          <Button size="sm" variant="ghost" onClick={() => handleDescargarPlanPagosPdf(neg)} className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground" disabled={descargandoDoc === 'plan'}>
+                            <DownloadSimple size={14} /> Plan
                           </Button>
+                          {neg.estado !== 'rescindida' && (
+                            <Button size="sm" onClick={() => abrirPago(neg)} className="h-8 gap-1 text-xs">
+                              <Wallet size={14} /> Cobrar
+                            </Button>
+                          )}
+                          {neg.estado !== 'rescindida' && (
+                            <Button size="sm" variant="ghost" onClick={() => abrirRescision(neg)} className="h-8 gap-1 text-xs text-destructive">
+                              <XCircle size={14} /> Rescindir
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -429,7 +661,7 @@ export function NegociacionesModule() {
 
       {/* Modal Nueva Negociación */}
       <Dialog open={modalNuevaVenta} onOpenChange={setModalNuevaVenta}>
-        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Handshake className="text-primary" size={24} weight="duotone" />
@@ -479,6 +711,19 @@ export function NegociacionesModule() {
               <h4 className="font-semibold text-sm flex items-center gap-2 text-foreground">
                 <Calculator size={18} className="text-primary" /> Condiciones Comerciales & Financiamiento
               </h4>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Tipo de operación *</Label>
+                <select
+                  value={formVenta.tipo_negociacion}
+                  onChange={(e) => setFormVenta({ ...formVenta, tipo_negociacion: e.target.value as 'contado' | 'credito' | 'reserva' })}
+                  className="w-full bg-background border rounded-lg p-2.5 text-sm"
+                >
+                  <option value="credito">Crédito / financiamiento</option>
+                  <option value="contado">Contado</option>
+                  <option value="reserva">Reserva</option>
+                </select>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1.5">
@@ -541,6 +786,80 @@ export function NegociacionesModule() {
                   />
                 </div>
               </div>
+
+              {formVenta.tipo_negociacion === 'credito' && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-amber-700 dark:text-amber-400">Regla de mora de este contrato *</Label>
+                  <select
+                    required
+                    value={formVenta.parametrizacion_mora_id}
+                    onChange={(e) => setFormVenta({ ...formVenta, parametrizacion_mora_id: e.target.value })}
+                    className="w-full bg-background border rounded-lg p-2.5 text-sm"
+                  >
+                    <option value="">Selecciona cómo se calculará la mora...</option>
+                    {reglasMora.map((mora) => (
+                      <option key={mora.id} value={mora.id}>
+                        {etiquetaMora(mora)}
+                      </option>
+                    ))}
+                  </select>
+                  {reglasMora.length === 0 ? (
+                    <p className="text-[0.6875rem] text-destructive">
+                      No hay reglas activas. Crea una en Tasas & Mora antes de vender a crédito.
+                    </p>
+                  ) : (
+                    <p className="text-[0.6875rem] text-muted-foreground">
+                      Queda ligada a este contrato. Si luego cambias el catálogo, esta venta conserva su snapshot.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {formVenta.tipo_negociacion === 'credito' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold">Sistema de amortización *</Label>
+                    <select
+                      value={formVenta.sistema_amortizacion}
+                      onChange={(e) => setFormVenta({ ...formVenta, sistema_amortizacion: e.target.value })}
+                      className="w-full bg-background border rounded-lg p-2.5 text-sm"
+                    >
+                      <option value="frances">Francés — cuota fija (recomendado)</option>
+                      <option value="aleman">Alemán — capital fijo, cuota decreciente</option>
+                      <option value="americano">Americano — solo intereses y capital al final</option>
+                      <option value="plano">Interés plano — cuota simple</option>
+                    </select>
+                    <p className="text-[0.6875rem] text-muted-foreground">
+                      {formVenta.sistema_amortizacion === 'aleman' && 'Cada mes se paga el mismo capital; la cuota baja conforme baja el interés.'}
+                      {formVenta.sistema_amortizacion === 'americano' && 'Se pagan intereses cada mes y el capital se liquida en la última cuota.'}
+                      {formVenta.sistema_amortizacion === 'plano' && 'Interés simple prorrateado; la cuota no se recalcula sobre saldos.'}
+                      {(formVenta.sistema_amortizacion === 'frances' || !formVenta.sistema_amortizacion) && 'Cuota mensual igual durante todo el plazo (sistema más usado en terrenos).'}
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Abonos extras a capital</Label>
+                    <select
+                      value={formVenta.politica_abono_extra}
+                      onChange={(e) => setFormVenta({ ...formVenta, politica_abono_extra: e.target.value })}
+                      className="w-full bg-background border rounded-lg p-2.5 text-sm"
+                    >
+                      <option value="reducir_plazo">Reducir plazo (menos cuotas)</option>
+                      <option value="reducir_cuota">Reducir cuota (mismo plazo)</option>
+                    </select>
+                    <p className="text-[0.6875rem] text-muted-foreground">
+                      Define cómo se aplica un abono extraordinario sobre este contrato.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {formVenta.tipo_negociacion === 'credito' && (
+                <GastosCreditoSelector
+                  montoOtorgado={Math.max(0, Number(formVenta.precio_original) - Number(formVenta.descuento) - Number(formVenta.enganche_pactado))}
+                  gastosSeleccionados={formVenta.gas_ids}
+                  onGastosChange={(ids) => setFormVenta({ ...formVenta, gas_ids: ids })}
+                />
+              )}
             </div>
 
             {/* Resumen del Simulador en Vivo */}
@@ -578,7 +897,7 @@ export function NegociacionesModule() {
       {/* Modal Estado de Cuenta Detallado */}
       {negociacionSeleccionada && (
         <Dialog open={modalEstadoCuenta} onOpenChange={setModalEstadoCuenta}>
-          <DialogContent className="sm:max-w-[750px] max-h-[90vh] overflow-y-auto">
+          <DialogContent className="w-[95vw] sm:max-w-[860px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center justify-between">
                 <span>Estado de Cuenta: {negociacionSeleccionada.codigo_negociacion}</span>
@@ -609,52 +928,141 @@ export function NegociacionesModule() {
                 </div>
               </div>
 
+              {resumenMoraContrato(negociacionSeleccionada) && (
+                <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 text-xs">
+                  <span className="font-semibold text-amber-700 dark:text-amber-400">Mora de este contrato: </span>
+                  <span className="text-muted-foreground">{resumenMoraContrato(negociacionSeleccionada)}</span>
+                </div>
+              )}
+              {negociacionSeleccionada.tipo_negociacion === 'credito' && (
+                <div className="p-3 rounded-xl border bg-muted/40 text-xs">
+                  <span className="font-semibold">Sistema de crédito: </span>
+                  <span className="text-muted-foreground">
+                    {etiquetaSistema(negociacionSeleccionada.sistema_amortizacion)}
+                    {negociacionSeleccionada.politica_abono_extra === 'reducir_cuota'
+                      ? ' · Abonos extras reducen la cuota'
+                      : ' · Abonos extras reducen el plazo'}
+                  </span>
+                </div>
+              )}
+
               {/* Plan de Pagos / Cronograma de Cuotas */}
               <div>
                 <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground mb-2">
                   Cronograma de Cuotas & Amortización
                 </h4>
-                <div className="max-h-56 overflow-y-auto border rounded-xl">
-                  <table className="w-full text-left text-xs">
+                <div className="max-h-56 overflow-auto border rounded-xl">
+                  <table className="w-full text-left text-xs min-w-[640px]">
                     <thead className="bg-muted/60 sticky top-0 border-b">
                       <tr>
                         <th className="p-2">No.</th>
                         <th className="p-2">Vencimiento</th>
                         <th className="p-2">Capital</th>
                         <th className="p-2">Interés</th>
+                        <th className="p-2">Cargos</th>
                         <th className="p-2">Cuota Total</th>
                         <th className="p-2">Saldo</th>
                         <th className="p-2">Estado</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {negociacionSeleccionada.planPagos?.map((cuota: any) => (
-                        <tr key={cuota.id} className={cuota.estado === 'pagada' ? 'bg-emerald-500/5' : ''}>
+                      {cargandoEstadoCuenta ? (
+                        <tr>
+                          <td colSpan={8} className="p-6 text-center text-muted-foreground">
+                            Cargando plan de pagos...
+                          </td>
+                        </tr>
+                      ) : cuotasPlan(negociacionSeleccionada).length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="p-6 text-center text-muted-foreground">
+                            {negociacionSeleccionada.tipo_negociacion === 'credito' && Number(negociacionSeleccionada.enganche_pagado || 0) + 0.009 < Number(negociacionSeleccionada.enganche_pactado || 0)
+                              ? 'El cronograma se genera al completar el enganche pactado.'
+                              : 'Aún no hay cuotas registradas para esta negociación.'}
+                          </td>
+                        </tr>
+                      ) : (
+                        cuotasPlan(negociacionSeleccionada).map((cuota: any) => {
+                        const cargos = Number(cuota.otros_cargos || 0)
+                        const cargosPagados = Number(cuota.otros_cargos_pagados || 0)
+                        return (
+                        <tr key={cuota.id || cuota.numero_cuota} className={cuota.estado === 'pagada' ? 'bg-emerald-500/5' : ''}>
                           <td className="p-2 font-mono">{cuota.numero_cuota}</td>
-                          <td className="p-2">{cuota.fecha_vencimiento}</td>
+                          <td className="p-2 whitespace-nowrap">{formatFechaCorta(cuota.fecha_vencimiento)}</td>
                           <td className="p-2">Q{Number(cuota.cuota_capital).toLocaleString()}</td>
                           <td className="p-2">Q{Number(cuota.cuota_interes || 0).toLocaleString()}</td>
+                          <td className="p-2">
+                            {cargos > 0 ? (
+                              <span title={`Pagado Q${cargosPagados.toLocaleString()}`}>
+                                Q{cargos.toLocaleString()}
+                                {cargosPagados + 0.009 >= cargos ? (
+                                  <Badge className="ml-1 bg-emerald-500/20 text-emerald-600 text-[0.5rem]">PAGADO</Badge>
+                                ) : cargosPagados > 0 ? (
+                                  <Badge variant="outline" className="ml-1 text-[0.5rem]">PARCIAL</Badge>
+                                ) : null}
+                              </span>
+                            ) : '—'}
+                          </td>
                           <td className="p-2 font-bold">Q{Number(cuota.cuota_monto_total).toLocaleString()}</td>
                           <td className="p-2">Q{Number(cuota.saldo_capital_restante).toLocaleString()}</td>
                           <td className="p-2">
                             {cuota.estado === 'pagada' ? (
                               <Badge className="bg-emerald-500/20 text-emerald-600 text-[0.625rem]">PAGADA</Badge>
                             ) : (
-                              <Badge variant="outline" className="text-[0.625rem]">PENDIENTE</Badge>
+                              <Badge variant="outline" className="text-[0.625rem]">{String(cuota.estado || 'pendiente').toUpperCase()}</Badge>
                             )}
                           </td>
                         </tr>
-                      ))}
+                        )
+                      })
+                      )}
                     </tbody>
                   </table>
                 </div>
               </div>
+
+              {kardexMovimientos.length > 0 && (
+                <div>
+                  <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground mb-2">
+                    Kardex de movimientos
+                  </h4>
+                  <div className="max-h-40 overflow-auto border rounded-xl">
+                    <table className="w-full text-left text-xs min-w-[520px]">
+                      <thead className="bg-muted/60 sticky top-0 border-b">
+                        <tr>
+                          <th className="p-2">Fecha</th>
+                          <th className="p-2">Documento</th>
+                          <th className="p-2">Concepto</th>
+                          <th className="p-2">Abono</th>
+                          <th className="p-2">Saldo</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {kardexMovimientos.map((mov, idx) => (
+                          <tr key={`${mov.documento || 'mov'}-${idx}`} className={mov.anulado ? 'opacity-60' : ''}>
+                            <td className="p-2 whitespace-nowrap">{formatFechaCorta(mov.fecha)}</td>
+                            <td className="p-2 font-mono">{mov.documento || '—'}</td>
+                            <td className="p-2">{mov.concepto}</td>
+                            <td className="p-2">Q{Number(mov.abono || 0).toLocaleString()}</td>
+                            <td className="p-2">Q{Number(mov.saldo || 0).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <DialogFooter className="flex items-center justify-between sm:justify-between w-full gap-2">
-              <div className="flex gap-2">
+            <DialogFooter className="flex items-center justify-between sm:justify-between w-full gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap">
                 <Button variant="outline" onClick={() => handleImprimirEstadoCuentaDoc(negociacionSeleccionada)} className="gap-1.5 text-xs">
-                  <Printer size={16} /> Imprimir Estado de Cuenta
+                  <Printer size={16} /> Imprimir
+                </Button>
+                <Button variant="outline" onClick={() => handleDescargarEstadoCuentaPdf(negociacionSeleccionada)} disabled={descargandoDoc === 'estado'} className="gap-1.5 text-xs">
+                  <DownloadSimple size={16} /> {descargandoDoc === 'estado' ? 'Descargando...' : 'Estado de cuenta PDF'}
+                </Button>
+                <Button variant="outline" onClick={() => handleDescargarPlanPagosPdf(negociacionSeleccionada)} disabled={descargandoDoc === 'plan'} className="gap-1.5 text-xs">
+                  <DownloadSimple size={16} /> {descargandoDoc === 'plan' ? 'Descargando...' : 'Plan de pagos PDF'}
                 </Button>
                 <Button variant="ghost" onClick={() => handleImprimirContrato(negociacionSeleccionada)} className="gap-1.5 text-xs">
                   <FileText size={16} /> Imprimir Contrato
@@ -739,6 +1147,27 @@ export function NegociacionesModule() {
           </DialogContent>
         </Dialog>
       )}
+
+      <Dialog open={modalRescision} onOpenChange={setModalRescision}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Rescindir {negociacionSeleccionada?.codigo_negociacion}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleRescindir} className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Se anulan los cobros vigentes (último a primero), se revierten recibos y caja, y el lote vuelve a disponible. Requiere caja abierta.
+            </p>
+            <div className="space-y-1">
+              <Label>Motivo *</Label>
+              <Input required minLength={5} value={motivoRescision} onChange={(e) => setMotivoRescision(e.target.value)} placeholder="Ej. Desistimiento del comprador" />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setModalRescision(false)}>Cancelar</Button>
+              <Button type="submit" variant="destructive">Confirmar rescisión</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

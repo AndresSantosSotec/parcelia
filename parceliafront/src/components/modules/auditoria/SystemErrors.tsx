@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -18,22 +18,24 @@ export function SystemErrors() {
     const [page, setPage] = useState(1)
     const [totalPages, setTotalPages] = useState(1)
 
-    const cargarErrores = async () => {
+    const cargarErrores = useCallback(async () => {
         setLoading(true)
         try {
             const res: any = await api.get(`/system-errors?page=${page}`)
-            setErrors(res.data)
-            setTotalPages(res.pagination.last_page)
+            setErrors(res.data || [])
+            setTotalPages(res.pagination?.last_page || 1)
         } catch (e) {
             toast.error('Error al cargar logs de errores')
         } finally {
             setLoading(false)
         }
-    }
+    }, [page])
 
     useEffect(() => {
         cargarErrores()
-    }, [page])
+        const interval = setInterval(cargarErrores, 30000)
+        return () => clearInterval(interval)
+    }, [cargarErrores])
 
     return (
         <Card>
@@ -44,7 +46,7 @@ export function SystemErrors() {
                         Errores Críticos del Sistema
                     </CardTitle>
                     <CardDescription>
-                        Fallas y excepciones no capturadas registradas en el servidor
+                        Fallas y excepciones no capturadas. Se actualiza cada 30 segundos para depurar en caliente.
                     </CardDescription>
                 </div>
                 <Button variant="outline" size="sm" onClick={() => cargarErrores()} disabled={loading}>
@@ -71,14 +73,14 @@ export function SystemErrors() {
                                     </TableCell>
                                     <TableCell>
                                         <Badge variant="destructive" className="text-[10px] font-mono">
-                                            {error.exception.split('\\').pop()}
+                                            {(error.exception || 'Error').toString().split('\\').pop()}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="max-w-[300px] truncate text-xs font-medium">
                                         {error.message}
                                     </TableCell>
                                     <TableCell className="text-[10px] font-mono text-muted-foreground">
-                                        <span className="font-bold">{error.method}</span> {error.url.split('/').pop() || '/'}
+                                        <span className="font-bold">{error.method}</span> {(error.url || '/').split('/').pop() || '/'}
                                     </TableCell>
                                     <TableCell className="text-right">
                                         <Button variant="ghost" size="sm">Ver</Button>
@@ -152,11 +154,13 @@ export function SystemErrors() {
                                             Stack Trace (Simplificado)
                                         </p>
                                         <div className="bg-slate-950 text-slate-300 p-4 rounded-md font-mono text-[10px] overflow-x-auto overflow-y-auto max-h-[40vh] whitespace-pre break-all">
-                                            {selectedError.trace.map((t: any, i: number) => (
-                                                <div key={i} className="mb-1 break-all">
-                                                    <span className="text-slate-500">#{i}</span> {t.file?.split('\\').pop()}:{t.line} - <span className="text-blue-400">{t.function}</span>()
-                                                </div>
-                                            ))}
+                                            {Array.isArray(selectedError.trace)
+                                                ? selectedError.trace.map((t: any, i: number) => (
+                                                    <div key={i} className="mb-1 break-all">
+                                                        <span className="text-slate-500">#{i}</span> {t.file?.split('\\').pop()}:{t.line} - <span className="text-blue-400">{t.function}</span>()
+                                                    </div>
+                                                ))
+                                                : String(selectedError.trace)}
                                         </div>
                                     </div>
                                 )}

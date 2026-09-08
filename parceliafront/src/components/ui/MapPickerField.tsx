@@ -31,6 +31,8 @@ L.Marker.prototype.options.icon = DefaultIcon
 export interface GeoCoords {
   lat: number
   lng: number
+  altitud?: number | null
+  precision_metros?: number | null
 }
 
 interface MapPickerFieldProps {
@@ -38,18 +40,22 @@ interface MapPickerFieldProps {
   requerido?: boolean
   value?: GeoCoords | null
   onChange: (coords: GeoCoords) => void
+  mapHeight?: number
+  readOnly?: boolean
 }
 
 // Default center: Guatemala City
 const DEFAULT_CENTER: [number, number] = [14.6349, -90.5069]
 const DEFAULT_ZOOM = 12
 
-export function MapPickerField({ label, requerido, value, onChange }: MapPickerFieldProps) {
+export function MapPickerField({ label, requerido, value, onChange, mapHeight = 320, readOnly = false }: MapPickerFieldProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const markerRef = useRef<L.Marker | null>(null)
+  const readOnlyRef = useRef(readOnly)
   const [geoStatus, setGeoStatus] = useState<'idle' | 'loading' | 'error'>('idle')
   const [copied, setCopied] = useState(false)
+  readOnlyRef.current = readOnly
 
   // Initialize map once
   useEffect(() => {
@@ -109,8 +115,9 @@ export function MapPickerField({ label, requerido, value, onChange }: MapPickerF
 
     // Place initial marker if coords exist
     if (value) {
-      const marker = L.marker([value.lat, value.lng], { draggable: true }).addTo(map)
+      const marker = L.marker([value.lat, value.lng], { draggable: !readOnlyRef.current }).addTo(map)
       marker.on('dragend', () => {
+        if (readOnlyRef.current) return
         const pos = marker.getLatLng()
         onChange({ lat: parseFloat(pos.lat.toFixed(6)), lng: parseFloat(pos.lng.toFixed(6)) })
       })
@@ -119,6 +126,7 @@ export function MapPickerField({ label, requerido, value, onChange }: MapPickerF
 
     // Click to place/move marker
     map.on('click', (e: L.LeafletMouseEvent) => {
+      if (readOnlyRef.current) return
       const { lat, lng } = e.latlng
       const coords: GeoCoords = {
         lat: parseFloat(lat.toFixed(6)),
@@ -140,7 +148,16 @@ export function MapPickerField({ label, requerido, value, onChange }: MapPickerF
 
     mapRef.current = map
 
+    const invalidate = () => map.invalidateSize()
+    const t1 = window.setTimeout(invalidate, 200)
+    const t2 = window.setTimeout(invalidate, 500)
+    const ro = new ResizeObserver(() => invalidate())
+    ro.observe(mapContainerRef.current)
+
     return () => {
+      window.clearTimeout(t1)
+      window.clearTimeout(t2)
+      ro.disconnect()
       map.remove()
       mapRef.current = null
       markerRef.current = null
@@ -176,6 +193,8 @@ export function MapPickerField({ label, requerido, value, onChange }: MapPickerF
         const coords: GeoCoords = {
           lat: parseFloat(position.coords.latitude.toFixed(6)),
           lng: parseFloat(position.coords.longitude.toFixed(6)),
+          altitud: position.coords.altitude != null ? parseFloat(position.coords.altitude.toFixed(2)) : null,
+          precision_metros: position.coords.accuracy != null ? parseFloat(position.coords.accuracy.toFixed(1)) : null,
         }
         const map = mapRef.current
         if (map) {
@@ -220,6 +239,7 @@ export function MapPickerField({ label, requerido, value, onChange }: MapPickerF
       </Label>
 
       {/* Toolbar */}
+      {!readOnly && (
       <div className="flex flex-wrap gap-2 mb-1">
         <Button
           type="button"
@@ -246,6 +266,7 @@ export function MapPickerField({ label, requerido, value, onChange }: MapPickerF
           </Button>
         )}
       </div>
+      )}
 
       {geoStatus === 'error' && (
         <p className="text-xs text-destructive">
@@ -255,14 +276,16 @@ export function MapPickerField({ label, requerido, value, onChange }: MapPickerF
 
       {/* Map container */}
       <div
-        className="rounded-lg border border-border overflow-hidden shadow-sm"
-        style={{ height: '320px', width: '100%' }}
+        className="rounded-lg border border-border overflow-hidden shadow-sm relative z-0 [&_.leaflet-pane]:!z-[1] [&_.leaflet-control]:!z-[2] [&_.leaflet-top]:!z-[2] [&_.leaflet-bottom]:!z-[2]"
+        style={{ height: `${mapHeight}px`, width: '100%' }}
       >
         <div ref={mapContainerRef} style={{ height: '100%', width: '100%' }} />
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Haz clic en el mapa para marcar la ubicación o arrastra el pin para ajustarlo.
+        {readOnly
+          ? 'Ubicación del terreno en el mapa.'
+          : 'Haz clic en el mapa para marcar la ubicación o arrastra el pin para ajustarlo.'}
       </p>
 
       {/* Coordinate display */}

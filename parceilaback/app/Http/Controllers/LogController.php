@@ -12,6 +12,13 @@ class LogController extends Controller
      */
     public function __invoke(Request $request)
     {
+        if ($request->user()?->rol !== 'superadmin') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Solo el superadmin de soporte puede leer los logs del servidor.',
+            ], 403);
+        }
+
         $path = storage_path('logs/laravel.log');
         
         if (!File::exists($path)) {

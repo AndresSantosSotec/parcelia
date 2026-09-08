@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -11,7 +11,7 @@ export function LaravelLogsViewer() {
     const [loading, setLoading] = useState(false)
     const [lines, setLines] = useState(500)
 
-    const cargarLogs = async () => {
+    const cargarLogs = useCallback(async () => {
         setLoading(true)
         try {
             const response = await auditoriaService.getLaravelLogs(lines)
@@ -26,11 +26,13 @@ export function LaravelLogsViewer() {
         } finally {
             setLoading(false)
         }
-    }
+    }, [lines])
 
     useEffect(() => {
         cargarLogs()
-    }, [lines])
+        const interval = setInterval(cargarLogs, 30000)
+        return () => clearInterval(interval)
+    }, [cargarLogs])
 
     const handleDownload = () => {
         if (!logs) return
@@ -54,7 +56,7 @@ export function LaravelLogsViewer() {
                         Logs de Laravel (laravel.log)
                     </CardTitle>
                     <CardDescription className="text-gray-400">
-                        Vista en tiempo real de los últimos registros del servidor backend.
+                        Últimas líneas de laravel.log. Se recarga cada 30 segundos para depurar caídas.
                     </CardDescription>
                 </div>
                 <div className="flex gap-2">

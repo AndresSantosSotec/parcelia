@@ -241,11 +241,21 @@ class ApiClient {
           throw errorObj
         }
         const errorMessage = data.message || data.error || `Error ${response.status}: ${response.statusText}`
-        throw new Error(errorMessage)
+        const errorObj: any = new Error(errorMessage)
+        errorObj.status = response.status
+        errorObj.errors = data.errors
+        throw errorObj
       }
 
       return data
     } catch (error: any) {
+      if (error?.status || error?.errors) {
+        throw error
+      }
+      const isNetwork = error instanceof TypeError || /failed to fetch|network|load failed/i.test(error?.message || '')
+      if (!isNetwork) {
+        throw error
+      }
       console.warn('API fetch no disponible, usando fallback mock local:', error)
       let bodyData: any = null
       if (options.body) {
@@ -1372,6 +1382,7 @@ export interface Finca {
   parcelas_count?: number
   lotes_count?: number
   lotes_disponibles_count?: number
+  activo?: boolean
   parcelas?: Parcela[]
 }
 
@@ -1403,9 +1414,44 @@ export interface Lote {
   precio_venta: number
   estado: 'disponible' | 'reservado' | 'en_negociacion' | 'vendido' | 'pagado' | 'cancelado'
   observaciones?: string
+  latitud?: number | string | null
+  longitud?: number | string | null
+  altitud?: number | string | null
+  precision_metros?: number | string | null
+  referencia_geo?: string | null
+  token_publico?: string | null
+  publicado?: boolean
   parcela?: Parcela & { finca?: Finca }
   servicios?: Array<{ id: number; nombre_servicio: string; estado: string; costo_adicional: number }>
-  imagenes?: Array<{ id: number; url: string; descripcion?: string; es_principal: boolean }>
+  imagenes?: Array<{ id: number; url: string; url_publica?: string; descripcion?: string; es_principal: boolean }>
+}
+
+export interface TerrenoPublico {
+  numero_lote: string
+  codigo_unico: string
+  area_m2: number
+  frente_metros?: number | string | null
+  fondo_metros?: number | string | null
+  colindancias?: string | null
+  tipo_terreno?: string
+  precio_venta: number | string
+  precio_m2?: number | string
+  observaciones?: string | null
+  latitud?: number | string | null
+  longitud?: number | string | null
+  altitud?: number | string | null
+  referencia_geo?: string | null
+  disponible: boolean
+  estado_comercial: string
+  proyecto?: {
+    nombre?: string | null
+    municipio?: string | null
+    departamento?: string | null
+    ubicacion?: string | null
+  }
+  parcela?: string | null
+  servicios?: Array<{ nombre: string; estado: string }>
+  imagenes?: Array<{ id?: number; url: string; descripcion?: string | null; es_principal: boolean }>
 }
 
 export const fincaService = {
@@ -1419,6 +1465,12 @@ export const fincaService = {
   },
   create: (data: Partial<Finca>) => {
     return api.post<Finca>('/fincas', data)
+  },
+  update: (id: number, data: Partial<Finca>) => {
+    return api.put<Finca>(`/fincas/${id}`, data)
+  },
+  desactivar: (id: number) => {
+    return api.post<Finca>(`/fincas/${id}/desactivar`)
   },
   createParcela: (fincaId: number, data: Partial<Parcela>) => {
     return api.post<Parcela>(`/fincas/${fincaId}/parcelas`, data)
@@ -1446,9 +1498,25 @@ export const loteService = {
   update: (id: number, data: Partial<Lote>) => {
     return api.put<Lote>(`/lotes/${id}`, data)
   },
+  eliminar: (id: number) => {
+    return api.delete(`/lotes/${id}`)
+  },
+  getPublico: (token: string) => {
+    return api.get<TerrenoPublico>(`/publico/terrenos/${token}`)
+  },
   addServicio: (loteId: number, data: any) => {
     return api.post(`/lotes/${loteId}/servicios`, data)
-  }
+  },
+  subirImagen: (loteId: number, archivo: File, extras?: { descripcion?: string; es_principal?: boolean }) => {
+    const form = new FormData()
+    form.append('archivo', archivo)
+    if (extras?.descripcion) form.append('descripcion', extras.descripcion)
+    if (extras?.es_principal) form.append('es_principal', '1')
+    return api.post(`/lotes/${loteId}/imagenes`, form)
+  },
+  eliminarImagen: (loteId: number, imagenId: number) => {
+    return api.delete(`/lotes/${loteId}/imagenes/${imagenId}`)
+  },
 }
 
 // ==========================================
@@ -1463,6 +1531,7 @@ export interface SimuladorRequest {
   plazo_meses: number
   tasa_interes_anual?: number
   fecha_primer_pago?: string
+  metodo?: 'frances' | 'aleman' | 'americano' | 'plano'
 }
 
 export interface SimuladorResponse {
@@ -1503,6 +1572,21 @@ export interface Negociacion {
   enganche_pagado: number
   monto_financiado: number
   tasa_interes_anual: number
+  parametrizacion_mora_id?: number | null
+  tipo_mora_aplicada?: string | null
+  mora_porcentaje_diario_snapshot?: number | null
+  mora_monto_fijo_diario_snapshot?: number | null
+  mora_dias_gracia_snapshot?: number | null
+  parametrizacion_mora?: {
+    id: number
+    nombre: string
+    tipo_calculo: string
+    porcentaje_diario: number
+    monto_fijo_diario: number
+    dias_gracia: number
+  } | null
+  sistema_amortizacion?: 'frances' | 'aleman' | 'americano' | 'plano' | string
+  politica_abono_extra?: 'reducir_plazo' | 'reducir_cuota' | string
   plazo_meses: number
   cuota_mensual: number
   total_intereses_proyectados: number
@@ -1518,6 +1602,7 @@ export interface Negociacion {
   estado: 'borrador' | 'reservada' | 'activa' | 'pagada_total' | 'rescindida' | 'en_mora'
   observaciones?: string
   planPagos?: any[]
+  plan_pagos?: any[]
   pagos?: any[]
 }
 
@@ -1525,18 +1610,37 @@ export const negociacionService = {
   simular: (data: SimuladorRequest) => {
     return api.post<SimuladorResponse>('/simulador/calcular', data)
   },
-  getAll: (params?: { estado?: string; cliente_id?: number }) => {
+  getAll: (params?: { estado?: string; cliente_id?: number; per_page?: number }) => {
     const query = new URLSearchParams()
     if (params?.estado && params.estado !== 'todos') query.append('estado', params.estado)
     if (params?.cliente_id) query.append('cliente_id', params.cliente_id.toString())
+    if (params?.per_page) query.append('per_page', params.per_page.toString())
     return api.get<Negociacion[]>(`/negociaciones?${query.toString()}`)
   },
   getById: (id: number) => {
     return api.get<Negociacion>(`/negociaciones/${id}`)
   },
+  getEstadoCuenta: (id: number) => {
+    return api.get<any>(`/negociaciones/${id}/estado-cuenta`)
+  },
+  descargarEstadoCuentaPdf: (id: number, codigo?: string) => {
+    return api.downloadFile(
+      `/negociaciones/${id}/estado-cuenta?formato=pdf`,
+      `EstadoCuenta_${codigo || id}.pdf`
+    )
+  },
+  descargarPlanPagosPdf: (id: number, codigo?: string) => {
+    return api.downloadFile(
+      `/negociaciones/${id}/plan-pagos-pdf`,
+      `PlanPagos_${codigo || id}.pdf`
+    )
+  },
   create: (data: any) => {
     return api.post<Negociacion>('/negociaciones', data)
-  }
+  },
+  rescindir: (id: number, motivo: string) => {
+    return api.post<Negociacion>(`/negociaciones/${id}/rescindir`, { motivo })
+  },
 }
 
 export const pagoTerrenoService = {
@@ -1557,4 +1661,46 @@ export const pagoTerrenoService = {
   }) => {
     return api.post<any>('/pagos-terrenos', data)
   }
+}
+
+export interface TasaInmobiliaria {
+  id: number
+  nombre: string
+  porcentaje_anual: number
+  tipo_calculo: 'fijo' | 'sobre_saldos' | 'interes_plano'
+  periodicidad: 'mensual' | 'quincenal' | 'anual'
+  vigencia_inicio?: string | null
+  vigencia_fin?: string | null
+  activo: boolean
+  descripcion?: string | null
+}
+
+export const tasaInmobiliariaService = {
+  getAll: (soloActivas = false) => {
+    const q = soloActivas ? '?solo_activas=1' : ''
+    return api.get<TasaInmobiliaria[]>(`/tasas-inmobiliarias${q}`)
+  },
+  create: (data: Partial<TasaInmobiliaria>) => api.post<TasaInmobiliaria>('/tasas-inmobiliarias', data),
+  update: (id: number, data: Partial<TasaInmobiliaria>) => api.put<TasaInmobiliaria>(`/tasas-inmobiliarias/${id}`, data),
+  desactivar: (id: number) => api.post<TasaInmobiliaria>(`/tasas-inmobiliarias/${id}/desactivar`),
+}
+
+export interface ParametrizacionMoraInmo {
+  id: number
+  nombre: string
+  tipo_calculo: 'porcentaje_capital_vencido' | 'monto_fijo_diario'
+  porcentaje_diario: number
+  monto_fijo_diario: number
+  dias_gracia: number
+  activo: boolean
+  descripcion?: string | null
+}
+
+export const moraInmobiliariaService = {
+  getAll: (soloActivas = false) => {
+    const q = soloActivas ? '?solo_activas=1' : ''
+    return api.get<ParametrizacionMoraInmo[]>(`/parametrizacion-mora-inmobiliaria${q}`)
+  },
+  create: (data: Partial<ParametrizacionMoraInmo>) => api.post<ParametrizacionMoraInmo>('/parametrizacion-mora-inmobiliaria', data),
+  update: (id: number, data: Partial<ParametrizacionMoraInmo>) => api.put<ParametrizacionMoraInmo>(`/parametrizacion-mora-inmobiliaria/${id}`, data),
 }

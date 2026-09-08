@@ -167,19 +167,21 @@ export function SimuladorModule(_props: SimuladorModuleProps = {}) {
   return (
     <div className="space-y-6 animate-fade-in-up pb-10">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card/70 backdrop-blur-md p-6 rounded-2xl border border-border/80 shadow-sm">
-        <div>
-          <div className="flex items-center gap-2">
-            <Calculator size={28} className="text-primary" weight="duotone" />
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Simulador de Financiamiento de Terrenos</h1>
+      <div className="page-toolbar bg-card/70 backdrop-blur-md p-4 sm:p-6 rounded-2xl border border-border/80 shadow-sm">
+        <div className="min-w-0">
+          <div className="flex items-start gap-2">
+            <Calculator size={24} className="text-primary shrink-0 mt-0.5" weight="duotone" />
+            <h1 className="font-bold tracking-tight text-foreground">Simulador de Financiamiento de Terrenos</h1>
           </div>
           <p className="text-muted-foreground text-sm">
             Cotizador interactivo en tiempo real con amortización sobre saldos, cálculo de cuotas y emisión de cotizaciones oficiales.
           </p>
         </div>
-        <Button onClick={handleImprimirCotizacion} className="gap-2 shadow-sm">
-          <Printer size={16} /> Imprimir Cotización
-        </Button>
+        <div className="page-toolbar-actions">
+          <Button onClick={handleImprimirCotizacion} className="gap-2 shadow-sm">
+            <Printer size={16} /> Imprimir Cotización
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -279,6 +281,20 @@ export function SimuladorModule(_props: SimuladorModuleProps = {}) {
                     onChange={(e) => setGastosAdmin(parseFloat(e.target.value) || 0)}
                   />
                 </div>
+              </div>
+
+              {/* Sistema de amortización */}
+              <div className="space-y-1">
+                <Label className="text-xs">Sistema de amortización</Label>
+                <select
+                  value={metodo}
+                  onChange={(e) => setMetodo(e.target.value)}
+                  className="w-full bg-background border rounded-lg p-2 text-xs font-semibold"
+                >
+                  <option value="frances">Francés (cuota fija) — recomendado</option>
+                  <option value="aleman">Alemán (capital fijo, cuota decreciente)</option>
+                  <option value="americano">Americano (intereses + capital al final)</option>
+                </select>
               </div>
 
               {/* Plazo y Tasa */}

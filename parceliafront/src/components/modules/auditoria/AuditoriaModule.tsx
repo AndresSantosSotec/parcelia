@@ -433,11 +433,47 @@ export function AuditoriaModule() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2">
             <ShieldCheck size={32} weight="duotone" />
-            Auditoría del Sistema
+            Auditoría y soporte
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground">
-            Supervisión y seguimiento de todas las operaciones del sistema
+            Depuración rápida: bitácora de operaciones, errores HTTP y terminal Laravel. Exclusivo del superadmin de soporte.
           </p>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <Button size="sm" variant={activeTab === 'errores' ? 'default' : 'outline'} onClick={() => setActiveTab('errores')}>
+              Errores HTTP
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setActiveTab('operaciones'); handleFiltrarModulo('fincas') }}
+            >
+              Fincas
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setActiveTab('operaciones'); handleFiltrarModulo('negociaciones') }}
+            >
+              Negociaciones
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setActiveTab('operaciones'); handleFiltrarModulo('pagos_terreno') }}
+            >
+              Pagos
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setActiveTab('operaciones'); handleFiltrarModulo('caja') }}
+            >
+              Caja
+            </Button>
+            <Button size="sm" variant={activeTab === 'laravel' ? 'default' : 'outline'} onClick={() => setActiveTab('laravel')}>
+              Terminal Laravel
+            </Button>
+          </div>
         </div>
         <div className="flex gap-2 bg-muted p-1 rounded-lg">
           <Button

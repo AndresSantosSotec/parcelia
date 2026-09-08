@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->api(prepend: [
             \App\Http\Middleware\HandleCors::class,
             \App\Http\Middleware\SecurityHeaders::class,
+            \App\Http\Middleware\BlockDisabledEmpenos::class,
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
             \App\Http\Middleware\CompressResponse::class,
             \App\Http\Middleware\CacheGetRequests::class,
@@ -27,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'throttle.downloads' => \App\Http\Middleware\ThrottleDownloads::class,
             'sucursal.scope' => \App\Http\Middleware\SucursalScope::class,
             'superadmin' => \App\Http\Middleware\EnsureSuperAdmin::class,
+            'permiso' => \App\Http\Middleware\EnsureModulePermission::class,
         ]);
 
         $middleware->validateCsrfTokens(except: [

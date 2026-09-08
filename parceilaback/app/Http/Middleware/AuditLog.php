@@ -1,0 +1,497 @@
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpFoundation\Response;
+use App\Models\AuditoriaLog;
+
+class AuditLog
+{
+    /**
+     * Rutas que NO deben auditarse (para evitar ruido)
+     */
+    private const EXCLUDED_ROUTES = [
+        'api/v1/ping',
+        'api/v1/health',
+        'api/v1/version',
+        'api/v1/BD',
+        'api/ping',
+        'sanctum/csrf-cookie',
+        'api/v1/auditoria', // No auditar consultas de auditoría
+    ];
+
+    /**
+     * Métodos que representan cambios en datos (siempre auditar)
+     */
+    private const MUTATING_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'];
+
+    /**
+     * Rutas GET que también se auditan (descargas, exportaciones, reportes)
+     */
+    private const AUDITABLE_GET_PATTERNS = [
+        '/exportar',
+        '/pdf',
+        '/excel',
+        '/reporte',
+        '/descargar',
+        '/ficha',
+    ];
+
+    public function handle(Request $request, Closure $next): Response
+    {
+        // Solo auditar si está habilitado en config
+        if (!config('app.security.enable_audit_log', true)) {
+            return $next($request);
+        }
+
+        $startTime = microtime(true);
+
+        // Capturar datos del registro antes de que sea modificado o eliminado por la solicitud
+        $datosAnteriores = $this->capturarDatosAnteriores($request);
+
+        // Ejecutar request
+        $response = $next($request);
+
+        $endTime = microtime(true);
+        $duration = round(($endTime - $startTime) * 1000, 2);
+
+        // Determinar si debe auditarse
+        if ($this->shouldAudit($request)) {
+            $this->guardarAuditoria($request, $response, $duration, $datosAnteriores);
+        }
+
+        return $response;
+    }
+
+    /**
+     * Determinar si la request debe ser auditada
+     */
+    private function shouldAudit(Request $request): bool
+    {
+        $path = $request->path();
+        $method = $request->method();
+
+        // Excluir rutas específicas
+        foreach (self::EXCLUDED_ROUTES as $route) {
+            if (str_starts_with($path, $route) || str_contains($path, $route)) {
+                return false;
+            }
+        }
+
+        // Siempre auditar métodos que cambian datos
+        if (in_array($method, self::MUTATING_METHODS)) {
+            return true;
+        }
+
+        // Para GET, auditar descargas y exportaciones
+        if ($method === 'GET') {
+            foreach (self::AUDITABLE_GET_PATTERNS as $pattern) {
+                if (str_contains(strtolower($path), strtolower($pattern))) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Guardar auditoría en base de datos
+     */
+    private function guardarAuditoria(Request $request, Response $response, float $duration, ?array $datosAnteriores = null): void
+    {
+        try {
+            $user = Auth::user();
+            $path = $request->path();
+            $method = $request->method();
+            $statusCode = $response->getStatusCode();
+
+            // Extraer módulo y acción
+            [$modulo, $accion] = $this->extraerModuloAccion($path, $method);
+
+            // Sanitizar datos de entrada
+            $datosRequest = $this->sanitizeInput($request->except([
+                'password', 'password_confirmation', 'current_password',
+                'new_password', 'token', 'api_token', '_token',
+            ]));
+
+            // Si es un error (código de estado >= 400), capturar el detalle de la respuesta para facilitar la depuración
+            if ($statusCode >= 400) {
+                $decoded = null;
+                try {
+                    $content = $response->getContent();
+                    $decoded = json_decode($content, true);
+                    if (is_array($decoded)) {
+                        $datosRequest['_error_respuesta'] = [
+                            'mensaje' => $decoded['message'] ?? $decoded['error'] ?? 'Sin mensaje de error en la respuesta.',
+                            'errores_validacion' => $decoded['errors'] ?? null,
+                            'transiciones_validas' => $decoded['transiciones_validas'] ?? null,
+                        ];
+                    } else {
+                        $datosRequest['_error_respuesta'] = [
+                            'mensaje' => substr($content, 0, 1000) ?: 'Respuesta vacía o formato desconocido.',
+                        ];
+                    }
+                } catch (\Exception $respEx) {
+                    $datosRequest['_error_respuesta'] = [
+                        'mensaje' => 'No se pudo parsear el cuerpo de la respuesta de error: ' . $respEx->getMessage(),
+                    ];
+                }
+
+                // Generar y agregar diagnóstico sugerido para la IA y el Administrador
+                $datosRequest['_error_respuesta']['diagnostico_sugerido'] = $this->generarDiagnosticoSugerido(
+                    $statusCode,
+                    $method,
+                    $path,
+                    $decoded,
+                    $datosRequest
+                );
+            }
+
+            // Generar descripción
+            $descripcion = $this->generarDescripcion($method, $path, $statusCode, $duration, $request);
+
+            // Guardar en BD
+            AuditoriaLog::create([
+                'user_id' => $user?->id,
+                'sucursal_id' => $user?->sucursal_id ?? session('sucursal_activa'),
+                'modulo' => $modulo,
+                'accion' => $accion,
+                'descripcion' => $descripcion,
+                'tabla' => $this->extraerTabla($path),
+                'registro_id' => $this->extraerRegistroId($path),
+                'datos_anteriores' => $datosAnteriores,
+                'datos_nuevos' => (!empty($datosRequest) && (in_array($method, ['POST', 'PUT', 'PATCH']) || $statusCode >= 400))
+                    ? $datosRequest
+                    : null,
+                'ip_address' => $request->ip(),
+                'user_agent' => substr($request->userAgent() ?? '', 0, 500),
+                'metodo_http' => $method,
+                'url' => substr($request->fullUrl(), 0, 2000),
+                'codigo_respuesta' => $statusCode,
+                'tiempo_respuesta_ms' => $duration,
+            ]);
+
+            // También log de archivo para respaldo
+            $this->logToFile($request, $response, $duration, $user, $modulo, $accion);
+
+        } catch (\Exception $e) {
+            Log::error('Error guardando auditoría: ' . $e->getMessage(), [
+                'path' => $request->path(),
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Extraer módulo y acción desde la ruta
+     */
+    private function extraerModuloAccion(string $path, string $method): array
+    {
+        // Remover prefijo api/v1/
+        $cleanPath = preg_replace('/^api\/v1\//', '', $path);
+        $segmentos = explode('/', $cleanPath);
+        $recurso = $segmentos[0] ?? 'sistema';
+
+        // Mapeo de módulos
+        $modulosMap = [
+            'auth' => 'autenticacion',
+            'usuarios' => 'usuarios',
+            'clientes' => 'clientes',
+            'creditos-prendarios' => 'creditos',
+            'prendas' => 'prendas',
+            'ventas' => 'ventas',
+            'compras' => 'compras',
+            'bovedas' => 'boveda',
+            'bovedas-movimientos' => 'boveda',
+            'caja' => 'caja',
+            'recibos' => 'recibos',
+            'categorias-productos' => 'categorias',
+            'sucursales' => 'sucursales',
+            'gastos' => 'gastos',
+            'reportes' => 'reportes',
+            'dashboard' => 'dashboard',
+            'permisos' => 'permisos',
+            'codigos-prereservados' => 'codigos',
+            'geonames' => 'geonames',
+            'chatbot' => 'chatbot',
+        ];
+
+        $modulo = $modulosMap[$recurso] ?? $recurso;
+
+        // Determinar acción según método y path
+        $accion = match ($method) {
+            'POST' => $this->determinarAccionPost($cleanPath),
+            'PUT', 'PATCH' => 'actualizar',
+            'DELETE' => 'eliminar',
+            'GET' => $this->determinarAccionGet($cleanPath),
+            default => strtolower($method),
+        };
+
+        return [$modulo, $accion];
+    }
+
+    /**
+     * Determinar acción específica para POST
+     */
+    private function determinarAccionPost(string $path): string
+    {
+        $pathLower = strtolower($path);
+
+        $acciones = [
+            'login' => 'login',
+            'logout' => 'logout',
+            'pagar' => 'pago',
+            'pagos' => 'pago',
+            'aprobar' => 'aprobar',
+            'rechazar' => 'rechazar',
+            'anular' => 'anular',
+            'toggle' => 'cambiar_estado',
+            'movimientos' => 'movimiento',
+            'cambiar-sucursal' => 'cambio_sucursal',
+            'cambiar-password' => 'cambio_password',
+            'foto' => 'subir_foto',
+            'simular' => 'simular',
+            'preliminar' => 'generar_documento',
+            'reactivar' => 'reactivar',
+            'reservar' => 'reservar',
+            'liberar' => 'liberar',
+            'refresh' => 'refresh_token',
+            'desembolsar' => 'desembolsar',
+            'recalcular' => 'recalcular',
+            'sync' => 'sincronizar',
+            'calcular' => 'calcular',
+            'restaurar' => 'restaurar',
+            'abrir' => 'apertura',
+            'cerrar' => 'cierre',
+        ];
+
+        foreach ($acciones as $patern => $accion) {
+            if (str_contains($pathLower, $patern)) {
+                return $accion;
+            }
+        }
+
+        return 'crear';
+    }
+
+    /**
+     * Determinar acción específica para GET
+     */
+    private function determinarAccionGet(string $path): string
+    {
+        $pathLower = strtolower($path);
+
+        if (str_contains($pathLower, 'pdf')) return 'exportar_pdf';
+        if (str_contains($pathLower, 'excel')) return 'exportar_excel';
+        if (str_contains($pathLower, 'exportar')) return 'exportar';
+        if (str_contains($pathLower, 'reporte')) return 'generar_reporte';
+        if (str_contains($pathLower, 'descargar')) return 'descargar';
+        if (str_contains($pathLower, 'ficha')) return 'consultar_ficha';
+
+        return 'consultar';
+    }
+
+    /**
+     * Extraer nombre de tabla desde la ruta
+     */
+    private function extraerTabla(string $path): ?string
+    {
+        $cleanPath = preg_replace('/^api\/v1\//', '', $path);
+        $segmentos = explode('/', $cleanPath);
+        $recurso = $segmentos[0] ?? null;
+
+        $tablasMap = [
+            'usuarios' => 'users',
+            'clientes' => 'clientes',
+            'creditos-prendarios' => 'creditos_prendarios',
+            'prendas' => 'prendas',
+            'ventas' => 'ventas',
+            'compras' => 'compras',
+            'bovedas' => 'bovedas',
+            'bovedas-movimientos' => 'boveda_movimientos',
+            'caja' => 'caja_apertura_cierres',
+            'recibos' => 'recibos',
+            'categorias-productos' => 'categoria_productos',
+            'sucursales' => 'sucursales',
+            'gastos' => 'gastos',
+        ];
+
+        return $tablasMap[$recurso] ?? null;
+    }
+
+    /**
+     * Extraer ID del registro desde la URL
+     */
+    private function extraerRegistroId(string $path): ?string
+    {
+        if (preg_match('/\/(\d+)(?:\/|$)/', $path, $matches)) {
+            return $matches[1];
+        }
+        return null;
+    }
+
+    /**
+     * Generar descripción legible
+     */
+    private function generarDescripcion(string $method, string $path, int $statusCode, float $tiempo, Request $request): string
+    {
+        $accionTexto = match ($method) {
+            'GET' => 'Consulta/Descarga',
+            'POST' => 'Creación/Acción',
+            'PUT', 'PATCH' => 'Actualización',
+            'DELETE' => 'Eliminación',
+            default => $method,
+        };
+
+        $estado = ($statusCode >= 200 && $statusCode < 300) ? 'exitosa' : "fallida (HTTP {$statusCode})";
+
+        // Simplificar ruta
+        $rutaSimple = preg_replace('/^api\/v1\//', '', $path);
+        $rutaSimple = preg_replace('/\/\d+/', '/{id}', $rutaSimple);
+
+        // Agregar contexto específico
+        $contexto = '';
+        if ($method === 'POST' && str_contains($path, 'login')) {
+            $contexto = ' - Usuario: ' . ($request->input('email') ?? $request->input('username') ?? 'N/A');
+        } elseif (str_contains($path, 'pago') || str_contains($path, 'pagar')) {
+            $monto = $request->input('monto') ?? $request->input('monto_pago');
+            if ($monto) $contexto = " - Monto: Q{$monto}";
+        }
+
+        return "{$accionTexto} {$estado} en /{$rutaSimple}{$contexto} ({$tiempo}ms)";
+    }
+
+    /**
+     * Sanitizar datos de entrada
+     */
+    private function sanitizeInput(array $input): array
+    {
+        $sensitiveFields = [
+            'password', 'password_confirmation', 'token', 'api_key',
+            'secret', 'credential', 'current_password', 'new_password'
+        ];
+
+        $result = [];
+        foreach ($input as $key => $value) {
+            if (in_array(strtolower($key), $sensitiveFields)) {
+                continue; // No incluir campos sensibles
+            }
+
+            if (is_string($value) && strlen($value) > 500) {
+                $result[$key] = substr($value, 0, 500) . '...[truncado]';
+            } elseif (is_array($value)) {
+                $result[$key] = $this->sanitizeInput($value);
+            } else {
+                $result[$key] = $value;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Log de respaldo en archivo
+     */
+    private function logToFile(Request $request, Response $response, float $duration, $user, string $modulo, string $accion): void
+    {
+        $logData = [
+            'user_id' => $user?->id,
+            'user_email' => $user?->email,
+            'modulo' => $modulo,
+            'accion' => $accion,
+            'method' => $request->method(),
+            'path' => $request->path(),
+            'ip' => $request->ip(),
+            'status_code' => $response->getStatusCode(),
+            'duration_ms' => $duration,
+            'timestamp' => now()->toIso8601String(),
+        ];
+
+        $statusCode = $response->getStatusCode();
+        if ($statusCode >= 500) {
+            Log::error('AUDIT: Server Error', $logData);
+        } elseif ($statusCode >= 400) {
+            Log::warning('AUDIT: Client Error', $logData);
+        } else {
+            Log::info('AUDIT: Success', $logData);
+        }
+    }
+
+    /**
+     * Capturar datos anteriores de un registro antes de ser modificado o eliminado
+     */
+    private function capturarDatosAnteriores(Request $request): ?array
+    {
+        try {
+            $method = $request->method();
+            if (!in_array($method, ['PUT', 'PATCH', 'DELETE'])) {
+                return null;
+            }
+
+            $path = $request->path();
+            $tabla = $this->extraerTabla($path);
+            $id = $this->extraerRegistroId($path);
+
+            if ($tabla && $id) {
+                $registro = \Illuminate\Support\Facades\DB::table($tabla)->find($id);
+                if ($registro) {
+                    // Convertir a array y sanitizar campos sensibles
+                    return $this->sanitizeInput((array) $registro);
+                }
+            }
+        } catch (\Exception $e) {
+            Log::warning('Error capturando datos anteriores en AuditLog middleware: ' . $e->getMessage());
+        }
+
+        return null;
+    }
+
+    /**
+     * Generar un diagnóstico y recomendación de solución para el administrador o la IA
+     */
+    private function generarDiagnosticoSugerido(int $statusCode, string $method, string $path, ?array $decodedResponse, ?array $requestData): string
+    {
+        if ($statusCode === 422) {
+            $msg = $decodedResponse['message'] ?? '';
+            if (str_contains(strtolower($msg), 'caja abierta') || str_contains(strtolower($msg), 'apertura')) {
+                return "El usuario no tiene una caja abierta en esta sucursal. Vaya a 'Caja -> Apertura de Caja' antes de realizar esta operación.";
+            }
+            $errors = $decodedResponse['errors'] ?? [];
+            if (!empty($errors)) {
+                $campos = implode(', ', array_keys($errors));
+                return "Error de validación en los campos: {$campos}. Verifique que los valores ingresados cumplan con las reglas de negocio (ej. formatos, campos requeridos, valores positivos).";
+            }
+            return "Error de validación o regla de negocio. Verifique el mensaje de error del servidor.";
+        }
+
+        if ($statusCode === 400) {
+            $msg = $decodedResponse['message'] ?? '';
+            if (str_contains($msg, 'No se puede cambiar de estado')) {
+                $transiciones = isset($decodedResponse['transiciones_validas']) 
+                    ? implode(', ', $decodedResponse['transiciones_validas']) 
+                    : 'ninguna';
+                return "Transición de estado inválida. Para cambiar el estado de este crédito, debe usar la acción del flujo correspondiente (ej. Pagar, Renovar, Anular, o Reactivar) en lugar del formulario general de edición. Transiciones permitidas desde el estado anterior: [{$transiciones}].";
+            }
+            return "Solicitud incorrecta (HTTP 400). Verifique los datos enviados.";
+        }
+
+        if ($statusCode === 403) {
+            return "Error de Permisos (HTTP 403). El usuario no cuenta con los permisos necesarios para realizar esta acción o modificar este campo (ej. modificar tasa de interés o mora).";
+        }
+
+        if ($statusCode === 401) {
+            return "Sesión expirada o no autenticada (HTTP 401). Vuelva a iniciar sesión en la plataforma.";
+        }
+
+        if ($statusCode >= 500) {
+            return "Error interno del servidor (HTTP {$statusCode}). Revise la pestaña 'Errores de Servidor' o los logs de Laravel para obtener el stack trace de la excepción y diagnosticar la falla.";
+        }
+
+        return "Verifique los datos ingresados e intente nuevamente.";
+    }
+}

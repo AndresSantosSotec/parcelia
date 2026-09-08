@@ -1,0 +1,1 @@
+export { CotizacionesModule } from './CotizacionesModule'

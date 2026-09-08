@@ -1,0 +1,433 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Contabilidad\CtbDiario;
+use App\Models\Contabilidad\CtbMovimiento;
+use App\Models\Contabilidad\CtbNomenclatura;
+use App\Models\Contabilidad\CtbTipoPoliza;
+use App\Models\CreditoMovimiento;
+use App\Models\Venta;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+class ContabilidadService
+{
+    /**
+     * Generar asiento contable automáticamente según el tipo de operación
+     */
+    public function generarAsientoAutomatico($origen, string $tipoOperacion)
+    {
+        try {
+            DB::beginTransaction();
+
+            $asiento = match ($tipoOperacion) {
+                'desembolso_credito' => $this->generarAsientoDesembolso($origen),
+                'pago_credito' => $this->generarAsientoPago($origen),
+                'venta_prenda' => $this->generarAsientoVenta($origen),
+                'compra_directa' => $this->generarAsientoCompra($origen),
+                default => throw new \Exception("Tipo de operación no soportado: {$tipoOperacion}")
+            };
+
+            // Validar que cuadre
+            if (!$asiento->validarCuadre()) {
+                throw new \Exception('El asiento no cuadra. Total Debe != Total Haber');
+            }
+
+            DB::commit();
+
+            Log::info("Asiento contable generado: {$asiento->numero_comprobante}", [
+                'asiento_id' => $asiento->id,
+                'tipo_operacion' => $tipoOperacion,
+            ]);
+
+            return $asiento;
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("Error al generar asiento contable: " . $e->getMessage(), [
+                'tipo_operacion' => $tipoOperacion,
+                'exception' => $e,
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Generar asiento de desembolso de crédito
+     *
+     * DEBE: Créditos Prendarios por Cobrar
+     * HABER: Caja General / Banco
+     */
+    public function generarAsientoDesembolso(CreditoMovimiento $movimiento)
+    {
+        $credito = $movimiento->creditoPrendario;
+        $formaPago = $movimiento->forma_pago ?? 'efectivo';
+
+        // Obtener el tipo de póliza "PE" (Póliza de Egresos)
+        $tipoPoliza = CtbTipoPoliza::porCodigo('PE')->first();
+
+        if (!$tipoPoliza) {
+            throw new \Exception('No se encontró el tipo de póliza PE (Póliza de Egresos)');
+        }
+
+        // Crear el asiento
+        $diario = CtbDiario::create([
+            'numero_comprobante' => CtbDiario::generarNumeroComprobante('PE', $movimiento->sucursal_id),
+            'tipo_poliza_id' => $tipoPoliza->id,
+            'moneda_id' => $credito->moneda_id ?? 1,
+            'tipo_origen' => 'credito_prendario',
+            'credito_prendario_id' => $movimiento->credito_prendario_id,
+            'movimiento_credito_id' => $movimiento->id,
+            'numero_documento' => $movimiento->numero_recibo ?? $movimiento->numero_movimiento,
+            'glosa' => "Desembolso de crédito prendario {$credito->numero_credito} - Cliente: {$credito->cliente->nombre_completo}",
+            'fecha_documento' => $movimiento->fecha_movimiento,
+            'fecha_contabilizacion' => now()->toDateString(),
+            'sucursal_id' => $movimiento->sucursal_id,
+            'usuario_id' => $movimiento->usuario_id,
+            'estado' => 'registrado',
+            'editable' => false,
+        ]);
+
+        // DEBE: Créditos Prendarios por Cobrar
+        $cuentaCreditos = $this->obtenerCuenta('1101.02.001');
+        CtbMovimiento::create([
+            'diario_id' => $diario->id,
+            'cuenta_contable_id' => $cuentaCreditos->id,
+            'debe' => $movimiento->monto_total,
+            'haber' => 0,
+            'numero_comprobante' => $diario->numero_comprobante,
+            'detalle' => "Desembolso crédito {$credito->numero_credito}",
+            'cliente_id' => $credito->cliente_id,
+        ]);
+
+        // HABER: Caja General o Banco (según forma de desembolso)
+        $cuentaEgreso = $this->determinarCuentaEgreso($formaPago);
+        CtbMovimiento::create([
+            'diario_id' => $diario->id,
+            'cuenta_contable_id' => $cuentaEgreso->id,
+            'debe' => 0,
+            'haber' => $movimiento->monto_total,
+            'numero_comprobante' => $diario->numero_comprobante,
+            'detalle' => "Desembolso crédito {$credito->numero_credito} - {$formaPago}",
+        ]);
+
+        return $diario;
+    }
+
+    /**
+     * Generar asiento de pago de crédito
+     *
+     * DEBE: Caja General / Banco
+     * HABER: Créditos Prendarios por Cobrar (capital)
+     * HABER: Intereses sobre Créditos (intereses)
+     * HABER: Mora sobre Créditos (mora)
+     */
+    public function generarAsientoPago(CreditoMovimiento $movimiento)
+    {
+        $credito = $movimiento->creditoPrendario;
+
+        // Obtener el tipo de póliza "PI" (Póliza de Ingresos)
+        $tipoPoliza = CtbTipoPoliza::porCodigo('PI')->first();
+
+        if (!$tipoPoliza) {
+            throw new \Exception('No se encontró el tipo de póliza PI (Póliza de Ingresos)');
+        }
+
+        // Crear el asiento
+        $diario = CtbDiario::create([
+            'numero_comprobante' => CtbDiario::generarNumeroComprobante('PI', $movimiento->sucursal_id),
+            'tipo_poliza_id' => $tipoPoliza->id,
+            'moneda_id' => $credito->moneda_id ?? 1,
+            'tipo_origen' => 'credito_prendario',
+            'credito_prendario_id' => $movimiento->credito_prendario_id,
+            'movimiento_credito_id' => $movimiento->id,
+            'numero_documento' => $movimiento->numero_recibo ?? $movimiento->numero_movimiento,
+            'glosa' => "Pago de crédito prendario {$credito->numero_credito} - Cliente: {$credito->cliente->nombre_completo}",
+            'fecha_documento' => $movimiento->fecha_movimiento,
+            'fecha_contabilizacion' => now()->toDateString(),
+            'sucursal_id' => $movimiento->sucursal_id,
+            'usuario_id' => $movimiento->usuario_id,
+            'estado' => 'registrado',
+            'editable' => false,
+        ]);
+
+        // DEBE: Caja General o Banco (según forma de pago)
+        $formaPago = $movimiento->forma_pago ?? 'efectivo';
+        $cuentaIngreso = $this->determinarCuentaIngreso($formaPago);
+        CtbMovimiento::create([
+            'diario_id' => $diario->id,
+            'cuenta_contable_id' => $cuentaIngreso->id,
+            'debe' => $movimiento->monto_total,
+            'haber' => 0,
+            'numero_comprobante' => $diario->numero_comprobante,
+            'detalle' => "Pago crédito {$credito->numero_credito} - {$formaPago}",
+        ]);
+
+        // HABER: Créditos Prendarios por Cobrar (capital)
+        if ($movimiento->capital > 0) {
+            $cuentaCreditos = $this->obtenerCuenta('1101.02.001');
+            CtbMovimiento::create([
+                'diario_id' => $diario->id,
+                'cuenta_contable_id' => $cuentaCreditos->id,
+                'debe' => 0,
+                'haber' => $movimiento->capital,
+                'numero_comprobante' => $diario->numero_comprobante,
+                'detalle' => "Pago capital crédito {$credito->numero_credito}",
+                'cliente_id' => $credito->cliente_id,
+            ]);
+        }
+
+        // HABER: Intereses sobre Créditos Prendarios
+        if ($movimiento->interes > 0) {
+            $cuentaIntereses = $this->obtenerCuenta('4101.01');
+            CtbMovimiento::create([
+                'diario_id' => $diario->id,
+                'cuenta_contable_id' => $cuentaIntereses->id,
+                'debe' => 0,
+                'haber' => $movimiento->interes,
+                'numero_comprobante' => $diario->numero_comprobante,
+                'detalle' => "Intereses crédito {$credito->numero_credito}",
+                'cliente_id' => $credito->cliente_id,
+            ]);
+        }
+
+        // HABER: Mora sobre Créditos
+        if ($movimiento->mora > 0) {
+            $cuentaMora = $this->obtenerCuenta('4101.02');
+            CtbMovimiento::create([
+                'diario_id' => $diario->id,
+                'cuenta_contable_id' => $cuentaMora->id,
+                'debe' => 0,
+                'haber' => $movimiento->mora,
+                'numero_comprobante' => $diario->numero_comprobante,
+                'detalle' => "Mora crédito {$credito->numero_credito}",
+                'cliente_id' => $credito->cliente_id,
+            ]);
+        }
+
+        // HABER: Otros cargos (si aplica)
+        if ($movimiento->otros_cargos > 0) {
+            $cuentaComisiones = $this->obtenerCuenta('4101.03');
+            CtbMovimiento::create([
+                'diario_id' => $diario->id,
+                'cuenta_contable_id' => $cuentaComisiones->id,
+                'debe' => 0,
+                'haber' => $movimiento->otros_cargos,
+                'numero_comprobante' => $diario->numero_comprobante,
+                'detalle' => "Otros cargos crédito {$credito->numero_credito}",
+                'cliente_id' => $credito->cliente_id,
+            ]);
+        }
+
+        return $diario;
+    }
+
+    /**
+     * Generar asiento de venta de prenda
+     *
+     * DEBE: Caja General
+     * DEBE: Costo de Prendas Vendidas
+     * HABER: Venta de Prendas
+     * HABER: Prendas para Venta (inventario)
+     */
+    public function generarAsientoVenta(Venta $venta)
+    {
+        // Obtener el tipo de póliza "PI" (Póliza de Ingresos)
+        $tipoPoliza = CtbTipoPoliza::porCodigo('PI')->first();
+
+        if (!$tipoPoliza) {
+            throw new \Exception('No se encontró el tipo de póliza PI (Póliza de Ingresos)');
+        }
+
+        /** @var \App\Models\CtbTipoPoliza $tipoPoliza */
+        // Crear el asiento
+        $diario = CtbDiario::create([
+            'numero_comprobante' => CtbDiario::generarNumeroComprobante('PI', $venta->sucursal_id),
+            'tipo_poliza_id' => $tipoPoliza->id,
+            'moneda_id' => $venta->moneda_id ?? 1,
+            'tipo_origen' => 'venta_prenda',
+            'venta_id' => $venta->id,
+            'numero_documento' => $venta->codigo_venta ?? "VENTA-{$venta->id}",
+            'glosa' => "Venta de prenda - Documento {$venta->codigo_venta}",
+            'fecha_documento' => $venta->fecha_venta ?? now(),
+            'fecha_contabilizacion' => now()->toDateString(),
+            'sucursal_id' => $venta->sucursal_id,
+            'usuario_id' => $venta->vendedor_id ?? Auth::id(),
+            'estado' => 'registrado',
+            'editable' => false,
+        ]);
+
+        // DEBE: Caja General (total de la venta)
+        $cuentaCaja = $this->obtenerCuenta('1101.01.001');
+        CtbMovimiento::create([
+            'diario_id' => $diario->id,
+            'cuenta_contable_id' => $cuentaCaja->id,
+            'debe' => $venta->total_final,
+            'haber' => 0,
+            'numero_comprobante' => $diario->numero_comprobante,
+            'detalle' => "Venta {$venta->numero_documento}",
+        ]);
+
+        // DEBE: Costo de Prendas Vendidas (precio de costo)
+        if (isset($venta->costo_total) && $venta->costo_total > 0) {
+            $cuentaCosto = $this->obtenerCuenta('6101');
+            CtbMovimiento::create([
+                'diario_id' => $diario->id,
+                'cuenta_contable_id' => $cuentaCosto->id,
+                'debe' => $venta->costo_total,
+                'haber' => 0,
+                'numero_comprobante' => $diario->numero_comprobante,
+                'detalle' => "Costo venta {$venta->numero_documento}",
+            ]);
+        }
+
+        // HABER: Venta de Prendas (ingreso por venta)
+        $cuentaVentas = $this->obtenerCuenta('4101.04');
+        CtbMovimiento::create([
+            'diario_id' => $diario->id,
+            'cuenta_contable_id' => $cuentaVentas->id,
+            'debe' => 0,
+            'haber' => $venta->total_final,
+            'numero_comprobante' => $diario->numero_comprobante,
+            'detalle' => "Venta {$venta->numero_documento}",
+        ]);
+
+        // HABER: Prendas para Venta (salida de inventario)
+        if (isset($venta->costo_total) && $venta->costo_total > 0) {
+            $cuentaInventario = $this->obtenerCuenta('1101.03.002');
+            CtbMovimiento::create([
+                'diario_id' => $diario->id,
+                'cuenta_contable_id' => $cuentaInventario->id,
+                'debe' => 0,
+                'haber' => $venta->costo_total,
+                'numero_comprobante' => $diario->numero_comprobante,
+                'detalle' => "Salida inventario venta {$venta->numero_documento}",
+            ]);
+        }
+
+        return $diario;
+    }
+
+    /**
+     * Generar asiento de compra directa (entrada al inventario)
+     *
+     * DEBE: Inventario de Prendas para Venta (entrada al activo)
+     * HABER: Caja General / Banco (salida de efectivo)
+     */
+    public function generarAsientoCompra($compra)
+    {
+        // Obtener el tipo de póliza "PC" (Póliza de Compras)
+        $tipoPoliza = CtbTipoPoliza::porCodigo('PC')->first();
+
+        if (!$tipoPoliza) {
+            // Usar PE (Egresos) como alternativa
+            $tipoPoliza = CtbTipoPoliza::porCodigo('PE')->first();
+        }
+
+        if (!$tipoPoliza) {
+            throw new \Exception('No se encontró el tipo de póliza PC o PE para compras');
+        }
+
+        // Crear el asiento
+        $diario = CtbDiario::create([
+            'numero_comprobante' => CtbDiario::generarNumeroComprobante($tipoPoliza->codigo, $compra->sucursal_id),
+            'tipo_poliza_id' => $tipoPoliza->id,
+            'moneda_id' => $compra->moneda_id ?? 1,
+            'tipo_origen' => 'compra',
+            'compra_id' => $compra->id,
+            'numero_documento' => $compra->numero_compra ?? "COMPRA-{$compra->id}",
+            'glosa' => "Compra directa - " . ($compra->descripcion ?? "Documento {$compra->numero_compra}"),
+            'fecha_documento' => $compra->fecha_compra ?? now(),
+            'fecha_contabilizacion' => now()->toDateString(),
+            'sucursal_id' => $compra->sucursal_id,
+            'usuario_id' => $compra->usuario_id ?? Auth::id(),
+            'estado' => 'registrado',
+            'editable' => false,
+        ]);
+
+        // DEBE: Inventario de Prendas para Venta
+        $cuentaInventario = $this->obtenerCuenta(config('contabilidad.cuentas.inventario_prendas_venta', '1101.03.002'));
+        CtbMovimiento::create([
+            'diario_id' => $diario->id,
+            'cuenta_contable_id' => $cuentaInventario->id,
+            'debe' => $compra->total,
+            'haber' => 0,
+            'numero_comprobante' => $diario->numero_comprobante,
+            'detalle' => "Entrada inventario compra {$compra->numero_compra}",
+            'cliente_id' => $compra->cliente_id ?? null,
+        ]);
+
+        // HABER: Caja o Banco según forma de pago
+        $cuentaEgreso = $this->determinarCuentaEgreso($compra->forma_pago ?? 'efectivo');
+        CtbMovimiento::create([
+            'diario_id' => $diario->id,
+            'cuenta_contable_id' => $cuentaEgreso->id,
+            'debe' => 0,
+            'haber' => $compra->total,
+            'numero_comprobante' => $diario->numero_comprobante,
+            'detalle' => "Pago compra {$compra->numero_compra} - " . ($compra->forma_pago ?? 'efectivo'),
+        ]);
+
+        return $diario;
+    }
+
+    /**
+     * Obtener cuenta contable por código
+     */
+    private function obtenerCuenta(string $codigo): CtbNomenclatura
+    {
+        $cuenta = CtbNomenclatura::porCodigo($codigo)->first();
+
+        if (!$cuenta) {
+            throw new \Exception("No se encontró la cuenta contable: {$codigo}");
+        }
+
+        if (!$cuenta->acepta_movimientos) {
+            throw new \Exception("La cuenta {$codigo} no acepta movimientos");
+        }
+
+        return $cuenta;
+    }
+
+    /**
+     * Determinar cuenta de egreso según forma de pago
+     */
+    private function determinarCuentaEgreso(?string $formaPago): CtbNomenclatura
+    {
+        $forma = $formaPago ?? 'efectivo';
+        return match ($forma) {
+            'efectivo' => $this->obtenerCuenta('1101.01.001'), // Caja General
+            'transferencia', 'cheque' => $this->obtenerCuenta('1101.01.003'), // Bancos
+            default => $this->obtenerCuenta('1101.01.001'), // Por defecto Caja
+        };
+    }
+
+    /**
+     * Determinar cuenta de ingreso según forma de pago (null = efectivo)
+     */
+    private function determinarCuentaIngreso(?string $formaPago): CtbNomenclatura
+    {
+        $forma = $formaPago ?? 'efectivo';
+        return match ($forma) {
+            'efectivo' => $this->obtenerCuenta('1101.01.001'), // Caja General
+            'transferencia', 'cheque' => $this->obtenerCuenta('1101.01.003'), // Bancos
+            default => $this->obtenerCuenta('1101.01.001'), // Por defecto Caja
+        };
+    }
+
+    /**
+     * Anular un asiento contable
+     */
+    public function anularAsiento(CtbDiario $diario, int $usuarioId, string $motivo)
+    {
+        $diario->anular($usuarioId, $motivo);
+
+        Log::info("Asiento contable anulado: {$diario->numero_comprobante}", [
+            'asiento_id' => $diario->id,
+            'motivo' => $motivo,
+            'usuario_id' => $usuarioId,
+        ]);
+    }
+}

@@ -1,0 +1,7 @@
+# Archivo .env para el Frontend
+# Copia este contenido a un archivo llamado .env en la raíz del proyecto frontend
+
+# URL del API Backend
+# Cambia el puerto si tu backend corre en otro puerto
+VITE_API_URL=http://localhost:8000/api/v1
+

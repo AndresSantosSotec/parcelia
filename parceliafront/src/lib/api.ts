@@ -1,0 +1,1560 @@
+import { CategoriaProducto, Cliente } from "./types"
+import { API_BASE_URL } from "./config"
+import { mockDatabase } from "./mockDatabase"
+
+// Variable para activar modo standalone libre sin backend (false = conecta a Laravel en vivo)
+export const STANDALONE_MODE = false
+
+// Tiempo de expiración del token en localStorage (24 horas)
+const TOKEN_EXPIRY_KEY = 'auth_token_expiry'
+const TOKEN_KEY = 'auth_token'
+
+// Flag para evitar disparar múltiples eventos de autenticación fallida
+let authUnauthorizedDispatched = false
+let authUnauthorizedTimeout: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Helper para verificar si un error es de autenticación
+ * Útil para evitar mostrar toasts duplicados cuando la sesión expira
+ */
+export function isAuthError(error: any): boolean {
+  if (!error) return false
+  const message = error.message?.toLowerCase() || ''
+  return (
+    message.includes('unauthenticated') ||
+    message.includes('unauthorized') ||
+    message.includes('401') ||
+    message.includes('sesión') ||
+    message.includes('session') ||
+    error.status === 401
+  )
+}
+
+/**
+ * Resetear flag de evento no autorizado (llamar después de login exitoso)
+ */
+export function resetAuthFlag(): void {
+  authUnauthorizedDispatched = false
+  if (authUnauthorizedTimeout) {
+    clearTimeout(authUnauthorizedTimeout)
+    authUnauthorizedTimeout = null
+  }
+}
+
+interface ApiResponse<T> {
+  pagination: any
+  success: boolean
+  message?: string
+  data?: T
+  errors?: Record<string, string[]>
+  locked?: boolean
+  retry_after?: number
+  attempts_remaining?: number
+}
+
+class ApiClient {
+  private baseUrl: string
+  private token: string | null = null
+
+  constructor(baseUrl: string) {
+    this.baseUrl = baseUrl
+    // Recuperar token del localStorage si no ha expirado
+    if (typeof window !== 'undefined') {
+      this.loadToken()
+    }
+  }
+
+  /**
+   * Cargar token del localStorage verificando expiración
+   */
+  private loadToken(): void {
+    const token = localStorage.getItem(TOKEN_KEY)
+    const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY)
+
+    if (token && expiry) {
+      const expiryTime = parseInt(expiry, 10)
+      if (Date.now() < expiryTime) {
+        this.token = token
+      } else {
+        // Token expirado, limpiar
+        this.clearToken()
+      }
+    }
+  }
+
+  /**
+   * Guardar token con tiempo de expiración
+   */
+  setToken(token: string | null, expiresIn: number = 86400): void {
+    this.token = token
+    if (token && typeof window !== 'undefined') {
+      localStorage.setItem(TOKEN_KEY, token)
+      // Guardar tiempo de expiración (actual + expiresIn en segundos)
+      const expiryTime = Date.now() + (expiresIn * 1000)
+      localStorage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString())
+    } else if (typeof window !== 'undefined') {
+      this.clearToken()
+    }
+  }
+
+  /**
+   * Limpiar token y datos de sesión
+   */
+  clearToken(): void {
+    this.token = null
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(TOKEN_EXPIRY_KEY)
+    }
+  }
+
+  /**
+   * Verificar si el token está próximo a expirar (últimos 30 minutos)
+   */
+  isTokenExpiringSoon(): boolean {
+    const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY)
+    if (!expiry) return true
+
+    const expiryTime = parseInt(expiry, 10)
+    const thirtyMinutes = 30 * 60 * 1000
+    return Date.now() > (expiryTime - thirtyMinutes)
+  }
+
+  /**
+   * Verificar si hay token válido
+   */
+  hasValidToken(): boolean {
+    if (!this.token) {
+      this.loadToken()
+    }
+    return !!this.token
+  }
+
+  /**
+   * Obtener el token actual para uso en servicios externos (ej: descargar PDFs)
+   */
+  getToken(): string | null {
+    if (!this.token) {
+      this.loadToken()
+    }
+    return this.token
+  }
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<ApiResponse<T>> {
+    this.loadToken()
+
+    // Si está en modo standalone / sin backend, procesar directo con mockDatabase
+    if (STANDALONE_MODE) {
+      let bodyData: any = null
+      if (options.body) {
+        try {
+          bodyData = typeof options.body === 'string' ? JSON.parse(options.body) : options.body
+        } catch {
+          bodyData = options.body
+        }
+      }
+      const mockResult = mockDatabase.handleRequest(endpoint, options.method || 'GET', bodyData)
+      return mockResult as ApiResponse<T>
+    }
+
+    const url = `${this.baseUrl}${endpoint}`
+    const clientId = 'AvanzaDigiPrenda-SecureClient/2.1.0-Enterprise (WebApp; Build:APX-8472-DSG-2026; Platform:WebSecure; Hash:9E7F2BC4A1D6)'
+    
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+      'X-Client-ID': clientId,
+      ...(options.headers as Record<string, string>),
+    }
+
+    if (!(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json'
+    }
+
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const sucursalActiva = localStorage.getItem('kv_sucursal-activa')
+        if (sucursalActiva) {
+          const parsed = JSON.parse(sucursalActiva)
+          if (parsed) {
+            headers['X-Sucursal-Activa'] = String(parsed)
+          }
+        }
+      } catch { /* ignorar errores de parse */ }
+    }
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        credentials: 'include',
+        cache: 'no-store',
+      })
+
+      const contentType = response.headers.get('content-type')
+      let data: any
+
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json()
+      } else {
+        const text = await response.text()
+        try {
+          data = JSON.parse(text)
+        } catch {
+          data = { message: text || 'Error en la petición' }
+        }
+      }
+
+      if (response.status === 401) {
+        this.clearToken()
+        if (typeof window !== 'undefined' && !authUnauthorizedDispatched) {
+          authUnauthorizedDispatched = true
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'))
+          authUnauthorizedTimeout = setTimeout(() => {
+            authUnauthorizedDispatched = false
+          }, 2000)
+        }
+      }
+
+      if (response.status === 429) {
+        const retryAfter = data.retry_after || 15
+        throw new Error(`Demasiados intentos. Espera ${retryAfter} minutos.`)
+      }
+
+      if (response.status === 423) {
+        throw new Error(data.message || 'Cuenta bloqueada temporalmente')
+      }
+
+      if (!response.ok) {
+        if (response.status === 422 && data.errors) {
+          const validationMsgs = Object.values(data.errors).flat().join(', ')
+          const msg = data.message ? `${data.message}: ${validationMsgs}` : `Error de validación: ${validationMsgs}`
+          const errorObj: any = new Error(msg)
+          errorObj.errors = data.errors
+          errorObj.status = response.status
+          throw errorObj
+        }
+        const errorMessage = data.message || data.error || `Error ${response.status}: ${response.statusText}`
+        throw new Error(errorMessage)
+      }
+
+      return data
+    } catch (error: any) {
+      console.warn('API fetch no disponible, usando fallback mock local:', error)
+      let bodyData: any = null
+      if (options.body) {
+        try {
+          bodyData = typeof options.body === 'string' ? JSON.parse(options.body) : options.body
+        } catch {
+          bodyData = options.body
+        }
+      }
+      return mockDatabase.handleRequest(endpoint, options.method || 'GET', bodyData) as ApiResponse<T>
+    }
+  }
+
+  async get<T>(endpoint: string): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'GET' })
+  }
+
+  async post<T>(endpoint: string, body?: any): Promise<ApiResponse<T>> {
+    const isFormData = typeof window !== 'undefined' && body instanceof FormData
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      body: isFormData ? body : (body ? JSON.stringify(body) : undefined),
+    })
+  }
+
+  async put<T>(endpoint: string, body?: any): Promise<ApiResponse<T>> {
+    const isFormData = typeof window !== 'undefined' && body instanceof FormData
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: isFormData ? body : (body ? JSON.stringify(body) : undefined),
+    })
+  }
+
+  async delete<T>(endpoint: string, p0?: { foto_url: string }): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'DELETE' })
+  }
+
+  /**
+   * Descargar archivo (PDF, Excel, etc.) con autenticación
+   */
+  async downloadFile(endpoint: string, filename?: string): Promise<void> {
+    const url = `${this.baseUrl}${endpoint}`
+    const headers: HeadersInit = {
+      'Accept': 'application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream',
+    }
+
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          this.clearToken()
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('auth:unauthorized'))
+          }
+          throw new Error('No autorizado. Por favor inicia sesión nuevamente.')
+        }
+        throw new Error(`Error al descargar archivo: ${response.statusText}`)
+      }
+
+      // Obtener el nombre del archivo del header Content-Disposition si existe
+      const contentDisposition = response.headers.get('Content-Disposition')
+      let downloadFilename = filename
+
+      if (!downloadFilename && contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
+        if (filenameMatch && filenameMatch[1]) {
+          downloadFilename = filenameMatch[1].replace(/['"]/g, '')
+        }
+      }
+
+      // Si aún no hay nombre, usar uno por defecto basado en el tipo
+      if (!downloadFilename) {
+        const contentType = response.headers.get('Content-Type') || ''
+        if (contentType.includes('pdf')) {
+          downloadFilename = `documento-${Date.now()}.pdf`
+        } else if (contentType.includes('excel') || contentType.includes('spreadsheet')) {
+          downloadFilename = `reporte-${Date.now()}.xlsx`
+        } else {
+          downloadFilename = `archivo-${Date.now()}`
+        }
+      }
+
+      // Convertir a blob y descargar
+      const blob = await response.blob()
+      const downloadUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = downloadFilename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(downloadUrl)
+    } catch (error: any) {
+      console.error('Error al descargar archivo:', error)
+      throw error
+    }
+  }
+}
+
+export const api = new ApiClient(API_BASE_URL)
+
+// ============ AUTH SERVICE ============
+export interface LoginResponse {
+  user: any
+  token: string
+  expires_in: number
+  require_password_change?: boolean
+}
+
+export const authService = {
+  login: async (username: string, password: string) => {
+    // Sanitizar inputs
+    const sanitizedUsername = username.trim().toLowerCase()
+
+    const response = await api.post<LoginResponse>('/auth/login', {
+      username: sanitizedUsername,
+      password,
+    })
+
+    if (response.success && response.data) {
+      api.setToken(response.data.token, response.data.expires_in)
+      // Resetear flag de autenticación fallida después de login exitoso
+      resetAuthFlag()
+    }
+    return response
+  },
+
+  logout: async () => {
+    try {
+      await api.post('/auth/logout')
+    } finally {
+      api.clearToken()
+    }
+  },
+
+  logoutAll: async () => {
+    try {
+      await api.post('/auth/logout-all')
+    } finally {
+      api.clearToken()
+    }
+  },
+
+  me: async () => {
+    return api.get<any>('/auth/me')
+  },
+
+  changePassword: async (currentPassword: string, newPassword: string, newPasswordConfirmation: string) => {
+    return api.post('/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+      new_password_confirmation: newPasswordConfirmation,
+    })
+  },
+
+  refreshToken: async () => {
+    const response = await api.post<{ token: string; expires_in: number }>('/auth/refresh-token')
+    if (response.success && response.data) {
+      api.setToken(response.data.token, response.data.expires_in)
+    }
+    return response
+  },
+
+  cambiarSucursal: async (sucursalId: number | null) => {
+    return api.post('/auth/cambiar-sucursal', { sucursal_id: sucursalId })
+  },
+
+  /**
+   * Validar fortaleza de contraseña en el frontend
+   */
+  validatePassword: (password: string): string[] => {
+    const errors: string[] = []
+
+    if (password.length < 8) {
+      errors.push('Mínimo 8 caracteres')
+    }
+    if (!/[A-Z]/.test(password)) {
+      errors.push('Al menos una mayúscula')
+    }
+    if (!/[a-z]/.test(password)) {
+      errors.push('Al menos una minúscula')
+    }
+    if (!/[0-9]/.test(password)) {
+      errors.push('Al menos un número')
+    }
+    if (!/[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\\/]/.test(password)) {
+      errors.push('Al menos un carácter especial')
+    }
+
+    return errors
+  },
+
+  /**
+   * Verificar si hay sesión válida
+   */
+  isAuthenticated: (): boolean => {
+    return api.hasValidToken()
+  },
+}
+
+// ============ USER SERVICE ============
+export interface UserFilters {
+  activo?: boolean | string
+  rol?: string
+  busqueda?: string
+  page?: number
+  per_page?: number
+  order_by?: 'name' | 'email' | 'rol' | 'created_at' | 'activo'
+  order_dir?: 'asc' | 'desc'
+}
+
+export interface PaginationInfo {
+  total: number
+  per_page: number
+  current_page: number
+  last_page: number
+  from: number
+  to: number
+}
+
+export interface UserStats {
+  total: number
+  activos: number
+  inactivos: number
+  por_rol: {
+    administrador: number
+    cajero: number
+    tasador: number
+    vendedor: number
+    supervisor: number
+  }
+}
+
+export interface UsersResponse {
+  data: any[]
+  pagination: PaginationInfo
+  stats: UserStats
+}
+
+export const userService = {
+  getAll: (params?: UserFilters) => {
+    const query = new URLSearchParams()
+    if (params?.activo !== undefined && params.activo !== '') query.append('activo', String(params.activo))
+    if (params?.rol && params.rol !== 'todos') query.append('rol', params.rol)
+    if (params?.busqueda) query.append('busqueda', params.busqueda)
+    if (params?.page) query.append('page', String(params.page))
+    if (params?.per_page) query.append('per_page', String(params.per_page))
+    if (params?.order_by) query.append('order_by', params.order_by)
+    if (params?.order_dir) query.append('order_dir', params.order_dir)
+
+    // Omitir estadísticas en navegación de páginas para mejorar rendimiento
+    // Solo cargar estadísticas en la primera carga o cuando cambian filtros
+    if (params?.page && params.page > 1) {
+      query.append('skip_stats', '1')
+    }
+
+    const queryString = query.toString()
+    return api.get<UsersResponse>(`/usuarios${queryString ? `?${queryString}` : ''}`)
+  },
+
+  getById: (id: string) => {
+    return api.get<any>(`/usuarios/${id}`)
+  },
+
+  create: (user: any) => {
+    return api.post<any>('/usuarios', user)
+  },
+
+  update: (id: string, user: any) => {
+    return api.put<any>(`/usuarios/${id}`, user)
+  },
+
+  delete: (id: string) => {
+    return api.delete(`/usuarios/${id}`)
+  },
+
+  toggleActivo: (id: string) => {
+    return api.post<any>(`/usuarios/${id}/toggle-activo`)
+  },
+
+  changePassword: (id: string, password: string, passwordConfirmation: string) => {
+    return api.post(`/usuarios/${id}/cambiar-password`, {
+      password,
+      password_confirmation: passwordConfirmation,
+    })
+  },
+
+  uploadPhoto: (id: string, file: File) => {
+    const formData = new FormData()
+    formData.append('foto', file)
+    return api.post<any>(`/usuarios/${id}/foto`, formData)
+  },
+}
+
+// ============ PERMISSION SERVICE ============
+export interface Permiso {
+  modulo: string
+  acciones: string[]
+}
+
+export const permissionService = {
+  getAll: () => {
+    return api.get<Permiso[]>('/permisos')
+  },
+
+  getRolePermissions: (rol: string) => {
+    return api.get<Permiso[]>(`/permisos/rol/${rol}`)
+  },
+
+  getUserPermissions: (userId: string) => {
+    return api.get<Permiso[]>(`/usuarios/${userId}/permisos`)
+  },
+
+  updateUserPermissions: (userId: string, permisos: Permiso[]) => {
+    return api.put<Permiso[]>(`/usuarios/${userId}/permisos`, { permisos })
+  },
+
+  resetToDefault: (userId: string) => {
+    return api.post<Permiso[]>(`/usuarios/${userId}/permisos/reset`)
+  },
+}
+
+// ============ CLIENTES SERVICE ============
+export interface ClienteFilters {
+  busqueda?: string
+  estado?: string
+  tipo_cliente?: string
+  genero?: string
+  sucursal?: string
+  page?: number
+  per_page?: number
+  order_by?: 'nombres' | 'apellidos' | 'dpi' | 'created_at' | 'estado' | 'tipo_cliente'
+  order_dir?: 'asc' | 'desc'
+}
+
+export interface ClienteStats {
+  total: number
+  activos: number
+  inactivos: number
+  vip: number
+  por_genero: {
+    masculino: number
+    femenino: number
+    otro: number
+  }
+}
+
+export interface ClientesResponse {
+  data: any[]
+  pagination: PaginationInfo
+  stats: ClienteStats
+  sucursales: string[]
+}
+
+export const clienteService = {
+  getActivos: () => {
+    return api.get<Cliente[]>('/clientes/activos')
+  },
+
+  getAll: (params?: ClienteFilters) => {
+    const query = new URLSearchParams()
+    if (params?.busqueda) query.append('busqueda', params.busqueda)
+    if (params?.estado && params.estado !== 'todos') query.append('estado', params.estado)
+    if (params?.tipo_cliente && params.tipo_cliente !== 'todos') query.append('tipo_cliente', params.tipo_cliente)
+    if (params?.genero && params.genero !== 'todos') query.append('genero', params.genero)
+    if (params?.sucursal && params.sucursal !== 'todos') query.append('sucursal', params.sucursal)
+    if (params?.page) query.append('page', String(params.page))
+    if (params?.per_page) query.append('per_page', String(params.per_page))
+    if (params?.order_by) query.append('order_by', params.order_by)
+    if (params?.order_dir) query.append('order_dir', params.order_dir)
+    const queryString = query.toString()
+    return api.get<ClientesResponse>(`/clientes${queryString ? `?${queryString}` : ''}`)
+  },
+
+  getById: (id: string) => {
+    return api.get<any>(`/clientes/${id}`)
+  },
+
+  getCreditosPrendarios: (id: string, params?: { page?: number; per_page?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.page) query.append('page', String(params.page))
+    if (params?.per_page) query.append('per_page', String(params.per_page))
+    const queryString = query.toString()
+    return api.get<any>(`/clientes/${id}/creditos-prendarios${queryString ? `?${queryString}` : ''}`)
+  },
+
+  getFicha: (id: string) => {
+    return api.get<any>(`/clientes/${id}/ficha`)
+  },
+
+  descargarFichaPdf: async (id: string): Promise<void> => {
+    const token = localStorage.getItem(TOKEN_KEY)
+    if (!token) {
+      throw new Error('No hay sesión activa')
+    }
+
+    const response = await fetch(`${API_BASE_URL}/clientes/${id}/ficha/pdf`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/pdf, application/json',
+      },
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type')
+      if (contentType && contentType.includes('application/json')) {
+        const error = await response.json()
+        throw new Error(error.message || 'Error al descargar ficha del cliente')
+      }
+      throw new Error('Error al descargar ficha del cliente')
+    }
+
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Ficha_Cliente_${id}_${new Date().toISOString().split('T')[0]}.pdf`
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(url)
+    document.body.removeChild(a)
+  },
+
+  create: (cliente: any) => {
+    const data: any = {
+      nombres: cliente.nombres,
+      apellidos: cliente.apellidos,
+      dpi: cliente.dpi,
+      nit: cliente.nit,
+      fecha_nacimiento: cliente.fechaNacimiento,
+      genero: cliente.genero,
+      estado_civil: cliente.estadoCivil,
+      profesion: cliente.profesion,
+      telefono: cliente.telefono,
+      telefono_secundario: cliente.telefonoSecundario,
+      email: cliente.email,
+      direccion: cliente.direccion,
+      municipio: cliente.municipio,
+      departamento_geoname_id: cliente.departamentoGeonameId,
+      municipio_geoname_id: cliente.municipioGeonameId,
+      fotografia: cliente.fotografia,
+      estado: cliente.estado,
+      sucursal: cliente.sucursal,
+      tipo_cliente: cliente.tipoCliente,
+      notas: cliente.notas,
+    }
+    if (Array.isArray(cliente.referencias)) {
+      data.referencias = cliente.referencias.map((ref: any) => ({
+        nombre: ref.nombre,
+        telefono: ref.telefono,
+        relacion: ref.relacion,
+      }))
+    }
+    return api.post<any>('/clientes', data)
+  },
+
+  update: (id: string, cliente: any) => {
+    const data: any = {}
+    if (cliente.nombres !== undefined) data.nombres = cliente.nombres
+    if (cliente.apellidos !== undefined) data.apellidos = cliente.apellidos
+    if (cliente.dpi !== undefined) data.dpi = cliente.dpi
+    if (cliente.nit !== undefined) data.nit = cliente.nit
+    if (cliente.fechaNacimiento !== undefined) data.fecha_nacimiento = cliente.fechaNacimiento
+    if (cliente.genero !== undefined) data.genero = cliente.genero
+    if (cliente.estadoCivil !== undefined) data.estado_civil = cliente.estadoCivil
+    if (cliente.profesion !== undefined) data.profesion = cliente.profesion
+    if (cliente.telefono !== undefined) data.telefono = cliente.telefono
+    if (cliente.telefonoSecundario !== undefined) data.telefono_secundario = cliente.telefonoSecundario
+    if (cliente.email !== undefined) data.email = cliente.email
+    if (cliente.direccion !== undefined) data.direccion = cliente.direccion
+    if (cliente.municipio !== undefined) data.municipio = cliente.municipio
+    if (cliente.departamentoGeonameId !== undefined) data.departamento_geoname_id = cliente.departamentoGeonameId
+    if (cliente.municipioGeonameId !== undefined) data.municipio_geoname_id = cliente.municipioGeonameId
+    if (cliente.fotografia !== undefined) data.fotografia = cliente.fotografia
+    if (cliente.estado !== undefined) data.estado = cliente.estado
+    if (cliente.sucursal !== undefined) data.sucursal = cliente.sucursal
+    if (cliente.tipoCliente !== undefined) data.tipo_cliente = cliente.tipoCliente
+    if (cliente.notas !== undefined) data.notas = cliente.notas
+    if (cliente.referencias !== undefined) {
+      data.referencias = Array.isArray(cliente.referencias)
+        ? cliente.referencias.map((ref: any) => ({
+            nombre: ref.nombre,
+            telefono: ref.telefono,
+            relacion: ref.relacion,
+          }))
+        : []
+    }
+    return api.put<any>(`/clientes/${id}`, data)
+  },
+
+  delete: (id: string) => {
+    return api.delete(`/clientes/${id}`)
+  },
+
+  uploadPhoto: (id: string, fotografia: string) => {
+    return api.post<any>(`/clientes/${id}/foto`, { fotografia })
+  },
+
+  toggleMasivo: (ids: string[], accion: 'activar' | 'desactivar') => {
+    return api.post<any>('/clientes/toggle-masivo', { ids: ids.map(Number), accion })
+  },
+
+  descargarReporte: async (params?: { estado?: string; busqueda?: string }): Promise<void> => {
+    const query = new URLSearchParams({ formato: 'csv' })
+    if (params?.estado && params.estado !== 'todos') query.append('estado', params.estado)
+    if (params?.busqueda) query.append('busqueda', params.busqueda)
+    await api.downloadFile(`/clientes/reporte?${query}`, `Clientes_${new Date().toISOString().split('T')[0]}.csv`)
+  },
+}
+
+// ============ CLIENTE BORRADORES SERVICE ============
+
+export interface ClienteBorrador {
+  id: number
+  user_id: number
+  titulo: string
+  datos: Record<string, any>
+  created_at: string
+  updated_at: string
+}
+
+export const clienteDraftService = {
+  getAll: () => api.get<ClienteBorrador[]>('/clientes/borradores'),
+
+  create: (datos: Record<string, any>, titulo?: string) =>
+    api.post<ClienteBorrador>('/clientes/borradores', { datos, titulo }),
+
+  update: (id: number, datos: Record<string, any>, titulo?: string) =>
+    api.put<ClienteBorrador>(`/clientes/borradores/${id}`, { datos, titulo }),
+
+  delete: (id: number) => api.delete(`/clientes/borradores/${id}`),
+}
+
+// ============ SUCURSALES SERVICE ============
+
+export interface SucursalFilters {
+  activa?: boolean | string
+  busqueda?: string
+  page?: number
+  per_page?: number
+  order_by?: 'codigo' | 'nombre' | 'ciudad' | 'activa' | 'created_at'
+  order_dir?: 'asc' | 'desc'
+}
+
+export interface SucursalStats {
+  total: number
+  activas: number
+  inactivas: number
+}
+
+export interface SucursalesResponse {
+  data: any[]
+  pagination: PaginationInfo
+  stats: SucursalStats
+}
+
+export const sucursalService = {
+  getAll: (params?: SucursalFilters) => {
+    const query = new URLSearchParams()
+    if (params?.activa !== undefined && params.activa !== '') query.append('activa', String(params.activa))
+    if (params?.busqueda) query.append('busqueda', params.busqueda)
+    if (params?.page) query.append('page', String(params.page))
+    if (params?.per_page) query.append('per_page', String(params.per_page))
+    if (params?.order_by) query.append('order_by', params.order_by)
+    if (params?.order_dir) query.append('order_dir', params.order_dir)
+    const queryString = query.toString()
+    return api.get<SucursalesResponse>(`/sucursales${queryString ? `?${queryString}` : ''}`)
+  },
+
+  getActivas: () => {
+    // Cache-busting: timestamp para evitar caché del navegador/CDN
+    const ts = Date.now()
+    return api.get<Array<{ id: string; codigo: string; nombre: string }>>(`/sucursales/activas?_t=${ts}`)
+  },
+
+  getById: (id: string) => {
+    return api.get<any>(`/sucursales/${id}`)
+  },
+
+  create: (sucursal: any) => {
+    return api.post<any>('/sucursales', sucursal)
+  },
+
+  update: (id: string, sucursal: any) => {
+    return api.put<any>(`/sucursales/${id}`, sucursal)
+  },
+
+  delete: (id: string) => {
+    return api.delete(`/sucursales/${id}`)
+  },
+
+  toggleActiva: (id: string) => {
+    return api.post<any>(`/sucursales/${id}/toggle-activa`)
+  },
+}
+
+// ============ CATEGORIAS PRODUCTOS SERVICE ============
+
+export interface CategoriaProductoFilters {
+  activa?: boolean | string
+  busqueda?: string
+  page?: number
+  per_page?: number
+  order_by?: string
+  order_dir?: 'asc' | 'desc'
+}
+
+export interface CategoriasProductosResponse {
+  success: boolean
+  data: CategoriaProducto[]
+  pagination: {
+    total: number
+    per_page: number
+    current_page: number
+    last_page: number
+    from: number
+    to: number
+  }
+  stats: {
+    total: number
+    activas: number
+    inactivas: number
+  }
+}
+
+export const categoriaProductoService = {
+  getAll: (params?: CategoriaProductoFilters) => {
+    const query = new URLSearchParams()
+    if (params?.activa !== undefined && params.activa !== '') query.append('activa', String(params.activa))
+    if (params?.busqueda) query.append('busqueda', params.busqueda)
+    if (params?.page) query.append('page', String(params.page))
+    if (params?.per_page) query.append('per_page', String(params.per_page))
+    if (params?.order_by) query.append('order_by', params.order_by)
+    if (params?.order_dir) query.append('order_dir', params.order_dir)
+    const queryString = query.toString()
+    return api.get<CategoriasProductosResponse>(`/categorias-productos${queryString ? `?${queryString}` : ''}`)
+  },
+
+  getActivas: () => {
+    return api.get<{
+      data: Array<{
+        id: string
+        codigo: string
+        nombre: string
+        color?: string
+        icono?: string
+        tasa_interes_default?: number | null
+        tasa_mora_default?: number | null
+        plazo_maximo_dias?: number | null
+        porcentaje_prestamo_maximo?: number | null
+        metodo_calculo_default?: 'francesa' | 'flat'
+        afecta_interes_mensual?: boolean
+        permite_pago_capital_diferente?: boolean
+        campos_formulario?: {
+          marca: boolean
+          modelo: boolean
+          numero_serie: boolean
+          condicion_fisica: boolean
+        } | null
+        campos_adicionales?: Array<{
+          nombre: string
+          label: string
+          tipo: 'text' | 'number' | 'select' | 'checkbox' | 'textarea' | 'date'
+          requerido: boolean
+          opciones?: string[]
+          placeholder?: string
+          min?: number
+          max?: number
+          step?: number
+        }> | null
+      }>
+    }>('/categorias-productos/activas')
+  },
+
+  getById: (id: string) => {
+    return api.get<any>(`/categorias-productos/${id}`)
+  },
+
+  create: (categoria: any) => {
+    // Transformar camposDinamicos a campos_dinamicos para el backend
+    const payload = {
+      ...categoria,
+      campos_dinamicos: categoria.camposDinamicos || [],
+    }
+    delete payload.camposDinamicos
+    return api.post<any>('/categorias-productos', payload)
+  },
+
+  update: (id: string, categoria: any) => {
+    // Transformar camposDinamicos a campos_dinamicos para el backend
+    const payload = {
+      ...categoria,
+      campos_dinamicos: categoria.camposDinamicos || [],
+    }
+    delete payload.camposDinamicos
+    return api.put<any>(`/categorias-productos/${id}`, payload)
+  },
+
+  delete: (id: string) => {
+    return api.delete(`/categorias-productos/${id}`)
+  },
+
+  toggleActiva: (id: string) => {
+    return api.post<any>(`/categorias-productos/${id}/toggle-activa`)
+  },
+}
+
+// ============ GEONAMES SERVICE (GUATEMALA) ============
+
+export interface Departamento {
+  geonameId: number
+  name: string
+  adminCode1: string
+  countryCode: string
+}
+
+export interface Municipio {
+  geonameId: number
+  name: string
+  adminCode1: string
+  countryCode: string
+}
+
+export interface GuatemalaCompleto {
+  pais: {
+    geonameId: number
+    countryName: string
+    countryCode: string
+  }
+  departamentos: Array<{
+    geonameId: number
+    name: string
+    adminCode1: string
+    municipios: Municipio[]
+  }>
+}
+
+export const geoNamesService = {
+  getDepartamentos: () => {
+    return api.get<Departamento[]>('/geonames/departamentos')
+  },
+
+  getMunicipios: (departamentoGeonameId: number) => {
+    return api.get<Municipio[]>(`/geonames/municipios/${departamentoGeonameId}`)
+  },
+
+  getGuatemalaCompleto: () => {
+    return api.get<{ data: GuatemalaCompleto }>('/geonames/guatemala-completo')
+  },
+}
+
+// ============ PRENDAS SERVICE ============
+
+export interface PrendaFilters {
+  busqueda?: string
+  estado?: string
+  categoria?: string
+  sucursal?: string
+  fecha_desde?: string
+  fecha_hasta?: string
+  page?: number
+  per_page?: number
+  order_by?: 'descripcion' | 'categoria' | 'avaluo' | 'estado' | 'fecha_ingreso'
+  order_dir?: 'asc' | 'desc'
+}
+
+export interface PrendaStats {
+  total: number
+  empeniadas: number
+  vencidas: number
+  en_venta: number
+  vendidas: number
+  recuperadas: number
+  valor_total_avaluo: number
+  valor_total_venta: number
+}
+
+export interface PrendasResponse {
+  data: any[]
+  pagination: PaginationInfo
+  stats: PrendaStats
+}
+
+export const prendaService = {
+  getAll: (params?: PrendaFilters) => {
+    const query = new URLSearchParams()
+    if (params?.busqueda) query.append('busqueda', params.busqueda)
+    if (params?.estado && params.estado !== 'todos') query.append('estado', params.estado)
+    if (params?.categoria && params.categoria !== 'todos') query.append('categoria', params.categoria)
+    if (params?.sucursal && params.sucursal !== 'todos') query.append('sucursal', params.sucursal)
+    if (params?.fecha_desde) query.append('fecha_desde', params.fecha_desde)
+    if (params?.fecha_hasta) query.append('fecha_hasta', params.fecha_hasta)
+    if (params?.page) query.append('page', String(params.page))
+    if (params?.per_page) query.append('per_page', String(params.per_page))
+    if (params?.order_by) query.append('order_by', params.order_by)
+    if (params?.order_dir) query.append('order_dir', params.order_dir)
+    const queryString = query.toString()
+    return api.get<PrendasResponse>(`/prendas${queryString ? `?${queryString}` : ''}`)
+  },
+
+  getById: (id: string) => {
+    return api.get<any>(`/prendas/${id}`)
+  },
+
+  create: (prenda: any) => {
+    return api.post<any>('/prendas', prenda)
+  },
+
+  update: (id: string, prenda: any) => {
+    return api.put<any>(`/prendas/${id}`, prenda)
+  },
+
+  delete: (id: string) => {
+    return api.delete(`/prendas/${id}`)
+  },
+
+  // Gestión de estado
+  marcarRecuperada: (id: string, fechaRecuperacion?: string) => {
+    return api.post<any>(`/prendas/${id}/recuperar`, { fecha_recuperacion: fechaRecuperacion })
+  },
+
+  marcarEnVenta: (id: string, valorVenta: number) => {
+    return api.post<any>(`/prendas/${id}/poner-venta`, { valor_venta: valorVenta })
+  },
+
+  marcarVendida: (id: string, data: { valor_venta_final: number; comprador_id?: string; fecha_venta?: string }) => {
+    return api.post<any>(`/prendas/${id}/vender`, data)
+  },
+
+  // Fotos
+  uploadPhoto: (id: string, foto: string) => {
+    return api.post<any>(`/prendas/${id}/foto`, { foto })
+  },
+
+  deletePhoto: (id: string, fotoUrl: string) => {
+    return api.delete(`/prendas/${id}/foto`, { foto_url: fotoUrl })
+  },
+
+  // Estadísticas
+  getStats: () => {
+    return api.get<PrendaStats>('/prendas/estadisticas')
+  },
+
+  // Consultas específicas
+  getEnVenta: () => {
+    return api.get<any[]>('/prendas/en-venta')
+  },
+
+  getPorCategoria: (categoriaId: string) => {
+    return api.get<any[]>(`/prendas/categoria/${categoriaId}`)
+  },
+}
+
+// ============ VENTAS SERVICE ============
+
+export interface VentaItem {
+  prenda_id: number | string
+  precio_unitario: number
+  descuento: number
+}
+
+export interface VentaPago {
+  metodo: 'efectivo' | 'tarjeta' | 'transferencia' | 'cheque'
+  monto: number
+  referencia?: string
+}
+
+export interface VentaPayload {
+  cliente_id: number | null
+  consumidor_final?: boolean
+  tipo_venta: 'contado' | 'apartado' | 'plan_pagos'
+  tipo_comprobante?: string
+  nit?: string
+  estado?: string
+  fecha_factura?: string
+  items: VentaItem[]
+  pagos: VentaPago[]
+  descuento_general?: number
+  observaciones?: string
+}
+
+export const ventaService = {
+  getAll: (params?: any) => {
+    const query = new URLSearchParams()
+    if (params?.estado) query.append('estado', params.estado)
+    if (params?.fecha_desde) query.append('fecha_desde', params.fecha_desde)
+    if (params?.fecha_hasta) query.append('fecha_hasta', params.fecha_hasta)
+    if (params?.busqueda) query.append('busqueda', params.busqueda)
+    if (params?.page) query.append('page', String(params.page))
+    if (params?.per_page) query.append('per_page', String(params.per_page))
+    const queryString = query.toString()
+    return api.get<any>(`/ventas${queryString ? `?${queryString}` : ''}`)
+  },
+
+  getById: (id: string) => {
+    return api.get<any>(`/ventas/${id}`)
+  },
+
+  store: (venta: VentaPayload) => {
+    return api.post<any>('/ventas', venta)
+  },
+
+  cancelar: (id: string, data: { motivo: string; devolver_abono?: boolean }) => {
+    return api.post<any>(`/ventas/${id}/cancelar`, data)
+  },
+
+  registrarPago: (id: string, pago: VentaPago) => {
+    return api.post<any>(`/ventas/${id}/pagos`, pago)
+  },
+
+  getEstadisticas: (params?: { fecha_desde?: string; fecha_hasta?: string }) => {
+    const query = new URLSearchParams()
+    if (params?.fecha_desde) query.append('fecha_desde', params.fecha_desde)
+    if (params?.fecha_hasta) query.append('fecha_hasta', params.fecha_hasta)
+    const queryString = query.toString()
+    return api.get<any>(`/ventas/estadisticas${queryString ? `?${queryString}` : ''}`)
+  },
+
+  certificar: (id: string) => {
+    return api.post<any>(`/ventas/${id}/certificar`)
+  },
+
+  getPDF: (id: string) => {
+    return api.get<any>(`/ventas/${id}/pdf`)
+  },
+
+  exportExcel: (params?: any) => {
+    const query = new URLSearchParams()
+    if (params?.estado) query.append('estado', params.estado)
+    if (params?.fecha_desde) query.append('fecha_desde', params.fecha_desde)
+    if (params?.fecha_hasta) query.append('fecha_hasta', params.fecha_hasta)
+    const queryString = query.toString()
+    return api.get<any>(`/ventas/exportar/excel${queryString ? `?${queryString}` : ''}`)
+  },
+
+  delete: (id: string) => {
+    return api.delete(`/ventas/${id}`)
+  },
+
+  registrarAbono: (id: string, data: any) => {
+    return api.post<any>(`/ventas/${id}/abonos`, data)
+  },
+
+  getPendientesPago: (params?: any) => {
+    const query = new URLSearchParams()
+    if (params?.cliente_id) query.append('cliente_id', params.cliente_id)
+    if (params?.vencidas) query.append('vencidas', '1')
+    if (params?.por_vencer) query.append('por_vencer', '1')
+    if (params?.page) query.append('page', String(params.page))
+    const queryString = query.toString()
+    return api.get<any>(`/ventas/pendientes-pago${queryString ? `?${queryString}` : ''}`)
+  },
+
+  /**
+   * Prendas realmente disponibles para vender (excluye apartadas, en plan de pago, ya vendidas).
+   * Usar este endpoint en Nueva Venta en lugar de prendaService.getAll para que no aparezcan en el selector.
+   */
+  getPrendasDisponibles: (params?: { page?: number; per_page?: number; busqueda?: string; categoria_id?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.page) query.append('page', String(params.page))
+    if (params?.per_page) query.append('per_page', String(params.per_page))
+    if (params?.busqueda) query.append('busqueda', params.busqueda ?? '')
+    if (params?.categoria_id) query.append('categoria_id', String(params.categoria_id))
+    const queryString = query.toString()
+    return api.get<{ success: boolean; data: any[]; pagination?: any }>(`/ventas/prendas-disponibles${queryString ? `?${queryString}` : ''}`)
+  },
+
+  /** Apartados: solo ventas con estado apartado (tab Apartados) */
+  getApartados: (params?: { page?: number; per_page?: number; busqueda?: string }) => {
+    const query = new URLSearchParams()
+    if (params?.page) query.append('page', String(params.page))
+    if (params?.per_page) query.append('per_page', String(params.per_page))
+    if (params?.busqueda) query.append('busqueda', params.busqueda)
+    const queryString = query.toString()
+    return api.get<{ success: boolean; data: any[]; pagination?: any }>(`/ventas/apartados${queryString ? `?${queryString}` : ''}`)
+  },
+
+  /** Planes de pago activos (VentaCredito con cuotas) - tab Planes Pago */
+  getPlanesPago: (params?: { page?: number; per_page?: number; estado?: string; busqueda?: string }) => {
+    const query = new URLSearchParams()
+    if (params?.page) query.append('page', String(params.page))
+    if (params?.per_page) query.append('per_page', String(params.per_page))
+    if (params?.estado) query.append('estado', params.estado)
+    if (params?.busqueda) query.append('busqueda', params.busqueda)
+    const queryString = query.toString()
+    return api.get<{ success: boolean; data: any[]; pagination?: any }>(`/ventas/planes-pago${queryString ? `?${queryString}` : ''}`)
+  },
+
+  /** Detalle del plan de pago de una venta */
+  getPlanPago: (ventaId: string) => api.get<any>(`/ventas/${ventaId}/plan-pago`),
+
+  /** Registrar pago de una cuota (plan de pagos). Soporta pago normal, parcial (abono) y adelantado. */
+  pagarCuota: (
+    cuotaId: string,
+    data: {
+      monto: number
+      caja_id: number
+      observacion?: string
+      /** Si true, en pago parcial genera una nueva cuota con el restante + intereses + gastos */
+      generar_nueva_cuota_restante?: boolean
+      gasto_refinanciamiento?: number
+    }
+  ) => api.post<any>(`/ventas/cuotas/${cuotaId}/pagar`, data),
+
+  /** Pago múltiple de cuotas (un solo ingreso a caja y un asiento). Todas deben ser del mismo crédito. */
+  pagarMultipleCuotas: (data: {
+    cuota_ids: number[]
+    caja_id: number
+    observacion?: string
+  }) => api.post<any>('/ventas/cuotas/pagar-multiple', data),
+
+  /**
+   * Descargar recibo POS de una venta (contado, apartado, crédito).
+   * Usa el endpoint GET /ventas/{id}/recibo-pos que ya incluye info de apartado/crédito.
+   */
+  generarReciboVenta: (ventaId: string): Promise<Blob> => {
+    const token = localStorage.getItem('auth_token')
+    return fetch(`${API_BASE_URL}/ventas/${ventaId}/recibo-pos`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/pdf',
+      },
+      credentials: 'include',
+    }).then(r => {
+      if (!r.ok) return r.json().then(e => { throw new Error(e.message || 'Error al generar recibo') })
+      return r.blob()
+    })
+  },
+
+  /** Descargar recibo PDF de pago de una cuota específica */
+  generarReciboCuota: (cuotaId: string): Promise<Blob> => {
+    const token = localStorage.getItem('auth_token')
+    return fetch(`${API_BASE_URL}/ventas/cuotas/${cuotaId}/recibo`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/pdf',
+      },
+      credentials: 'include',
+    }).then(r => {
+      if (!r.ok) return r.json().then(e => { throw new Error(e.message || 'Error al generar recibo') })
+      return r.blob()
+    })
+  },
+}
+
+// Tipos para Dashboard
+export interface DashboardData {
+  total_clientes: number
+  creditos_activos: number
+  creditos_vencidos: number
+  total_prestado: number
+  total_saldo: number
+  total_recuperado: number
+  creditos_por_estado: Record<string, number>
+  ventas_mes_actual: number
+  prendas_en_inventario: number
+  creditos_proximos_vencer: number
+  fecha_consulta: string
+  modo_bienvenida?: boolean
+  mensaje_bienvenida?: string
+}
+
+export interface DashboardGraficas {
+  creditos_por_mes: Array<{
+    mes: string
+    total: number
+    monto_total: number
+  }>
+  ventas_por_mes: Array<{
+    mes: string
+    total: number
+    monto_total: number
+  }>
+}
+
+export interface DashboardAlertas {
+  creditos_vencidos_hoy: any[]
+  creditos_en_mora: any[]
+  creditos_proximos_vencer: any[]
+}
+
+// Servicio de Dashboard
+export const dashboardService = {
+  getEstadisticas: () => {
+    return api.get<DashboardData>('/dashboard')
+  },
+
+  getGraficas: () => {
+    return api.get<DashboardGraficas>('/dashboard/graficas')
+  },
+
+  getAlertas: () => {
+    return api.get<DashboardAlertas>('/dashboard/alertas')
+  }
+}
+
+// ==========================================
+// 🏡 REAL ESTATE SERVICES (FINCAS, PARCELAS, LOTES)
+// ==========================================
+
+export interface Finca {
+  id: number
+  nombre: string
+  codigo: string
+  ubicacion?: string
+  municipio: string
+  departamento: string
+  area_total_m2: number
+  numero_finca?: string
+  folio?: string
+  libro?: string
+  descripcion?: string
+  parcelas_count?: number
+  lotes_count?: number
+  lotes_disponibles_count?: number
+  parcelas?: Parcela[]
+}
+
+export interface Parcela {
+  id: number
+  finca_id: number
+  nombre_identificador: string
+  codigo?: string
+  area_m2: number
+  medidas_perimetro?: string
+  colindancias?: string
+  tipo_terreno: string
+  descripcion?: string
+  lotes_count?: number
+  lotes?: Lote[]
+}
+
+export interface Lote {
+  id: number
+  parcela_id: number
+  numero_lote: string
+  codigo_unico: string
+  area_m2: number
+  frente_metros?: number
+  fondo_metros?: number
+  colindancias?: string
+  tipo_terreno: string
+  precio_m2: number
+  precio_venta: number
+  estado: 'disponible' | 'reservado' | 'en_negociacion' | 'vendido' | 'pagado' | 'cancelado'
+  observaciones?: string
+  parcela?: Parcela & { finca?: Finca }
+  servicios?: Array<{ id: number; nombre_servicio: string; estado: string; costo_adicional: number }>
+  imagenes?: Array<{ id: number; url: string; descripcion?: string; es_principal: boolean }>
+}
+
+export const fincaService = {
+  getAll: (params?: { busqueda?: string }) => {
+    const query = new URLSearchParams()
+    if (params?.busqueda) query.append('busqueda', params.busqueda)
+    return api.get<Finca[]>(`/fincas?${query.toString()}`)
+  },
+  getById: (id: number) => {
+    return api.get<Finca>(`/fincas/${id}`)
+  },
+  create: (data: Partial<Finca>) => {
+    return api.post<Finca>('/fincas', data)
+  },
+  createParcela: (fincaId: number, data: Partial<Parcela>) => {
+    return api.post<Parcela>(`/fincas/${fincaId}/parcelas`, data)
+  },
+  createLote: (parcelaId: number, data: Partial<Lote>) => {
+    return api.post<Lote>(`/parcelas/${parcelaId}/lotes`, data)
+  }
+}
+
+export const loteService = {
+  getAll: (params?: { estado?: string; parcela_id?: number; finca_id?: number; busqueda?: string }) => {
+    const query = new URLSearchParams()
+    if (params?.estado && params.estado !== 'todos') query.append('estado', params.estado)
+    if (params?.parcela_id) query.append('parcela_id', params.parcela_id.toString())
+    if (params?.finca_id) query.append('finca_id', params.finca_id.toString())
+    if (params?.busqueda) query.append('busqueda', params.busqueda)
+    return api.get<Lote[]>(`/lotes?${query.toString()}`)
+  },
+  getDisponibles: () => {
+    return api.get<Lote[]>('/lotes/disponibles')
+  },
+  getById: (id: number) => {
+    return api.get<Lote>(`/lotes/${id}`)
+  },
+  update: (id: number, data: Partial<Lote>) => {
+    return api.put<Lote>(`/lotes/${id}`, data)
+  },
+  addServicio: (loteId: number, data: any) => {
+    return api.post(`/lotes/${loteId}/servicios`, data)
+  }
+}
+
+// ==========================================
+// 💼 NEGOCIACIONES & SIMULADOR INMOBILIARIO
+// ==========================================
+
+export interface SimuladorRequest {
+  precio_lote: number
+  descuento?: number
+  enganche?: number
+  gastos_escrituracion?: number
+  plazo_meses: number
+  tasa_interes_anual?: number
+  fecha_primer_pago?: string
+}
+
+export interface SimuladorResponse {
+  precio_original: number
+  descuento: number
+  gastos_escrituracion: number
+  precio_final: number
+  enganche: number
+  monto_financiado: number
+  tasa_interes_anual: number
+  plazo_meses: number
+  cuota_mensual: number
+  total_intereses_proyectados: number
+  total_a_pagar: number
+  tabla_amortizacion: Array<{
+    numero_cuota: number
+    fecha_vencimiento: string
+    cuota_capital: number
+    cuota_interes: number
+    cuota_monto_total: number
+    saldo_capital_restante: number
+  }>
+}
+
+export interface Negociacion {
+  id: number
+  codigo_negociacion: string
+  cliente_id: number
+  comprador?: any
+  lote_id: number
+  lote?: Lote
+  tipo_negociacion: 'contado' | 'credito' | 'reserva'
+  precio_original: number
+  descuento: number
+  gastos_escrituracion: number
+  precio_final: number
+  enganche_pactado: number
+  enganche_pagado: number
+  monto_financiado: number
+  tasa_interes_anual: number
+  plazo_meses: number
+  cuota_mensual: number
+  total_intereses_proyectados: number
+  total_a_pagar: number
+  total_capital_pagado: number
+  total_interes_pagado: number
+  saldo_capital_pendiente: number
+  cuotas_pagadas: number
+  cuotas_pendientes: number
+  fecha_negociacion: string
+  fecha_primer_pago?: string
+  fecha_vencimiento_contrato?: string
+  estado: 'borrador' | 'reservada' | 'activa' | 'pagada_total' | 'rescindida' | 'en_mora'
+  observaciones?: string
+  planPagos?: any[]
+  pagos?: any[]
+}
+
+export const negociacionService = {
+  simular: (data: SimuladorRequest) => {
+    return api.post<SimuladorResponse>('/simulador/calcular', data)
+  },
+  getAll: (params?: { estado?: string; cliente_id?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.estado && params.estado !== 'todos') query.append('estado', params.estado)
+    if (params?.cliente_id) query.append('cliente_id', params.cliente_id.toString())
+    return api.get<Negociacion[]>(`/negociaciones?${query.toString()}`)
+  },
+  getById: (id: number) => {
+    return api.get<Negociacion>(`/negociaciones/${id}`)
+  },
+  create: (data: any) => {
+    return api.post<Negociacion>('/negociaciones', data)
+  }
+}
+
+export const pagoTerrenoService = {
+  getAll: (params?: { negociacion_id?: number; cliente_id?: number }) => {
+    const query = new URLSearchParams()
+    if (params?.negociacion_id) query.append('negociacion_id', params.negociacion_id.toString())
+    if (params?.cliente_id) query.append('cliente_id', params.cliente_id.toString())
+    return api.get<any[]>(`/pagos-terrenos?${query.toString()}`)
+  },
+  registrar: (data: {
+    negociacion_id: number
+    tipo_pago: string
+    monto: number
+    metodo_pago: string
+    referencia_bancaria?: string
+    observaciones?: string
+    caja_apertura_cierre_id?: number
+  }) => {
+    return api.post<any>('/pagos-terrenos', data)
+  }
+}

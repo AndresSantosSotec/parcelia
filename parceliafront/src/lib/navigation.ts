@@ -1,0 +1,16 @@
+import { Users, Calculator, CreditCard as CreditCardIcon, Package, Wallet, ChartBar, UserCircle, ShoppingCart, Storefront, Tag, Vault, FileText, Handbag, CurrencyDollar, ShieldCheck, Database, Book, Percent, ArrowsLeftRight, ReceiptX, Receipt, Gavel, PaintBrush, TreeStructure, Handshake, Compass } from '@phosphor-icons/react'
+
+export const navigation = [
+  { id: 'fincas', label: 'Fincas & Lotes', icon: TreeStructure },
+  { id: 'negociaciones', label: 'Ventas & Contratos', icon: Handshake },
+  { id: 'clientes', label: 'Compradores', icon: Users },
+  { id: 'simulador', label: 'Simulador Cuotas', icon: Calculator },
+  { id: 'caja', label: 'Caja & Cobros', icon: Wallet },
+  { id: 'recibos', label: 'Recibos', icon: Receipt },
+  { id: 'reportes', label: 'Reportes Inmobiliarios', icon: ChartBar },
+  { id: 'personalizacion', label: 'Personalización & Logo', icon: PaintBrush },
+  { id: 'usuarios', label: 'Usuarios & Asesores', icon: UserCircle },
+  { id: 'sucursales', label: 'Sucursales', icon: Storefront },
+  { id: 'auditoria', label: 'Auditoría', icon: ShieldCheck },
+  { id: 'contabilidad', label: 'Contabilidad', icon: Book },
+]

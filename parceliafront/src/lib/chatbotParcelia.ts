@@ -361,24 +361,34 @@ Un lote ocupado (negociacion_activa_id) no se puede vender otra vez.`,
   }
 }
 
+/** Quita tildes y signos para comparar contexto sin depender de acentos. */
+export function normalizarTexto(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[¿?¡!.,;:]/g, '')
+    .trim()
+}
+
 export const PALABRAS_VALIDAS = [
-  'finca', 'lote', 'parcela', 'manzana', 'terreno', 'negociacion', 'negociación',
+  'finca', 'lote', 'parcela', 'manzana', 'terreno', 'negociacion',
   'venta', 'contrato', 'comprador', 'cliente', 'caja', 'recibo', 'cuota', 'enganche',
-  'mora', 'tasa', 'interes', 'interés', 'simulador', 'plan', 'pago', 'rescindir',
+  'mora', 'tasa', 'interes', 'simulador', 'plan', 'pago', 'rescindir',
   'cancelar', 'desactivar', 'editar', 'reporte', 'sucursal', 'usuario', 'asesor',
-  'terracloud', 'parcelia', 'sistema', 'modulo', 'módulo', 'ayuda', 'hola',
-  'credito', 'crédito', 'contado', 'reserva', 'disponible', 'vendido', 'pagado',
-  'frente', 'fondo', 'foto', 'imagen', 'dpi', 'crear', 'como', 'cómo', 'que', 'qué',
+  'terracloud', 'parcelia', 'sistema', 'modulo', 'ayuda', 'hola',
+  'credito', 'contado', 'reserva', 'disponible', 'vendido', 'pagado',
+  'frente', 'fondo', 'foto', 'imagen', 'dpi', 'crear', 'como', 'que',
   'cobrar', 'abrir', 'cerrar', 'escritur',
 ]
 
 export const PALABRAS_INVALIDAS = [
-  'receta', 'cocina', 'comida', 'pizza', 'futbol', 'fútbol', 'mundial', 'partido',
-  'pelicula', 'película', 'serie', 'netflix', 'youtube', 'tiktok', 'facebook',
+  'receta', 'cocina', 'comida', 'pizza', 'futbol', 'mundial', 'partido',
+  'pelicula', 'serie', 'netflix', 'youtube', 'tiktok', 'facebook',
   'whatsapp', 'instagram', 'clima', 'chiste', 'broma', 'novia', 'novio',
   'juego', 'videojuego', 'gta', 'minecraft', 'fortnite',
   'medicina', 'enfermedad', 'doctor', 'hospital',
-  'política', 'presidente', 'elecciones',
+  'politica', 'presidente', 'elecciones',
 ]
 
 export const CORRECCIONES: Record<string, string> = {
@@ -396,10 +406,10 @@ export const CORRECCIONES: Record<string, string> = {
 }
 
 export function esContextoValido(mensaje: string): boolean {
-  const lower = mensaje.toLowerCase()
-  if (PALABRAS_INVALIDAS.some((p) => lower.includes(p))) return false
-  if (mensaje.trim().length < 3 && !lower.match(/^(hola|hi|hey)$/)) return false
-  return PALABRAS_VALIDAS.some((p) => lower.includes(p))
+  const norm = normalizarTexto(mensaje)
+  if (PALABRAS_INVALIDAS.some((p) => norm.includes(normalizarTexto(p)))) return false
+  if (mensaje.trim().length < 3 && !/^(hola|hi|hey)$/.test(norm)) return false
+  return PALABRAS_VALIDAS.some((p) => norm.includes(normalizarTexto(p)))
 }
 
 export function corregirOrtografia(texto: string): string {
@@ -429,8 +439,9 @@ export function calcularSimilitud(str1: string, str2: string): number {
 export function buscarPalabraSimilar(palabra: string, lista: string[], umbral = 0.7): string | null {
   let mejor: string | null = null
   let score = 0
+  const q = normalizarTexto(palabra)
   for (const candidato of lista) {
-    const s = calcularSimilitud(palabra.toLowerCase(), candidato.toLowerCase())
+    const s = calcularSimilitud(q, normalizarTexto(candidato))
     if (s > score && s >= umbral) {
       score = s
       mejor = candidato
@@ -439,16 +450,13 @@ export function buscarPalabraSimilar(palabra: string, lista: string[], umbral = 
   return mejor
 }
 
-const normalizar = (str: string) =>
-  str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[¿?¡!]/g, '').trim()
-
 export function buscarRespuestaLocal(query: string, rol: RolChatbot, empresa = MARCA): string {
   const qCorregido = corregirOrtografia(query)
-  const qNorm = normalizar(qCorregido)
+  const qNorm = normalizarTexto(qCorregido)
   const answers = respuestasRapidas(rol, empresa)
 
   for (const [key, answer] of Object.entries(answers)) {
-    const keyNorm = normalizar(key)
+    const keyNorm = normalizarTexto(key)
     if (qNorm.includes(keyNorm) || keyNorm.includes(qNorm)) return answer
   }
 
@@ -456,7 +464,7 @@ export function buscarRespuestaLocal(query: string, rol: RolChatbot, empresa = M
   if (similar) return answers[similar]
 
   for (const [modulo, info] of Object.entries(KNOWLEDGE_BASE.modulos)) {
-    if (qNorm.includes(normalizar(modulo)) || qNorm.includes(normalizar(info.descripcion))) {
+    if (qNorm.includes(normalizarTexto(modulo)) || qNorm.includes(normalizarTexto(info.descripcion))) {
       return `**${modulo.toUpperCase()}**\n\n${info.descripcion}\n\n${info.funciones.map((f) => `• ${f}`).join('\n')}`
     }
   }

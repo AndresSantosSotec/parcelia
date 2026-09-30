@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Calculator, Printer, TreeStructure, CurrencyDollar, Calendar, Percent, Sparkle } from '@phosphor-icons/react'
+import { Calculator, DownloadSimple, TreeStructure, CurrencyDollar, Calendar, Percent, Sparkle } from '@phosphor-icons/react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { api, loteService, Lote } from '@/lib/api'
-import { useEmpresaConfig } from '@/hooks/useEmpresaConfig'
-import { imprimirDocumentoHTML } from '@/utils/impresionDocumentos'
 import { toast } from 'sonner'
 
 interface SimuladorModuleProps {
@@ -16,7 +14,6 @@ interface SimuladorModuleProps {
 }
 
 export function SimuladorModule(_props: SimuladorModuleProps = {}) {
-  const { config: empresaConfig } = useEmpresaConfig()
   const [lotes, setLotes] = useState<Lote[]>([])
   const [loteSeleccionadoId, setLoteSeleccionadoId] = useState<string>('')
   
@@ -91,77 +88,27 @@ export function SimuladorModule(_props: SimuladorModuleProps = {}) {
     ejecutarSimulacion()
   }, [precioLote, descuento, gastosEscrituracion, gastosAdmin, enganche, plazoMeses, tasaAnual, metodo, fechaPrimerPago])
 
-  // Imprimir Cotización Membretada con Logo
-  const handleImprimirCotizacion = () => {
+  const handleDescargarCotizacion = async () => {
     if (!simulacion) return
-    const lote = lotes.find(l => String(l.id) === loteSeleccionadoId)
-
-    const cuerpoHTML = `
-      <h2 style="text-align: center; color: #047857; text-transform: uppercase; margin-bottom: 3px;">COTIZACIÓN DE FINANCIAMIENTO INMOBILIARIO</h2>
-      <p style="text-align: center; font-weight: bold; margin-top: 0; color: #555;">PROPUESTA COMERCIAL & PLAN DE PAGOS</p>
-      <hr style="margin: 15px 0; border: 0; border-top: 1px solid #e5e7eb;" />
-
-      <table style="width: 100%; margin-bottom: 20px; font-size: 11px;">
-        <tr>
-          <td style="width: 50%; vertical-align: top;">
-            <strong style="color: #047857;">PROSPECTO / COMPRADOR:</strong><br />
-            <strong>Nombre:</strong> ${nombreProspecto || 'Cliente Prospecto'}<br />
-            <strong>Teléfono:</strong> ${telefonoProspecto || '—'}<br />
-            <strong>Fecha de Emisión:</strong> ${new Date().toLocaleDateString('es-GT')}
-          </td>
-          <td style="width: 50%; vertical-align: top;">
-            <strong style="color: #047857;">DATOS DEL TERRENO COTIZADO:</strong><br />
-            <strong>Lote:</strong> ${lote ? `${lote.codigo_unico} (${lote.numero_lote})` : 'Lote Personalizado'}<br />
-            <strong>Finca / Ubicación:</strong> ${lote?.parcela?.finca?.nombre || 'Desarrollo Campestre'}<br />
-            <strong>Área:</strong> ${lote?.area_m2 || 0} m²
-          </td>
-        </tr>
-      </table>
-
-      <table style="width: 100%; margin-bottom: 25px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 11px; text-align: center;">
-        <tr>
-          <td style="padding: 10px;"><strong>Precio Base:</strong><br />Q${Number(simulacion.precio_original).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-          <td style="padding: 10px; color: #047857;"><strong>Descuento:</strong><br />Q${Number(simulacion.descuento).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-          <td style="padding: 10px;"><strong>Precio Final:</strong><br />Q${Number(simulacion.precio_final).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-          <td style="padding: 10px; color: #166534; font-weight: bold;"><strong>Enganche Requerido:</strong><br />Q${Number(simulacion.enganche).toLocaleString('es-GT', { minimumFractionDigits: 2 })} (${simulacion.porcentaje_enganche}%)</td>
-        </tr>
-      </table>
-
-      <div style="background: #ecfdf5; border: 2px solid #a7f3d0; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 25px;">
-        <div style="font-size: 11px; color: #065f46; font-weight: bold; text-transform: uppercase;">Cuota Mensual Nivelada</div>
-        <div style="font-size: 26px; font-weight: 900; color: #047857;">Q${Number(simulacion.cuota_mensual).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</div>
-        <div style="font-size: 11px; color: #047857;">Financiamiento a <strong>${simulacion.plazo_meses} meses</strong> · Tasa de Interés: <strong>${simulacion.tasa_anual}% anual</strong></div>
-      </div>
-
-      <h3 style="color: #047857; font-size: 13px; margin-bottom: 8px;">TABLA DE AMORTIZACIÓN PROYECTADA</h3>
-      <table class="data-table" style="font-size: 10px;">
-        <thead>
-          <tr>
-            <th>Cuota</th>
-            <th>Vencimiento</th>
-            <th class="text-right">Capital</th>
-            <th class="text-right">Interés</th>
-            <th class="text-right">Cuota Total</th>
-            <th class="text-right">Saldo Restante</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${(simulacion.cuotas || []).slice(0, 36).map((c: any) => `
-            <tr>
-              <td>Cuota #${c.numero_cuota}</td>
-              <td>${c.fecha_vencimiento}</td>
-              <td class="text-right">Q${Number(c.cuota_capital).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-              <td class="text-right">Q${Number(c.cuota_interes).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-              <td class="text-right font-bold">Q${Number(c.cuota_monto_total).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-              <td class="text-right">Q${Number(c.saldo_capital_restante).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-
-      ${simulacion.cuotas?.length > 36 ? `<p style="font-size: 9px; color: #666; text-align: center; margin-top: 5px;">(Se muestran las primeras 36 cuotas de ${simulacion.cuotas.length} totales)</p>` : ''}
-    `
-    imprimirDocumentoHTML(`Cotizacion_${nombreProspecto.replace(/\s+/g, '_')}`, cuerpoHTML, empresaConfig)
+    try {
+      const nombre = (nombreProspecto || 'prospecto').replace(/\s+/g, '_')
+      await api.downloadPost('/simulador/cotizacion-pdf', {
+        precio_lote: precioLote,
+        descuento,
+        gastos_escrituracion: gastosEscrituracion,
+        gastos_administrativos: gastosAdmin,
+        enganche,
+        plazo_meses: plazoMeses,
+        tasa_interes_anual: tasaAnual,
+        metodo,
+        fecha_primer_pago: fechaPrimerPago,
+        nombre_prospecto: nombreProspecto,
+        telefono_prospecto: telefonoProspecto,
+        lote_id: loteSeleccionadoId ? Number(loteSeleccionadoId) : null,
+      }, `Cotizacion_${nombre}.pdf`)
+    } catch {
+      toast.error('No se pudo descargar la cotización')
+    }
   }
 
   return (
@@ -178,8 +125,8 @@ export function SimuladorModule(_props: SimuladorModuleProps = {}) {
           </p>
         </div>
         <div className="page-toolbar-actions">
-          <Button onClick={handleImprimirCotizacion} className="gap-2 shadow-sm">
-            <Printer size={16} /> Imprimir Cotización
+          <Button onClick={handleDescargarCotizacion} disabled={!simulacion} className="gap-2 shadow-sm">
+            <DownloadSimple size={16} /> Cotización PDF
           </Button>
         </div>
       </div>
@@ -386,8 +333,8 @@ export function SimuladorModule(_props: SimuladorModuleProps = {}) {
                 <CardTitle className="text-base">Tabla de Amortización Proyectada ({simulacion?.cuotas?.length || 0} cuotas)</CardTitle>
                 <CardDescription className="text-xs">Desglose mensual de capital, interés y saldo deudor</CardDescription>
               </div>
-              <Button size="sm" variant="outline" onClick={handleImprimirCotizacion} className="gap-1.5 text-xs">
-                <Printer size={14} /> Imprimir
+              <Button size="sm" variant="outline" onClick={handleDescargarCotizacion} disabled={!simulacion} className="gap-1.5 text-xs">
+                <DownloadSimple size={14} /> PDF
               </Button>
             </CardHeader>
             <CardContent>

@@ -119,6 +119,53 @@ Route::prefix('v1')->group(function () {
             Route::post('/fincas/{fincaId}/parcelas', [FincaController::class, 'storeParcela'])->middleware('permiso:fincas,crear');
             Route::post('/parcelas/{parcelaId}/lotes', [FincaController::class, 'storeLote'])->middleware('permiso:lotes,crear');
 
+            Route::get('/compras-fincas', [\App\Http\Controllers\Api\CompraFincaController::class, 'index'])->middleware('permiso:compra_fincas,ver');
+            Route::get('/fincas/{id}/compra', [\App\Http\Controllers\Api\CompraFincaController::class, 'detalle'])->middleware('permiso:compra_fincas,ver');
+            Route::put('/fincas/{id}/compra', [\App\Http\Controllers\Api\CompraFincaController::class, 'guardarCompra'])->middleware('permiso:compra_fincas,crear|editar');
+            Route::delete('/fincas/{id}/compra', [\App\Http\Controllers\Api\CompraFincaController::class, 'destroy'])->middleware('permiso:compra_fincas,eliminar');
+            Route::post('/fincas/{id}/escrituras', [\App\Http\Controllers\Api\CompraFincaController::class, 'storeEscritura'])->middleware('permiso:compra_fincas,crear|editar');
+            Route::post('/fincas/{id}/escrituras/{escrituraId}/documento', [\App\Http\Controllers\Api\CompraFincaController::class, 'adjuntarDocumento'])->middleware('permiso:compra_fincas,crear|editar');
+            Route::get('/fincas/{id}/escrituras/{escrituraId}/documento', [\App\Http\Controllers\Api\CompraFincaController::class, 'documentoEscritura'])->middleware('permiso:compra_fincas,ver');
+            Route::delete('/fincas/{id}/escrituras/{escrituraId}', [\App\Http\Controllers\Api\CompraFincaController::class, 'destroyEscritura'])->middleware('permiso:compra_fincas,crear|editar');
+            Route::post('/fincas/{id}/gastos-urbanizacion', [\App\Http\Controllers\Api\CompraFincaController::class, 'storeGasto'])->middleware('permiso:compra_fincas,crear|editar');
+            Route::delete('/fincas/{id}/gastos-urbanizacion/{gastoId}', [\App\Http\Controllers\Api\CompraFincaController::class, 'destroyGasto'])->middleware('permiso:compra_fincas,crear|editar');
+            Route::post('/fincas/{id}/cuotas-compra/{cuotaId}/pagar', [\App\Http\Controllers\Api\CompraFincaController::class, 'pagarCuota'])->middleware('permiso:compra_fincas,editar');
+            Route::post('/fincas/{id}/lotes-medidas', [\App\Http\Controllers\Api\CompraFincaController::class, 'sincronizarLotes'])->middleware('permiso:compra_fincas,editar');
+            Route::post('/fincas/{id}/rehacer-plan-pendiente', [\App\Http\Controllers\Api\CompraFincaController::class, 'rehacerPendiente'])->middleware('permiso:compra_fincas,editar');
+            Route::post('/fincas/{id}/aplicar-precios', [\App\Http\Controllers\Api\CompraFincaController::class, 'aplicarPrecios'])->middleware('permiso:compra_fincas,editar');
+
+            Route::get('/financistas', [\App\Http\Controllers\Api\FinancistaController::class, 'index'])->middleware('permiso:financistas,ver');
+            Route::post('/financistas', [\App\Http\Controllers\Api\FinancistaController::class, 'store'])->middleware('permiso:financistas,editar');
+            Route::put('/financistas/{id}', [\App\Http\Controllers\Api\FinancistaController::class, 'update'])->middleware('permiso:financistas,editar');
+            Route::post('/financistas/{id}/pagos', [\App\Http\Controllers\Api\FinancistaController::class, 'pagar'])->middleware('permiso:financistas,pagar');
+            Route::get('/financistas/{id}/estado', [\App\Http\Controllers\Api\FinancistaController::class, 'estado'])->middleware('permiso:financistas,ver');
+
+            Route::get('/comision-reglas', [\App\Http\Controllers\Api\ComisionistaController::class, 'reglas'])->middleware('permiso:comisionistas,ver');
+            Route::post('/comision-reglas', [\App\Http\Controllers\Api\ComisionistaController::class, 'storeRegla'])->middleware('permiso:comisionistas,reglas');
+            Route::put('/comision-reglas/{id}', [\App\Http\Controllers\Api\ComisionistaController::class, 'updateRegla'])->middleware('permiso:comisionistas,reglas');
+            Route::post('/comisiones/aplicar', [\App\Http\Controllers\Api\ComisionistaController::class, 'aplicar'])->middleware('permiso:comisionistas,editar');
+            Route::get('/comisionistas', [\App\Http\Controllers\Api\ComisionistaController::class, 'index'])->middleware('permiso:comisionistas,ver');
+            Route::post('/comisionistas', [\App\Http\Controllers\Api\ComisionistaController::class, 'store'])->middleware('permiso:comisionistas,editar');
+            Route::put('/comisionistas/{id}', [\App\Http\Controllers\Api\ComisionistaController::class, 'update'])->middleware('permiso:comisionistas,editar');
+            Route::get('/comisiones', [\App\Http\Controllers\Api\ComisionistaController::class, 'comisiones'])->middleware('permiso:comisionistas,ver');
+            Route::post('/comisiones', [\App\Http\Controllers\Api\ComisionistaController::class, 'storeComision'])->middleware('permiso:comisionistas,editar');
+            Route::post('/comisiones/{id}/pagos', [\App\Http\Controllers\Api\ComisionistaController::class, 'pagar'])->middleware('permiso:comisionistas,pagar');
+            Route::get('/comisiones/{id}/estado', [\App\Http\Controllers\Api\ComisionistaController::class, 'estado'])->middleware('permiso:comisionistas,ver');
+
+            Route::get('/reportes-compra-fincas/listado', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'listado'])->middleware('permiso:compra_fincas,reportes');
+            Route::get('/fincas/{id}/reportes/registro', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'registro'])->middleware('permiso:compra_fincas,reportes');
+            Route::get('/fincas/{id}/reportes/estado-compra', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'estadoCompra'])->middleware('permiso:compra_fincas,reportes');
+            Route::get('/fincas/{id}/reportes/contrato-compra', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'contratoCompra'])->middleware('permiso:compra_fincas,reportes');
+            Route::get('/fincas/{id}/pagos-compra/{pagoId}/recibo', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'reciboCompra'])->middleware('permiso:compra_fincas,reportes');
+            Route::get('/fincas/{id}/reportes/plan-compra', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'planCompra'])->middleware('permiso:compra_fincas,reportes');
+            Route::get('/fincas/{id}/reportes/costeo', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'costeo'])->middleware('permiso:compra_fincas,reportes');
+            Route::get('/financistas/reporte', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'financistas'])->middleware('permiso:financistas,reportes');
+            Route::get('/financistas/{id}/reporte', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'estadoFinancista'])->middleware('permiso:financistas,reportes');
+            Route::get('/comisionistas/reporte', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'comisionistas'])->middleware('permiso:comisionistas,reportes');
+            Route::get('/comisiones/reporte', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'comisiones'])->middleware('permiso:comisionistas,reportes');
+            Route::get('/comisiones/{id}/reporte', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'estadoComision'])->middleware('permiso:comisionistas,reportes');
+            Route::get('/comisiones/{id}/recibo-pdf', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'reciboComision'])->middleware('permiso:comisionistas,reportes');
+
             Route::get('/lotes', [LoteController::class, 'index'])->middleware('permiso:lotes,ver');
             Route::get('/lotes/disponibles', [LoteController::class, 'disponibles'])->middleware('permiso:lotes,ver');
             Route::get('/lotes/{id}', [LoteController::class, 'show'])->middleware('permiso:lotes,ver');
@@ -129,6 +176,7 @@ Route::prefix('v1')->group(function () {
             Route::delete('/lotes/{loteId}/imagenes/{imagenId}', [LoteController::class, 'destroyImagen'])->middleware('permiso:lotes,imagenes');
 
             Route::post('/simulador/calcular', [NegociacionController::class, 'simular'])->middleware('permiso:negociaciones,ver');
+            Route::post('/simulador/cotizacion-pdf', [NegociacionController::class, 'cotizacionPdf'])->middleware('permiso:negociaciones,ver');
             Route::get('/negociaciones', [NegociacionController::class, 'index'])->middleware('permiso:negociaciones,ver');
             Route::post('/negociaciones', [NegociacionController::class, 'store'])->middleware('permiso:negociaciones,crear');
             Route::get('/negociaciones/{id}', [NegociacionController::class, 'show'])->middleware('permiso:negociaciones,ver');
@@ -147,14 +195,17 @@ Route::prefix('v1')->group(function () {
             Route::get('/pagos-terrenos', [PagoTerrenoController::class, 'index'])->middleware('permiso:pagos_terreno,ver');
             Route::post('/pagos-terrenos', [PagoTerrenoController::class, 'store'])->middleware('permiso:pagos_terreno,cobrar');
             Route::post('/pagos-terrenos/{id}/anular', [PagoTerrenoController::class, 'anular'])->middleware('permiso:pagos_terreno,anular');
+            Route::get('/pagos-terrenos/{id}/recibo-pdf', [PagoTerrenoController::class, 'reciboPdf'])->middleware('permiso:pagos_terreno,ver');
 
             Route::get('/negociaciones/{id}/estado-cuenta', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'estadoCuenta'])->middleware('permiso:negociaciones,ver');
             Route::get('/negociaciones/{id}/plan-pagos-pdf', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'planPagosPdf'])->middleware('permiso:negociaciones,ver');
             Route::get('/negociaciones/{id}/contrato-html', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'contratoHtml'])->middleware('permiso:negociaciones,contrato');
+            Route::get('/negociaciones/{id}/contrato-pdf', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'contratoPdf'])->middleware('permiso:negociaciones,contrato');
             Route::get('/reportes-inmobiliarios/inventario', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'inventario'])->middleware('permiso:reportes_inmobiliarios,generar');
             Route::get('/reportes-inmobiliarios/ventas', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'ventas'])->middleware('permiso:reportes_inmobiliarios,generar');
             Route::get('/reportes-inmobiliarios/cobranza', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'cobranza'])->middleware('permiso:reportes_inmobiliarios,generar');
             Route::get('/reportes-inmobiliarios/ingresos-diarios', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'ingresosDiarios'])->middleware('permiso:reportes_inmobiliarios,generar');
+            Route::get('/reportes-inmobiliarios/general', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'general'])->middleware('permiso:reportes_inmobiliarios,generar');
         });
 
         // ==========================================

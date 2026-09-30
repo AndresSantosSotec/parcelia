@@ -18,6 +18,7 @@ class Lote extends Model
 
     protected $fillable = [
         'parcela_id',
+        'vendedor_id',
         'numero_lote',
         'codigo_unico',
         'area_m2',
@@ -29,6 +30,8 @@ class Lote extends Model
         'precio_base',
         'plusvalia_servicios',
         'precio_venta',
+        'costo_asignado',
+        'precio_sugerido',
         'estado',
         'negociacion_activa_id',
         'observaciones',
@@ -49,6 +52,8 @@ class Lote extends Model
         'precio_base' => 'decimal:2',
         'plusvalia_servicios' => 'decimal:2',
         'precio_venta' => 'decimal:2',
+        'costo_asignado' => 'decimal:2',
+        'precio_sugerido' => 'decimal:2',
         'latitud' => 'decimal:7',
         'longitud' => 'decimal:7',
         'altitud' => 'decimal:2',
@@ -71,6 +76,40 @@ class Lote extends Model
     public function parcela()
     {
         return $this->belongsTo(Parcela::class, 'parcela_id');
+    }
+
+    public function vendedor()
+    {
+        return $this->belongsTo(User::class, 'vendedor_id');
+    }
+
+    /**
+     * Admin/superadmin ven toda la cartera; el resto solo lotes asignados.
+     */
+    public function scopeVisiblePara($query, ?User $user)
+    {
+        if (! $user) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        if (in_array($user->rol, ['superadmin', 'administrador'], true)) {
+            return $query;
+        }
+
+        return $query->where('vendedor_id', $user->id);
+    }
+
+    public function esVisiblePara(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if (in_array($user->rol, ['superadmin', 'administrador'], true)) {
+            return true;
+        }
+
+        return (int) $this->vendedor_id === (int) $user->id;
     }
 
     public function servicios()

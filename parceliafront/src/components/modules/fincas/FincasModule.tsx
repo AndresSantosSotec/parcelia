@@ -7,11 +7,19 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, TreeStructure, Compass, Camera, Trash, Pencil, Power, WarningCircle, MapPin, ShareNetwork } from '@phosphor-icons/react'
+import { Plus, TreeStructure, Compass, Camera, Trash, Pencil, Power, WarningCircle, MapPin, ShareNetwork, User, CaretLeft, CaretRight } from '@phosphor-icons/react'
 import { toast } from 'sonner'
-import { fincaService, loteService, Finca, Parcela, Lote } from '@/lib/api'
+import { fincaService, loteService, userService, Finca, Parcela, Lote } from '@/lib/api'
 import { MapPickerField, type GeoCoords } from '@/components/ui/MapPickerField'
 import { urlFichaTerreno, urlFotoLote } from '@/lib/media'
+import { usePermissions } from '@/hooks/use-permissions'
+
+const PASOS_LOTE = [
+  { id: 0, titulo: 'Identidad', desc: 'Número y tipo' },
+  { id: 1, titulo: 'Medidas', desc: 'Área y precio' },
+  { id: 2, titulo: 'Ubicación', desc: 'Fotos y mapa' },
+  { id: 3, titulo: 'Publicación', desc: 'Ficha web' },
+] as const
 
 const formFincaVacio = {
   nombre: '',
@@ -41,9 +49,29 @@ const formLoteVacio = {
   precision_metros: '' as number | '',
   referencia_geo: '',
   publicado: true,
+  vendedor_id: '' as number | '',
 }
 
-export function FincasModule() {
+type UserSessionProp = {
+  username: string
+  role: string
+  userData?: {
+    id: string
+    nombre: string
+    username: string
+    email: string
+    rol: string
+    activo: boolean
+    permisos: any[]
+  }
+}
+
+interface FincasModuleProps {
+  userSession?: UserSessionProp
+}
+
+export function FincasModule({ userSession }: FincasModuleProps) {
+  const { isAdmin } = usePermissions(userSession?.userData)
   const [fincas, setFincas] = useState<Finca[]>([])
   const [fincaSeleccionada, setFincaSeleccionada] = useState<Finca | null>(null)
   const [parcelaSeleccionada, setParcelaSeleccionada] = useState<Parcela | null>(null)
@@ -51,6 +79,8 @@ export function FincasModule() {
   const [cargando, setCargando] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [filtroEstado, setFiltroEstado] = useState<string>('todos')
+  const [pasoLote, setPasoLote] = useState(0)
+  const [vendedores, setVendedores] = useState<Array<{ id: number; nombre: string; username: string; rol: string }>>([])
 
   // Modales
   const [modalFinca, setModalFinca] = useState(false)
@@ -79,6 +109,23 @@ export function FincasModule() {
   })
 
   const [formLote, setFormLote] = useState(formLoteVacio)
+
+  useEffect(() => {
+    if (!isAdmin || !modalLote) return
+    userService.getAll({ activo: '1', per_page: 100 })
+      .then((res) => {
+        const rows = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : []
+        setVendedores(
+          rows.map((u: any) => ({
+            id: Number(u.id),
+            nombre: u.nombre || u.name || u.username,
+            username: u.username,
+            rol: u.rol,
+          }))
+        )
+      })
+      .catch(() => setVendedores([]))
+  }, [isAdmin, modalLote])
 
   const cargarFincas = async () => {
     setCargando(true)
@@ -245,13 +292,18 @@ export function FincasModule() {
 
   const abrirModalLote = () => {
     setLoteEditando(null)
-    setFormLote(formLoteVacio)
+    setPasoLote(0)
+    setFormLote({
+      ...formLoteVacio,
+      vendedor_id: userSession?.userData?.id ? Number(userSession.userData.id) : '',
+    })
     limpiarFotosNuevoLote()
     setModalLote(true)
   }
 
   const abrirEditarLote = (lote: Lote) => {
     setLoteEditando(lote)
+    setPasoLote(0)
     setFormLote({
       ...formLoteVacio,
       numero_lote: lote.numero_lote,
@@ -269,6 +321,7 @@ export function FincasModule() {
       precision_metros: lote.precision_metros != null && lote.precision_metros !== '' ? Number(lote.precision_metros) : '',
       referencia_geo: lote.referencia_geo || '',
       publicado: lote.publicado !== false,
+      vendedor_id: lote.vendedor_id != null ? Number(lote.vendedor_id) : '',
     })
     limpiarFotosNuevoLote()
     setModalLote(true)
@@ -320,7 +373,32 @@ export function FincasModule() {
     if (formLote.altitud !== '') payload.altitud = formLote.altitud
     if (formLote.precision_metros !== '') payload.precision_metros = formLote.precision_metros
     payload.referencia_geo = formLote.referencia_geo.trim() || null
+    if (isAdmin && formLote.vendedor_id !== '') {
+      payload.vendedor_id = Number(formLote.vendedor_id)
+    }
     return payload
+  }
+
+  const validarPasoLote = (paso: number): boolean => {
+    if (paso === 0) {
+      if (!formLote.numero_lote.trim()) {
+        toast.error('Indica el número o identificador del lote')
+        return false
+      }
+      return true
+    }
+    if (paso === 1) {
+      if (!formLote.area_m2 || formLote.area_m2 <= 0) {
+        toast.error('El área debe ser mayor a cero')
+        return false
+      }
+      if (!formLote.precio_venta || formLote.precio_venta <= 0) {
+        toast.error('Indica el precio de venta')
+        return false
+      }
+      return true
+    }
+    return true
   }
 
   const subirFotosPendientes = async (loteId: number, yaTieneFotos: number) => {
@@ -676,12 +754,12 @@ export function FincasModule() {
               </div>
 
               {/* Filtro por estado de lote */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <span className="text-xs text-muted-foreground">Estado:</span>
                 <select
                   value={filtroEstado}
                   onChange={(e) => setFiltroEstado(e.target.value)}
-                  className="text-xs bg-background border rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-primary outline-none"
+                  className="w-full sm:w-auto text-xs bg-background border rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-primary outline-none"
                 >
                   <option value="todos">Todos los lotes</option>
                   <option value="disponible">Disponibles</option>
@@ -756,6 +834,12 @@ export function FincasModule() {
                     <p className="text-xs text-muted-foreground">
                       {lote.area_m2} m² · {lote.frente_metros || '—'} × {lote.fondo_metros || '—'} m
                     </p>
+                    {isAdmin && (lote.vendedor || lote.vendedor_id) && (
+                      <p className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                        <User size={12} />
+                        {lote.vendedor?.nombre || lote.vendedor?.name || lote.vendedor?.username || `Usuario #${lote.vendedor_id}`}
+                      </p>
+                    )}
                     {lote.latitud != null && lote.longitud != null ? (
                       <a
                         href={`https://www.google.com/maps?q=${lote.latitud},${lote.longitud}`}
@@ -795,6 +879,7 @@ export function FincasModule() {
                     <TableHead>Lote</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead>Tipo</TableHead>
+                    {isAdmin && <TableHead>Vendedor</TableHead>}
                     <TableHead className="text-right">Área m²</TableHead>
                     <TableHead>Medidas</TableHead>
                     <TableHead>Ubicación</TableHead>
@@ -817,6 +902,11 @@ export function FincasModule() {
                       </TableCell>
                       <TableCell>{getBadgeEstado(lote.estado)}</TableCell>
                       <TableCell className="text-xs text-muted-foreground">{lote.tipo_terreno}</TableCell>
+                      {isAdmin && (
+                        <TableCell className="text-xs text-muted-foreground">
+                          {lote.vendedor?.nombre || lote.vendedor?.name || lote.vendedor?.username || (lote.vendedor_id ? `#${lote.vendedor_id}` : '—')}
+                        </TableCell>
+                      )}
                       <TableCell className="text-right">{lote.area_m2}</TableCell>
                       <TableCell className="text-xs">
                         {lote.frente_metros || '—'} m × {lote.fondo_metros || '—'} m
@@ -1013,11 +1103,12 @@ export function FincasModule() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Nuevo Lote */}
+      {/* Modal Nuevo / Editar Lote — wizard por pasos */}
       <Dialog open={modalLote} onOpenChange={(open) => {
         setModalLote(open)
         if (!open) {
           setLoteEditando(null)
+          setPasoLote(0)
           setFormLote(formLoteVacio)
           limpiarFotosNuevoLote()
         }
@@ -1027,238 +1118,347 @@ export function FincasModule() {
             <DialogTitle>
               {loteEditando
                 ? `Editar lote ${loteEditando.numero_lote}`
-                : `Registrar Lote en ${parcelaSeleccionada?.nombre_identificador}`}
+                : `Nuevo terreno · ${parcelaSeleccionada?.nombre_identificador || 'Parcela'}`}
             </DialogTitle>
+            <p className="text-xs text-muted-foreground">Completa un paso a la vez.</p>
           </DialogHeader>
-          <form onSubmit={handleGuardarLote} className="space-y-4 py-2">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Número / Identificador de Lote *</Label>
-                <Input
-                  required
-                  placeholder="Ej. L-05"
-                  value={formLote.numero_lote}
-                  onChange={(e) => setFormLote({ ...formLote, numero_lote: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Área Total (m²) *</Label>
-                <Input
-                  required
-                  type="number"
-                  value={formLote.area_m2}
-                  onChange={(e) => {
-                    const area = parseFloat(e.target.value) || 0
-                    setFormLote({
-                      ...formLote,
-                      area_m2: area,
-                      precio_venta: area * formLote.precio_m2
-                    })
-                  }}
-                />
-                <p className="text-xs text-muted-foreground">Aprox. frente × fondo. Puede ajustarla.</p>
-              </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Frente (metros)</Label>
-                <Input
-                  type="number"
-                  value={formLote.frente_metros}
-                  onChange={(e) => {
-                    const frente = parseFloat(e.target.value) || 0
-                    const fondo = formLote.fondo_metros
-                    const aprox = frente > 0 && fondo > 0 ? Math.round(frente * fondo * 100) / 100 : formLote.area_m2
-                    setFormLote({
-                      ...formLote,
-                      frente_metros: frente,
-                      area_m2: aprox,
-                      precio_venta: aprox * formLote.precio_m2
-                    })
-                  }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Fondo (metros)</Label>
-                <Input
-                  type="number"
-                  value={formLote.fondo_metros}
-                  onChange={(e) => {
-                    const fondo = parseFloat(e.target.value) || 0
-                    const frente = formLote.frente_metros
-                    const aprox = frente > 0 && fondo > 0 ? Math.round(frente * fondo * 100) / 100 : formLote.area_m2
-                    setFormLote({
-                      ...formLote,
-                      fondo_metros: fondo,
-                      area_m2: aprox,
-                      precio_venta: aprox * formLote.precio_m2
-                    })
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Precio por m² (Q)</Label>
-                <Input
-                  type="number"
-                  value={formLote.precio_m2}
-                  onChange={(e) => {
-                    const pm2 = parseFloat(e.target.value) || 0
-                    setFormLote({
-                      ...formLote,
-                      precio_m2: pm2,
-                      precio_venta: formLote.area_m2 * pm2
-                    })
-                  }}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Precio de Venta Total (Q) *</Label>
-                <Input
-                  required
-                  type="number"
-                  value={formLote.precio_venta}
-                  onChange={(e) => setFormLote({ ...formLote, precio_venta: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Colindancias y Límites</Label>
-              <Input
-                placeholder="Norte: Calle, Sur: Lote 10, Este: Lote 6, Oeste: Lote 4"
-                value={formLote.colindancias}
-                onChange={(e) => setFormLote({ ...formLote, colindancias: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2 border rounded-lg p-3">
-              <Label className="flex items-center gap-2">
-                <Camera size={16} className="text-primary" />
-                Fotos del lote
-              </Label>
-              <p className="text-xs text-muted-foreground">JPEG, PNG o WebP hasta 5 MB. Se guardan al registrar el lote.</p>
-              {fotosNuevoLote.length > 0 && (
-                <div className="grid grid-cols-3 gap-2">
-                  {fotosNuevoLote.map((foto, idx) => (
-                    <div key={foto.preview} className="relative border rounded-lg overflow-hidden bg-muted">
-                      <img src={foto.preview} alt={foto.file.name} className="h-24 w-full object-cover" />
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="absolute top-1 right-1 h-7 w-7 p-0 bg-background/80"
-                        onClick={() => quitarFotoNueva(idx)}
-                      >
-                        <Trash size={14} />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <Label className="cursor-pointer inline-flex">
-                <span className="inline-flex items-center gap-2 text-sm border rounded-md px-3 py-2">
-                  <Camera size={16} /> {fotosNuevoLote.length ? 'Agregar más fotos' : 'Cargar fotos'}
-                </span>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    agregarFotosNuevoLote(e.target.files)
-                    e.target.value = ''
-                  }}
-                />
-              </Label>
-            </div>
-
-            {modalLote && (
-              <MapPickerField
-                label="Geolocalización del lote"
-                value={
-                  formLote.latitud !== '' && formLote.longitud !== ''
-                    ? { lat: Number(formLote.latitud), lng: Number(formLote.longitud) }
-                    : null
-                }
-                onChange={(coords: GeoCoords) => {
-                  setFormLote((prev) => ({
-                    ...prev,
-                    latitud: coords.lat,
-                    longitud: coords.lng,
-                    altitud: coords.altitud != null ? coords.altitud : prev.altitud,
-                    precision_metros: coords.precision_metros != null ? coords.precision_metros : prev.precision_metros,
-                  }))
+          <div className="flex gap-1 mb-2">
+            {PASOS_LOTE.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  if (p.id < pasoLote || validarPasoLote(pasoLote)) setPasoLote(p.id)
                 }}
-                mapHeight={260}
-              />
+                className={`flex-1 rounded-lg border px-2 py-1.5 text-left transition-colors ${
+                  pasoLote === p.id
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : pasoLote > p.id
+                      ? 'border-emerald-500/40 bg-emerald-500/5 text-emerald-700'
+                      : 'border-border text-muted-foreground'
+                }`}
+              >
+                <div className="text-[0.65rem] font-semibold uppercase tracking-wide">{p.titulo}</div>
+                <div className="text-[0.65rem] opacity-80 hidden sm:block">{p.desc}</div>
+              </button>
+            ))}
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (pasoLote < PASOS_LOTE.length - 1) {
+                if (validarPasoLote(pasoLote)) setPasoLote((p) => p + 1)
+                return
+              }
+              if (!validarPasoLote(0) || !validarPasoLote(1)) {
+                setPasoLote(0)
+                return
+              }
+              handleGuardarLote(e)
+            }}
+            className="space-y-4 py-1"
+          >
+            {pasoLote === 0 && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Número / Identificador *</Label>
+                    <Input
+                      required
+                      placeholder="Ej. L-05"
+                      value={formLote.numero_lote}
+                      onChange={(e) => setFormLote({ ...formLote, numero_lote: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tipo de terreno</Label>
+                    <select
+                      className="w-full bg-background border rounded-lg p-2 text-sm h-10"
+                      value={formLote.tipo_terreno}
+                      onChange={(e) => setFormLote({ ...formLote, tipo_terreno: e.target.value })}
+                    >
+                      <option value="Residencial">Residencial</option>
+                      <option value="Comercial">Comercial</option>
+                      <option value="Industrial">Industrial</option>
+                      <option value="Mixto">Mixto</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Colindancias</Label>
+                  <Input
+                    placeholder="Norte: Calle, Sur: Lote 10…"
+                    value={formLote.colindancias}
+                    onChange={(e) => setFormLote({ ...formLote, colindancias: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Notas internas</Label>
+                  <Input
+                    placeholder="Acceso, pendiente, servicios cercanos…"
+                    value={formLote.observaciones}
+                    onChange={(e) => setFormLote({ ...formLote, observaciones: e.target.value })}
+                  />
+                </div>
+              </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Latitud</Label>
-                <Input
-                  type="number"
-                  step="0.000001"
-                  placeholder="14.634900"
-                  value={formLote.latitud}
-                  onChange={(e) => {
-                    const v = e.target.value
-                    setFormLote({ ...formLote, latitud: v === '' ? '' : parseFloat(v) })
-                  }}
-                />
+            {pasoLote === 1 && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Frente (m)</Label>
+                    <Input
+                      type="number"
+                      value={formLote.frente_metros}
+                      onChange={(e) => {
+                        const frente = parseFloat(e.target.value) || 0
+                        const fondo = formLote.fondo_metros
+                        const aprox = frente > 0 && fondo > 0 ? Math.round(frente * fondo * 100) / 100 : formLote.area_m2
+                        setFormLote({
+                          ...formLote,
+                          frente_metros: frente,
+                          area_m2: aprox,
+                          precio_venta: aprox * formLote.precio_m2
+                        })
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Fondo (m)</Label>
+                    <Input
+                      type="number"
+                      value={formLote.fondo_metros}
+                      onChange={(e) => {
+                        const fondo = parseFloat(e.target.value) || 0
+                        const frente = formLote.frente_metros
+                        const aprox = frente > 0 && fondo > 0 ? Math.round(frente * fondo * 100) / 100 : formLote.area_m2
+                        setFormLote({
+                          ...formLote,
+                          fondo_metros: fondo,
+                          area_m2: aprox,
+                          precio_venta: aprox * formLote.precio_m2
+                        })
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Área (m²) *</Label>
+                    <Input
+                      required
+                      type="number"
+                      value={formLote.area_m2}
+                      onChange={(e) => {
+                        const area = parseFloat(e.target.value) || 0
+                        setFormLote({
+                          ...formLote,
+                          area_m2: area,
+                          precio_venta: area * formLote.precio_m2
+                        })
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Precio / m² (Q)</Label>
+                    <Input
+                      type="number"
+                      value={formLote.precio_m2}
+                      onChange={(e) => {
+                        const pm2 = parseFloat(e.target.value) || 0
+                        setFormLote({
+                          ...formLote,
+                          precio_m2: pm2,
+                          precio_venta: formLote.area_m2 * pm2
+                        })
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Precio venta (Q) *</Label>
+                    <Input
+                      required
+                      type="number"
+                      value={formLote.precio_venta}
+                      onChange={(e) => setFormLote({ ...formLote, precio_venta: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground rounded-lg bg-muted/50 p-2">
+                  Frente × fondo calcula el área. Puedes ajustar el área o el precio total a mano.
+                </p>
               </div>
-              <div className="space-y-2">
-                <Label>Longitud</Label>
-                <Input
-                  type="number"
-                  step="0.000001"
-                  placeholder="-90.506900"
-                  value={formLote.longitud}
-                  onChange={(e) => {
-                    const v = e.target.value
-                    setFormLote({ ...formLote, longitud: v === '' ? '' : parseFloat(v) })
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Referencia en campo</Label>
-              <Input
-                placeholder="Ej. Entrada principal, pinte rojo, cerca del tanque"
-                value={formLote.referencia_geo}
-                onChange={(e) => setFormLote({ ...formLote, referencia_geo: e.target.value })}
-              />
-            </div>
-
-            {(formLote.altitud !== '' || formLote.precision_metros !== '') && (
-              <p className="text-xs text-muted-foreground">
-                {formLote.altitud !== '' ? `Altitud: ${formLote.altitud} m` : ''}
-                {formLote.altitud !== '' && formLote.precision_metros !== '' ? ' · ' : ''}
-                {formLote.precision_metros !== '' ? `Precisión GPS: ±${formLote.precision_metros} m` : ''}
-              </p>
             )}
 
-            <div className="flex items-center gap-2">
-              <input
-                id="publicado-lote"
-                type="checkbox"
-                checked={formLote.publicado}
-                onChange={(e) => setFormLote({ ...formLote, publicado: e.target.checked })}
-                className="h-4 w-4"
-              />
-              <Label htmlFor="publicado-lote">Publicar ficha web para compartir fotos y geolocalización</Label>
-            </div>
+            {pasoLote === 2 && (
+              <div className="space-y-4">
+                <div className="space-y-2 border rounded-lg p-3">
+                  <Label className="flex items-center gap-2">
+                    <Camera size={16} className="text-primary" />
+                    Fotos del lote
+                  </Label>
+                  <p className="text-xs text-muted-foreground">JPEG, PNG o WebP hasta 5 MB.</p>
+                  {fotosNuevoLote.length > 0 && (
+                    <div className="grid grid-cols-3 gap-2">
+                      {fotosNuevoLote.map((foto, idx) => (
+                        <div key={foto.preview} className="relative border rounded-lg overflow-hidden bg-muted">
+                          <img src={foto.preview} alt={foto.file.name} className="h-24 w-full object-cover" />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="absolute top-1 right-1 h-7 w-7 p-0 bg-background/80"
+                            onClick={() => quitarFotoNueva(idx)}
+                          >
+                            <Trash size={14} />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <Label className="cursor-pointer inline-flex">
+                    <span className="inline-flex items-center gap-2 text-sm border rounded-md px-3 py-2">
+                      <Camera size={16} /> {fotosNuevoLote.length ? 'Agregar más' : 'Cargar fotos'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        agregarFotosNuevoLote(e.target.files)
+                        e.target.value = ''
+                      }}
+                    />
+                  </Label>
+                </div>
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setModalLote(false)}>Cancelar</Button>
-              <Button type="submit" disabled={guardando}>
-                {guardando ? 'Guardando…' : (loteEditando ? 'Guardar cambios' : 'Registrar Lote')}
-              </Button>
+                {modalLote && (
+                  <MapPickerField
+                    label="Geolocalización"
+                    value={
+                      formLote.latitud !== '' && formLote.longitud !== ''
+                        ? { lat: Number(formLote.latitud), lng: Number(formLote.longitud) }
+                        : null
+                    }
+                    onChange={(coords: GeoCoords) => {
+                      setFormLote((prev) => ({
+                        ...prev,
+                        latitud: coords.lat,
+                        longitud: coords.lng,
+                        altitud: coords.altitud != null ? coords.altitud : prev.altitud,
+                        precision_metros: coords.precision_metros != null ? coords.precision_metros : prev.precision_metros,
+                      }))
+                    }}
+                    mapHeight={220}
+                  />
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Latitud</Label>
+                    <Input
+                      type="number"
+                      step="0.000001"
+                      value={formLote.latitud}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setFormLote({ ...formLote, latitud: v === '' ? '' : parseFloat(v) })
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Longitud</Label>
+                    <Input
+                      type="number"
+                      step="0.000001"
+                      value={formLote.longitud}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setFormLote({ ...formLote, longitud: v === '' ? '' : parseFloat(v) })
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Referencia en campo</Label>
+                  <Input
+                    placeholder="Entrada principal, pinte rojo…"
+                    value={formLote.referencia_geo}
+                    onChange={(e) => setFormLote({ ...formLote, referencia_geo: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+
+            {pasoLote === 3 && (
+              <div className="space-y-4">
+                {isAdmin && (
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <User size={16} className="text-primary" />
+                      Asignar a vendedor / asesor
+                    </Label>
+                    <select
+                      className="w-full bg-background border rounded-lg p-2 text-sm h-10"
+                      value={formLote.vendedor_id === '' ? '' : String(formLote.vendedor_id)}
+                      onChange={(e) =>
+                        setFormLote({
+                          ...formLote,
+                          vendedor_id: e.target.value === '' ? '' : Number(e.target.value),
+                        })
+                      }
+                    >
+                      <option value="">— Yo / sin reasignar —</option>
+                      {vendedores.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.nombre} ({v.username}) · {v.rol}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <input
+                    id="publicado-lote"
+                    type="checkbox"
+                    checked={formLote.publicado}
+                    onChange={(e) => setFormLote({ ...formLote, publicado: e.target.checked })}
+                    className="h-4 w-4"
+                  />
+                  <Label htmlFor="publicado-lote">Publicar ficha web (fotos y ubicación)</Label>
+                </div>
+
+                <div className="rounded-lg border p-3 text-xs space-y-1 bg-muted/30">
+                  <p><strong>Resumen:</strong> Lote {formLote.numero_lote || '—'} · {formLote.tipo_terreno}</p>
+                  <p>{formLote.area_m2} m² · Q{Number(formLote.precio_venta).toLocaleString('es-GT')}</p>
+                  <p>{fotosNuevoLote.length} foto(s) · {formLote.latitud !== '' ? 'Con GPS' : 'Sin GPS'}</p>
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="flex items-center justify-between sm:justify-between gap-2">
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={() => setModalLote(false)}>Cancelar</Button>
+                {pasoLote > 0 && (
+                  <Button type="button" variant="ghost" className="gap-1" onClick={() => setPasoLote((p) => p - 1)}>
+                    <CaretLeft size={16} /> Atrás
+                  </Button>
+                )}
+              </div>
+              {pasoLote < PASOS_LOTE.length - 1 ? (
+                <Button type="submit" className="gap-1">
+                  Siguiente <CaretRight size={16} />
+                </Button>
+              ) : (
+                <Button type="submit" disabled={guardando}>
+                  {guardando ? 'Guardando…' : (loteEditando ? 'Guardar cambios' : 'Registrar terreno')}
+                </Button>
+              )}
             </DialogFooter>
           </form>
         </DialogContent>

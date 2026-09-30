@@ -105,21 +105,22 @@ class AccountStatementService
 
         foreach ($pagos as $p) {
             if ($p->anulado) {
-                $movimientos[] = [
-                    'fecha' => $p->fecha_pago?->format('Y-m-d H:i') ?? $p->created_at->format('Y-m-d H:i'),
-                    'documento' => $p->numero_recibo,
-                    'concepto' => 'ANULADO: '.$p->concepto,
-                    'tipo_pago' => $p->tipo_pago,
-                    'cargo' => 0.0,
-                    'abono' => 0.0,
-                    'capital_aplicado' => 0.0,
-                    'interes_aplicado' => 0.0,
-                    'saldo' => $saldoCorriente,
-                    'metodo' => strtoupper($p->metodo_pago),
-                    'referencia' => $p->motivo_anulacion,
-                    'usuario' => $p->user?->name ?? 'Sistema',
-                    'anulado' => true,
-                ];
+            $movimientos[] = [
+                'fecha' => $p->fecha_pago?->format('Y-m-d H:i') ?? $p->created_at->format('Y-m-d H:i'),
+                'documento' => $p->numero_recibo,
+                'concepto' => 'ANULADO: '.$p->concepto,
+                'tipo_pago' => $p->tipo_pago,
+                'cargo' => 0.0,
+                'abono' => 0.0,
+                'capital_aplicado' => 0.0,
+                'interes_aplicado' => 0.0,
+                'saldo' => $saldoCorriente,
+                'metodo' => strtoupper($p->metodo_pago),
+                'referencia' => $p->motivo_anulacion,
+                'usuario' => $p->user?->name ?? 'Sistema',
+                'anulado' => true,
+                'pago_id' => $p->id,
+            ];
                 continue;
             }
 
@@ -138,7 +139,8 @@ class AccountStatementService
                 'saldo' => $saldoCorriente,
                 'metodo' => strtoupper($p->metodo_pago),
                 'referencia' => $p->referencia_bancaria,
-                'usuario' => $p->user?->name ?? 'Sistema'
+                'usuario' => $p->user?->name ?? 'Sistema',
+                'pago_id' => $p->id,
             ];
         }
 

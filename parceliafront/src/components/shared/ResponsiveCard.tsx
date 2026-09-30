@@ -1,7 +1,6 @@
 import { ReactNode, ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
-import { useResponsive } from '@/hooks/use-mobile'
 
 interface ResponsiveCardProps extends ComponentProps<typeof Card> {
   children: ReactNode
@@ -183,8 +182,6 @@ export function StatCard({
   className,
   onClick,
 }: StatCardProps) {
-  const { isMobile } = useResponsive()
-
   const variantClasses = {
     default: '',
     success: 'text-green-600 dark:text-green-400',
@@ -204,10 +201,7 @@ export function StatCard({
       <CardHeader className="pb-1 sm:pb-2 px-3 pt-3 sm:px-4 sm:pt-4">
         <CardTitle className="text-xs sm:text-sm font-medium text-muted-foreground flex items-center gap-2">
           {icon && <span className="flex-shrink-0">{icon}</span>}
-          <span className={cn(
-            'truncate',
-            isMobile && 'max-w-[100px]'
-          )}>
+          <span className="min-w-0 leading-tight">
             {title}
           </span>
         </CardTitle>

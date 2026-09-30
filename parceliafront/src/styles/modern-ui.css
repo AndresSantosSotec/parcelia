@@ -192,6 +192,7 @@
   top: 0;
   z-index: 50;
   width: 100%;
+  padding-top: env(safe-area-inset-top);
   border-bottom: 1px solid oklch(0.90 0.015 155 / 0.5);
   background: oklch(1 0 0 / 0.85);
   backdrop-filter: blur(20px) saturate(180%);
@@ -941,6 +942,96 @@
 /* ============================================
    MOBILE ADAPTATIONS
    ============================================ */
+
+@media (max-width: 1023px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+.mobile-tabbar {
+  position: fixed;
+  z-index: 40;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  padding: 0.15rem 0.25rem calc(0.15rem + env(safe-area-inset-bottom));
+  background: oklch(0.99 0.003 155 / 0.94);
+  border-top: 1px solid oklch(0.90 0.015 155);
+  backdrop-filter: blur(16px);
+}
+
+.dark .mobile-tabbar {
+  background: oklch(0.13 0.02 155 / 0.94);
+  border-top-color: oklch(0.26 0.03 155);
+}
+
+.mobile-tabbar button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  min-height: 3.4rem;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.mobile-tabbar button.active {
+  color: oklch(0.40 0.14 155);
+}
+
+.dark .mobile-tabbar button.active {
+  color: oklch(0.78 0.16 155);
+}
+
+.mobile-install {
+  position: fixed;
+  z-index: 40;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: calc(4.6rem + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.9rem;
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px oklch(0 0 0 / 0.18);
+}
+
+.mobile-install p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+@media (min-width: 1024px) {
+  .mobile-tabbar,
+  .mobile-install {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .modern-header h1 {
+    display: none;
+  }
+}
 
 @media (max-width: 768px) {
   .modern-header-logo {

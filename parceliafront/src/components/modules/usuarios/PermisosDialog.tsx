@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ArrowCounterClockwise, FloppyDisk, Warning } from '@phosphor-icons/react'
+import { Input } from '@/components/ui/input'
 import { permissionService, Permiso } from '@/lib/api'
 import { toast } from 'sonner'
 import { 
@@ -20,6 +21,7 @@ import {
 import { isModuloVisible, isModuloEmpeno, EMPENOS_ENABLED } from '@/lib/empenos'
 
 const MODULOS_VISIBLES = MODULOS.filter((modulo) => isModuloVisible(modulo))
+const MODULOS_NUEVOS: Modulo[] = ['compra_fincas', 'financistas', 'comisionistas']
 
 // Permisos por defecto según el rol (copia de seguridad local)
 const PERMISOS_POR_ROL: Record<string, Permiso[]> = {
@@ -124,6 +126,7 @@ export function PermisosDialog({
   const [saving, setSaving] = useState(false)
   const [usandoLocal, setUsandoLocal] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [busqueda, setBusqueda] = useState('')
 
   useEffect(() => {
     if (abierto && usuario) {
@@ -340,9 +343,38 @@ export function PermisosDialog({
             </TabsList>
 
             <TabsContent value="modulos">
+              <div className="mb-3 space-y-2">
+                <Input
+                  placeholder="Buscar módulo: compra, financiamiento, comisionistas…"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                />
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    Administrador y superadmin ya entran a todo. Aquí se define, usuario por usuario, qué puede ver, editar, pagar o reportar.
+                  </p>
+                  <Button type="button" size="sm" variant="outline" onClick={() => {
+                    setPermisos((prev) => {
+                      const resto = prev.filter((p) => !MODULOS_NUEVOS.includes(p.modulo as Modulo))
+                      return [
+                        ...resto,
+                        ...MODULOS_NUEVOS.map((modulo) => ({ modulo, acciones: [...ACCIONES_POR_MODULO[modulo]] })),
+                      ]
+                    })
+                  }}>
+                    Otorgar compra, financiamiento y comisiones
+                  </Button>
+                </div>
+              </div>
               <ScrollArea className="h-[400px] pr-4">
                 <div className="space-y-4">
-                  {MODULOS_VISIBLES.map(modulo => (
+                  {MODULOS_VISIBLES
+                    .filter((modulo) => {
+                      const texto = `${MODULO_LABELS[modulo]} ${modulo}`.toLowerCase()
+                      return texto.includes(busqueda.trim().toLowerCase())
+                    })
+                    .sort((a, b) => Number(MODULOS_NUEVOS.includes(b)) - Number(MODULOS_NUEVOS.includes(a)))
+                    .map(modulo => (
                     <Card key={modulo}>
                       <CardHeader className="py-3">
                         <div className="flex items-center justify-between">
@@ -359,6 +391,7 @@ export function PermisosDialog({
                             />
                             <Label htmlFor={`modulo-${modulo}`} className="font-semibold cursor-pointer">
                               {MODULO_LABELS[modulo]}
+                              {MODULOS_NUEVOS.includes(modulo) && <Badge className="ml-2" variant="secondary">Módulo propio</Badge>}
                             </Label>
                           </div>
                           <Badge variant="outline">

@@ -148,12 +148,18 @@ export function ChatbotHelper({ rol }: ChatbotHelperProps) {
     }, 300)
   }
 
+  useEffect(() => {
+    const abrir = () => setIsOpen(true)
+    window.addEventListener('terracloud-chat', abrir)
+    return () => window.removeEventListener('terracloud-chat', abrir)
+  }, [])
+
   return (
     <>
       {!isOpen && (
         <Button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 sm:bottom-6 sm:right-6 h-12 w-12 sm:h-14 sm:w-14 rounded-full shadow-lg z-[100]"
+          className="max-lg:hidden fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-[100]"
           size="icon"
         >
           <Chats className="h-6 w-6" />
@@ -161,7 +167,7 @@ export function ChatbotHelper({ rol }: ChatbotHelperProps) {
       )}
 
       {isOpen && (
-        <Card className="fixed inset-x-2 bottom-2 top-16 sm:inset-auto sm:bottom-6 sm:right-6 sm:top-auto sm:w-96 sm:h-[600px] sm:max-h-[min(600px,calc(100dvh-2rem))] max-h-[calc(100dvh-4.5rem)] shadow-2xl z-[100] flex flex-col animate-in slide-in-from-bottom-2 fade-in duration-300">
+        <Card className="fixed inset-x-2 top-16 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] lg:inset-auto lg:bottom-6 lg:right-6 lg:top-auto lg:w-96 lg:h-[600px] lg:max-h-[min(600px,calc(100dvh-2rem))] shadow-2xl z-[100] flex flex-col animate-in slide-in-from-bottom-2 fade-in duration-300">
           <CardHeader className="pb-3 border-b flex-shrink-0">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">

@@ -53,7 +53,7 @@ export function useEmpresaConfig() {
   useEffect(() => {
     const fetchBackendConfig = async () => {
       try {
-        const res = await api.get<{ success: boolean; data: Partial<EmpresaConfig> }>('/empresa-config')
+        const res = await api.get<Partial<EmpresaConfig>>('/empresa-config')
         if (res.success && res.data) {
           const merged = { ...DEFAULT_EMPRESA_CONFIG, ...res.data }
           localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))

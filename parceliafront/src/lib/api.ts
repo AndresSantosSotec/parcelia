@@ -1,6 +1,8 @@
-import { CategoriaProducto, Cliente } from "./types"
+import { type CategoriaProducto, type Cliente } from "./types"
 import { API_BASE_URL } from "./config"
 import { mockDatabase } from "./mockDatabase"
+
+export type { CategoriaProducto, Cliente } from "./types"
 
 // Variable para activar modo standalone libre sin backend (false = conecta a Laravel en vivo)
 export const STANDALONE_MODE = false
@@ -361,6 +363,34 @@ class ApiClient {
       console.error('Error al descargar archivo:', error)
       throw error
     }
+  }
+
+  async downloadPost(endpoint: string, body: unknown, filename?: string): Promise<void> {
+    const headers: HeadersInit = {
+      Accept: 'application/pdf,application/octet-stream',
+      'Content-Type': 'application/json',
+    }
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`
+    }
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify(body),
+    })
+    if (!response.ok) {
+      throw new Error(`Error al descargar archivo: ${response.statusText}`)
+    }
+    const blob = await response.blob()
+    const downloadUrl = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = downloadUrl
+    link.download = filename || `documento-${Date.now()}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(downloadUrl)
   }
 }
 
@@ -1014,7 +1044,7 @@ export const geoNamesService = {
   },
 
   getGuatemalaCompleto: () => {
-    return api.get<{ data: GuatemalaCompleto }>('/geonames/guatemala-completo')
+    return api.get<GuatemalaCompleto>('/geonames/guatemala-completo')
   },
 }
 
@@ -1231,7 +1261,7 @@ export const ventaService = {
     if (params?.busqueda) query.append('busqueda', params.busqueda ?? '')
     if (params?.categoria_id) query.append('categoria_id', String(params.categoria_id))
     const queryString = query.toString()
-    return api.get<{ success: boolean; data: any[]; pagination?: any }>(`/ventas/prendas-disponibles${queryString ? `?${queryString}` : ''}`)
+    return api.get<any[]>(`/ventas/prendas-disponibles${queryString ? `?${queryString}` : ''}`)
   },
 
   /** Apartados: solo ventas con estado apartado (tab Apartados) */
@@ -1241,7 +1271,7 @@ export const ventaService = {
     if (params?.per_page) query.append('per_page', String(params.per_page))
     if (params?.busqueda) query.append('busqueda', params.busqueda)
     const queryString = query.toString()
-    return api.get<{ success: boolean; data: any[]; pagination?: any }>(`/ventas/apartados${queryString ? `?${queryString}` : ''}`)
+    return api.get<any[]>(`/ventas/apartados${queryString ? `?${queryString}` : ''}`)
   },
 
   /** Planes de pago activos (VentaCredito con cuotas) - tab Planes Pago */
@@ -1252,7 +1282,7 @@ export const ventaService = {
     if (params?.estado) query.append('estado', params.estado)
     if (params?.busqueda) query.append('busqueda', params.busqueda)
     const queryString = query.toString()
-    return api.get<{ success: boolean; data: any[]; pagination?: any }>(`/ventas/planes-pago${queryString ? `?${queryString}` : ''}`)
+    return api.get<any[]>(`/ventas/planes-pago${queryString ? `?${queryString}` : ''}`)
   },
 
   /** Detalle del plan de pago de una venta */
@@ -1403,6 +1433,7 @@ export interface Parcela {
 export interface Lote {
   id: number
   parcela_id: number
+  vendedor_id?: number | null
   numero_lote: string
   codigo_unico: string
   area_m2: number
@@ -1422,6 +1453,7 @@ export interface Lote {
   token_publico?: string | null
   publicado?: boolean
   parcela?: Parcela & { finca?: Finca }
+  vendedor?: { id: number; nombre?: string; username?: string; name?: string }
   servicios?: Array<{ id: number; nombre_servicio: string; estado: string; costo_adicional: number }>
   imagenes?: Array<{ id: number; url: string; url_publica?: string; descripcion?: string; es_principal: boolean }>
 }
@@ -1481,12 +1513,13 @@ export const fincaService = {
 }
 
 export const loteService = {
-  getAll: (params?: { estado?: string; parcela_id?: number; finca_id?: number; busqueda?: string }) => {
+  getAll: (params?: { estado?: string; parcela_id?: number; finca_id?: number; busqueda?: string; vendedor_id?: number }) => {
     const query = new URLSearchParams()
     if (params?.estado && params.estado !== 'todos') query.append('estado', params.estado)
     if (params?.parcela_id) query.append('parcela_id', params.parcela_id.toString())
     if (params?.finca_id) query.append('finca_id', params.finca_id.toString())
     if (params?.busqueda) query.append('busqueda', params.busqueda)
+    if (params?.vendedor_id) query.append('vendedor_id', params.vendedor_id.toString())
     return api.get<Lote[]>(`/lotes?${query.toString()}`)
   },
   getDisponibles: () => {
@@ -1629,10 +1662,22 @@ export const negociacionService = {
       `EstadoCuenta_${codigo || id}.pdf`
     )
   },
+  descargarEstadoCuentaExcel: (id: number, codigo?: string) => {
+    return api.downloadFile(
+      `/negociaciones/${id}/estado-cuenta?formato=xlsx`,
+      `EstadoCuenta_${codigo || id}.xlsx`
+    )
+  },
   descargarPlanPagosPdf: (id: number, codigo?: string) => {
     return api.downloadFile(
       `/negociaciones/${id}/plan-pagos-pdf`,
       `PlanPagos_${codigo || id}.pdf`
+    )
+  },
+  descargarContratoPdf: (id: number, codigo?: string) => {
+    return api.downloadFile(
+      `/negociaciones/${id}/contrato-pdf`,
+      `Contrato_${codigo || id}.pdf`
     )
   },
   create: (data: any) => {
@@ -1660,7 +1705,13 @@ export const pagoTerrenoService = {
     caja_apertura_cierre_id?: number
   }) => {
     return api.post<any>('/pagos-terrenos', data)
-  }
+  },
+  descargarReciboPdf: (pagoId: number, numRecibo?: string) => {
+    return api.downloadFile(
+      `/pagos-terrenos/${pagoId}/recibo-pdf`,
+      `ReciboPago_${numRecibo || pagoId}.pdf`
+    )
+  },
 }
 
 export interface TasaInmobiliaria {
@@ -1703,4 +1754,223 @@ export const moraInmobiliariaService = {
   },
   create: (data: Partial<ParametrizacionMoraInmo>) => api.post<ParametrizacionMoraInmo>('/parametrizacion-mora-inmobiliaria', data),
   update: (id: number, data: Partial<ParametrizacionMoraInmo>) => api.put<ParametrizacionMoraInmo>(`/parametrizacion-mora-inmobiliaria/${id}`, data),
+}
+
+export interface CompraFincaPayload {
+  finca: Finca & {
+    vendedor_nombre?: string | null
+    vendedor_dpi?: string | null
+    referencia?: string | null
+    precio_compra?: number | string
+    gastos_escrituracion?: number | string
+    tipo_compra?: 'contado' | 'pagos'
+    enganche?: number | string
+    numero_cuotas?: number
+    frecuencia_pago?: string
+    fecha_inicio_pagos?: string | null
+    cuota_compra?: number | string
+    porcentaje_utilidad?: number | string
+    area_negociable_m2?: number | string | null
+    area_no_negociable_m2?: number | string | null
+    area_vialidades_m2?: number | string | null
+    area_verde_m2?: number | string | null
+    area_tecnica_m2?: number | string | null
+    escrituras?: Array<{ id: number; numero_escritura: string; fecha_escritura?: string | null; area_m2: number | string; documento_nombre?: string | null }>
+    cuotas_compra?: Array<{ id: number; numero_cuota: number; fecha_vencimiento: string; monto: number | string; monto_pagado: number | string; estado: string }>
+    gastos_urbanizacion?: Array<{ id: number; categoria: string; concepto: string; monto: number | string; fecha?: string | null }>
+    pagos_compra?: Array<{ id: number; fecha?: string | null; monto: number | string; origen: string; numero_recibo: string }>
+  }
+  resumen: {
+    precio_compra: number
+    gastos_escrituracion: number
+    urbanizacion: number
+    inversion: number
+    area_escrituras: number
+    area_negociable_m2: number
+    area_no_negociable_m2: number
+    area_vialidades_m2?: number
+    area_verde_m2?: number
+    area_tecnica_m2?: number
+    area_lotes_m2: number
+    costo_m2: number
+    porcentaje_utilidad: number
+    precio_sugerido_m2: number
+    costo_lotes: number
+    precio_sugerido_lotes: number
+    utilidad_proyectada: number
+    saldo_compra: number
+    pagado_cuotas: number
+    pendiente_cuotas: number
+    deuda?: {
+      precio: number
+      enganche: number
+      pagado: number
+      pendiente: number
+      cuotas_total: number
+      cuotas_pagadas: number
+      cuotas_pendientes: number
+      cuota_proxima: number
+      fecha_proxima?: string | null
+      saldo_plan: number
+      cuadra: boolean
+    }
+  }
+  lotes: Array<{
+    id: number
+    codigo_unico: string
+    numero_lote: string
+    parcela?: string | null
+    tipo_terreno?: string
+    area_m2: number
+    costo_asignado: number
+    precio_sugerido: number
+    precio_venta: number
+    utilidad: number
+    utilidad_venta: number
+    estado: string
+  }>
+}
+
+export interface CompraFincaListado {
+  id: number
+  codigo: string
+  nombre: string
+  vendedor_nombre?: string | null
+  vendedor_dpi?: string | null
+  ubicacion?: string | null
+  municipio?: string | null
+  departamento?: string | null
+  precio_compra: number
+  gastos_escrituracion: number
+  tipo_compra: string
+  enganche: number
+  numero_cuotas: number
+  frecuencia_pago?: string | null
+  fecha_inicio_pagos?: string | null
+  pagado: number
+  pendiente: number
+  urbanizacion: number
+  escrituras: number
+  area_total_m2: number
+  estado: string
+}
+
+export const compraFincaService = {
+  listar: () => api.get<CompraFincaListado[]>('/compras-fincas'),
+  eliminar: (id: number) => api.delete<{ id: number }>(`/fincas/${id}/compra`),
+  detalle: (id: number) => api.get<CompraFincaPayload>(`/fincas/${id}/compra`),
+  guardar: (id: number, data: Record<string, unknown>) => api.put<CompraFincaPayload>(`/fincas/${id}/compra`, data),
+  agregarEscritura: (id: number, data: { numero_escritura: string; fecha_escritura?: string; area_m2: number }, archivo?: File | null) => {
+    const body = new FormData()
+    body.append('numero_escritura', data.numero_escritura)
+    if (data.fecha_escritura) body.append('fecha_escritura', data.fecha_escritura)
+    body.append('area_m2', String(data.area_m2))
+    if (archivo) body.append('documento', archivo)
+    return api.post<CompraFincaPayload>(`/fincas/${id}/escrituras`, body)
+  },
+  eliminarEscritura: (id: number, escrituraId: number) =>
+    api.delete<CompraFincaPayload>(`/fincas/${id}/escrituras/${escrituraId}`),
+  adjuntarDocumento: (id: number, escrituraId: number, archivo: File) => {
+    const body = new FormData()
+    body.append('documento', archivo)
+    return api.post<CompraFincaPayload>(`/fincas/${id}/escrituras/${escrituraId}/documento`, body)
+  },
+  agregarGasto: (id: number, data: { categoria: string; concepto: string; monto: number; fecha?: string }) =>
+    api.post<CompraFincaPayload>(`/fincas/${id}/gastos-urbanizacion`, data),
+  eliminarGasto: (id: number, gastoId: number) =>
+    api.delete<CompraFincaPayload>(`/fincas/${id}/gastos-urbanizacion/${gastoId}`),
+  pagarCuota: (id: number, cuotaId: number, data: { monto: number; fecha?: string; origen: 'caja' | 'boveda' }) =>
+    api.post<CompraFincaPayload & { pago_id: number }>(`/fincas/${id}/cuotas-compra/${cuotaId}/pagar`, data),
+  sincronizarLotes: (id: number, lotes: Array<{ numero: string; area_m2: number; tipo: string }>) =>
+    api.post<CompraFincaPayload>(`/fincas/${id}/lotes-medidas`, { lotes }),
+  rehacerPendiente: (id: number, data: { cuotas: number; fecha_inicio?: string }) =>
+    api.post<CompraFincaPayload>(`/fincas/${id}/rehacer-plan-pendiente`, data),
+  aplicarPrecios: (id: number) => api.post<CompraFincaPayload>(`/fincas/${id}/aplicar-precios`),
+}
+
+export interface FinancistaItem {
+  id: number
+  finca_id: number
+  finca?: { id: number; nombre: string; codigo?: string }
+  tipo: string
+  nombre: string
+  destino: string
+  monto: number
+  tasa_anual?: number | null
+  interes_total: number
+  plazo?: number | null
+  frecuencia?: string
+  fecha_inicio?: string | null
+  fecha_vencimiento?: string | null
+  cuota: number
+  capital_al_vencimiento: boolean
+  estado: string
+  observaciones?: string | null
+  capital_pagado: number
+  interes_pagado: number
+  mora_pagada: number
+  descuento_aplicado: number
+  saldo_capital: number
+  interes_pendiente: number
+  alerta_vencimiento: boolean
+}
+
+export const financistaService = {
+  listar: (fincaId?: number) => api.get<FinancistaItem[]>(`/financistas${fincaId ? `?finca_id=${fincaId}` : ''}`),
+  crear: (data: Record<string, unknown>) => api.post<FinancistaItem>('/financistas', data),
+  pagar: (id: number, data: Record<string, unknown>) => api.post<FinancistaItem>(`/financistas/${id}/pagos`, data),
+  estado: (id: number) => api.get<{ financista: FinancistaItem; pagos: Array<Record<string, unknown>> }>(`/financistas/${id}/estado`),
+}
+
+export interface ComisionistaItem {
+  id: number
+  nombre: string
+  telefono?: string | null
+  direccion?: string | null
+  dpi?: string | null
+  activo: boolean
+  comisiones_count?: number
+}
+
+export interface ComisionItem {
+  id: number
+  comisionista_id: number
+  comisionista?: ComisionistaItem
+  lote_id?: number | null
+  lote?: { id: number; codigo_unico: string; numero_lote: string } | null
+  negociacion_id?: number | null
+  negociacion?: { id: number; codigo_negociacion: string } | null
+  regla?: { id: number; nombre: string } | null
+  descripcion?: string | null
+  monto_venta: number
+  monto_comision: number
+  pagado: number
+  pendiente: number
+  estado: string
+}
+
+export interface ComisionRegla {
+  id: number
+  nombre: string
+  tipo: 'porcentaje' | 'monto_fijo'
+  base: 'precio_final' | 'precio_venta' | 'enganche'
+  valor: number | string
+  momento: 'al_contrato' | 'al_enganche' | 'al_liquidar'
+  activo: boolean
+}
+
+export const comisionistaService = {
+  listar: () => api.get<ComisionistaItem[]>('/comisionistas'),
+  crear: (data: { nombre: string; telefono?: string; direccion?: string; dpi?: string }) =>
+    api.post<ComisionistaItem>('/comisionistas', data),
+  comisiones: (comisionistaId?: number) =>
+    api.get<ComisionItem[]>(`/comisiones${comisionistaId ? `?comisionista_id=${comisionistaId}` : ''}`),
+  crearComision: (data: Record<string, unknown>) => api.post<ComisionItem>('/comisiones', data),
+  reglas: () => api.get<ComisionRegla[]>('/comision-reglas'),
+  crearRegla: (data: Record<string, unknown>) => api.post<ComisionRegla>('/comision-reglas', data),
+  aplicar: (data: { comisionista_id: number; negociacion_id: number; regla_id?: number | null; monto_comision?: number | null }) =>
+    api.post<ComisionItem>('/comisiones/aplicar', data),
+  pagar: (id: number, data: { fecha: string; monto: number; referencia?: string }) =>
+    api.post<ComisionItem>(`/comisiones/${id}/pagos`, data),
+  estado: (id: number) => api.get<{ comision: ComisionItem; pagos: Array<{ fecha: string; monto: number | string; referencia?: string | null }> }>(`/comisiones/${id}/estado`),
 }

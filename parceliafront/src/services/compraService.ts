@@ -110,12 +110,12 @@ class CompraService {
             if (params?.per_page) searchParams.append('per_page', params.per_page.toString())
 
             const query = searchParams.toString()
-            const response = await api.get<{ data: Compra[], meta?: any, pagination?: any }>('/compras' + (query ? '?' + query : ''))
+            const response = await api.get<Compra[]>('/compras' + (query ? '?' + query : ''))
 
             return {
                 success: true,
-                data: response.data?.data || response.data || [],
-                meta: response.data?.meta || response.pagination,
+                data: response.data || [],
+                meta: response.pagination,
                 pagination: response.pagination
             }
         } catch (error: any) {
@@ -152,7 +152,7 @@ class CompraService {
     async registrarCompra(data: CompraFormData) {
         try {
             console.log('🚀 compraService.registrarCompra - Datos a enviar:', data)
-            const response = await api.post<{ data: Compra, message: string }>('/compras', data)
+            const response = await api.post<Compra>('/compras', data)
             return {
                 success: true,
                 message: response.message || 'Compra registrada exitosamente',
@@ -170,7 +170,7 @@ class CompraService {
      */
     async cancelarCompra(compraId: number, motivo?: string) {
         try {
-            const response = await api.post<{ data: Compra, message: string }>(`/compras/${compraId}/cancelar`, { motivo })
+            const response = await api.post<Compra>(`/compras/${compraId}/cancelar`, { motivo })
             return {
                 success: true,
                 message: response.message || 'Compra cancelada exitosamente',
@@ -190,7 +190,7 @@ class CompraService {
      */
     async actualizarCompra(compraId: number, data: Partial<CompraFormData>) {
         try {
-            const response = await api.put<{ data: Compra, message: string }>(`/compras/${compraId}`, data)
+            const response = await api.put<Compra>(`/compras/${compraId}`, data)
             return {
                 success: true,
                 message: response.message || 'Compra actualizada exitosamente',
@@ -391,7 +391,7 @@ class CompraService {
             if (params?.fecha_hasta) searchParams.append('fecha_hasta', params.fecha_hasta)
 
             const query = searchParams.toString()
-            const response = await api.get<{ data: EstadisticasCompras }>('/compras/stats/general' + (query ? '?' + query : ''))
+            const response = await api.get<EstadisticasCompras>('/compras/stats/general' + (query ? '?' + query : ''))
             return {
                 success: true,
                 data: response.data || null

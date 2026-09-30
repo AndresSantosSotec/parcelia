@@ -477,9 +477,9 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
 
   return (
     <Dialog open={abierto} onOpenChange={onCerrar}>
-      <DialogContent className="!max-w-[95vw] !w-[1200px] !max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="!w-[min(1200px,calc(100vw-1rem))] !max-w-[calc(100vw-1rem)] !max-h-[92dvh] overflow-hidden flex flex-col">
         <DialogHeader className="flex-shrink-0">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <DialogTitle className="text-xl sm:text-2xl font-bold">
               {cliente ? 'Editar Cliente' : 'Nuevo Cliente'}
             </DialogTitle>

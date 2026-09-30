@@ -25,14 +25,14 @@ return [
     'auto_asientos_por_operacion' => [
         'desembolso_credito' => env('CONTABILIDAD_AUTO_DESEMBOLSO', true),
         'pago_credito' => env('CONTABILIDAD_AUTO_PAGO', true),
-        'venta_prenda' => env('CONTABILIDAD_AUTO_VENTA', false),
-        'compra_directa' => env('CONTABILIDAD_AUTO_COMPRA', false),
+        'venta_prenda' => env('CONTABILIDAD_AUTO_VENTA', true),
+        'compra_directa' => env('CONTABILIDAD_AUTO_COMPRA', true),
     ],
 
     /**
      * Requiere aprobación de asientos antes de registrarlos
      */
-    'requiere_aprobacion' => env('CONTABILIDAD_REQUIERE_APROBACION', true),
+    'requiere_aprobacion' => env('CONTABILIDAD_REQUIERE_APROBACION', false),
 
     /**
      * Código de moneda por defecto

@@ -787,7 +787,14 @@ class MockDatabase {
       }
       cuotaMensual = Math.round(cuotaMensual * 100) / 100
 
-      const tabla = []
+      const tabla: Array<{
+        numero_cuota: number
+        fecha_vencimiento: string
+        cuota_capital: number
+        cuota_interes: number
+        cuota_monto_total: number
+        saldo_capital_restante: number
+      }> = []
       let saldo = montoFinanciado
       let totalInteres = 0
       const fecha = new Date()
@@ -845,7 +852,17 @@ class MockDatabase {
         const financiado = Math.max(0, precioFin - enganche)
 
         // Generar plan
-        const plan = []
+        const plan: Array<{
+          id: number
+          numero_cuota: number
+          fecha_vencimiento: string
+          cuota_capital: number
+          cuota_interes: number
+          cuota_monto_total: number
+          saldo_capital_restante: number
+          monto_pagado: number
+          estado: string
+        }> = []
         const meses = parseInt(body.plazo_meses || 12)
         const cuota = meses > 0 ? financiado / meses : 0
         const f = new Date()
@@ -1202,12 +1219,12 @@ class MockDatabase {
         setStorage('cajas', cajas)
         return { success: true, data: mov, message: 'Movimiento registrado' }
       }
-      return { success: true, data: cajas[0], cajas: cajas }
+      return { success: true, data: { ...cajas[0], cajas } } as any
     }
 
     if (cleanEndpoint.startsWith('boveda') || cleanEndpoint.startsWith('bovedas')) {
       const bovedas = getStorage<any[]>('bovedas', SEED_BOVEDAS)
-      return { success: true, data: bovedas[0], bovedas: bovedas }
+      return { success: true, data: { ...bovedas[0], bovedas } } as any
     }
 
     // 8. USUARIOS & PERMISOS

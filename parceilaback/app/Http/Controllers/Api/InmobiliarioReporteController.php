@@ -159,6 +159,44 @@ class InmobiliarioReporteController extends Controller
         return response()->json(['success' => true, 'data' => $data]);
     }
 
+    public function general(Request $request): Response
+    {
+        $inventario = $this->reportingService->reporteInventario(null, 1, 20);
+        $cobranza = $this->reportingService->reporteCobranza(1, 20);
+        $ingresos = $this->reportingService->reporteIngresosDiario();
+        $filas = [
+            ['Total lotes', $inventario['total_lotes'] ?? 0],
+            ['Disponibles', $inventario['disponibles'] ?? 0],
+            ['Reservados', $inventario['reservados'] ?? 0],
+            ['Vendidos', $inventario['vendidos'] ?? 0],
+            ['Área total m2', $inventario['area_total_m2'] ?? 0],
+            ['Contratos activos', $cobranza['total_contratos_activos'] ?? 0],
+            ['Cartera por cobrar', $cobranza['saldo_cartera_capital'] ?? 0],
+            ['Capital recuperado', $cobranza['capital_recuperado'] ?? 0],
+            ['Intereses cobrados', $cobranza['intereses_recaudados'] ?? 0],
+            ['Ingresos del día', $ingresos['total_ingresos'] ?? 0],
+            ['Recibos del día', $ingresos['total_recibos'] ?? 0],
+        ];
+
+        if ($request->input('formato') === 'xlsx') {
+            return Excel::download(new InmobiliarioArrayExport(
+                ['Concepto', 'Valor'],
+                $filas
+            ), 'informe-general.xlsx');
+        }
+
+        $pdf = Pdf::loadView('reportes.documento-tabla', [
+            'titulo' => 'Informe general de gestión inmobiliaria',
+            'lineas' => ['Corte '.now()->format('d/m/Y')],
+            'encabezados' => ['Concepto', 'Valor'],
+            'filas' => $filas,
+            'generado' => now(),
+            'empresa' => \App\Helpers\EmpresaConfigHelper::getConfig(),
+        ])->setPaper('letter', 'portrait');
+
+        return $pdf->download('informe-general.pdf');
+    }
+
     public function estadoCuenta(Request $request, int $id)
     {
         $data = $this->statementService->generarEstadoCuenta($id);
@@ -171,6 +209,24 @@ class InmobiliarioReporteController extends Controller
                 "estado-cuenta-{$codigo}.pdf",
                 $data
             );
+        }
+
+        if ($request->input('formato') === 'xlsx') {
+            $codigo = $data['resumen']['codigo_negociacion'] ?? $id;
+            $rows = collect($data['kardex_movimientos'] ?? [])->map(fn ($m) => [
+                $m['fecha'] ?? '',
+                $m['documento'] ?? '',
+                $m['concepto'] ?? '',
+                $m['cargo'] ?? 0,
+                $m['abono'] ?? 0,
+                $m['saldo'] ?? 0,
+                $m['metodo'] ?? '',
+            ])->all();
+
+            return Excel::download(new InmobiliarioArrayExport(
+                ['Fecha', 'Documento', 'Concepto', 'Cargo', 'Abono', 'Saldo', 'Método'],
+                $rows
+            ), "estado-cuenta-{$codigo}.xlsx");
         }
 
         return response()->json(['success' => true, 'data' => $data]);
@@ -191,9 +247,9 @@ class InmobiliarioReporteController extends Controller
 
     public function contratoHtml(int $id)
     {
-        $negociacion = Negociacion::with(['cliente', 'lote.parcela.finca'])->findOrFail($id);
+        $negociacion = Negociacion::with(['cliente', 'lote.parcela.finca', 'planPagos'])->findOrFail($id);
         $empresaConfig = \App\Helpers\EmpresaConfigHelper::getConfig();
-        $template = $this->contractService->getDefaultContractTemplate();
+        $template = $this->contractService->getTemplateForNegociacion($negociacion);
         $renderedHtml = $this->contractService->renderTemplate($template, $negociacion, $empresaConfig);
 
         return response()->json([
@@ -201,9 +257,23 @@ class InmobiliarioReporteController extends Controller
             'data' => [
                 'negociacion_id' => $negociacion->id,
                 'codigo_negociacion' => $negociacion->codigo_negociacion,
+                'tipo_negociacion' => $negociacion->tipo_negociacion,
                 'html' => $renderedHtml,
             ],
         ]);
+    }
+
+    public function contratoPdf(int $id)
+    {
+        $negociacion = Negociacion::with(['cliente', 'lote.parcela.finca', 'planPagos'])->findOrFail($id);
+        $empresaConfig = \App\Helpers\EmpresaConfigHelper::getConfig();
+        $template = $this->contractService->getTemplateForNegociacion($negociacion);
+        $renderedHtml = $this->contractService->renderTemplate($template, $negociacion, $empresaConfig);
+        $codigo = $negociacion->codigo_negociacion;
+
+        $pdf = Pdf::loadHTML($renderedHtml)->setPaper('letter', 'portrait');
+
+        return $pdf->download("contrato-{$codigo}.pdf");
     }
 
     private function perPage(Request $request): int

@@ -143,7 +143,28 @@
   --radius-full: 9999px;
 }
 
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
 @layer base {
+  select,
+  select option,
+  select optgroup {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
+
+  select option:checked,
+  select option:hover {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+  }
+
   body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }

@@ -35,6 +35,20 @@ class Permission extends Model
                 $descripcion = match ("{$modulo}.{$accion}") {
                     'creditos.editar_tasa_interes' => 'Permite modificar la tasa de interés % al configurar créditos prendarios',
                     'creditos.editar_mora' => 'Permite modificar tasa de mora, tipo y monto fijo al configurar créditos prendarios',
+                    'compra_fincas.ver' => 'Consultar el listado y el detalle de las compras de finca',
+                    'compra_fincas.crear' => 'Registrar una compra de finca',
+                    'compra_fincas.editar' => 'Modificar compra, escrituras, urbanización, plan y abonos',
+                    'compra_fincas.eliminar' => 'Eliminar una compra que todavía no tiene pagos',
+                    'compra_fincas.reportes' => 'Descargar plan de compra y costeo en PDF o Excel',
+                    'financistas.ver' => 'Consultar financiamientos externos',
+                    'financistas.editar' => 'Registrar y modificar financiamientos',
+                    'financistas.pagar' => 'Registrar pagos de capital, interés y mora',
+                    'financistas.reportes' => 'Estado de cuenta y listado de financiamientos',
+                    'comisionistas.ver' => 'Consultar comisionistas y comisiones de venta',
+                    'comisionistas.editar' => 'Registrar comisionistas y ligar comisiones a ventas',
+                    'comisionistas.pagar' => 'Registrar pagos de comisión y su recibo',
+                    'comisionistas.reglas' => 'Parametrizar reglas de comisión',
+                    'comisionistas.reportes' => 'Estado de cuenta y listados de comisionistas',
                     default => ucfirst(str_replace('_', ' ', (string) $accion)).' en '.ucfirst(str_replace('_', ' ', (string) $modulo)),
                 };
 
@@ -61,6 +75,9 @@ class Permission extends Model
         'caja' => ['abrir', 'cerrar', 'ver_movimientos', 'gestionar_cajas'],
         'reportes' => ['generar', 'exportar'],
         'fincas' => ['ver', 'crear', 'editar', 'desactivar'],
+        'compra_fincas' => ['ver', 'crear', 'editar', 'eliminar', 'reportes'],
+        'financistas' => ['ver', 'editar', 'pagar', 'reportes'],
+        'comisionistas' => ['ver', 'editar', 'pagar', 'reglas', 'reportes'],
         'lotes' => ['ver', 'crear', 'editar', 'eliminar', 'servicios', 'imagenes'],
         'negociaciones' => ['ver', 'crear', 'ajustar_condiciones', 'rescindir', 'contrato'],
         'pagos_terreno' => ['ver', 'cobrar', 'anular'],
@@ -89,7 +106,7 @@ class Permission extends Model
      */
     public static array $permisosPorRol = [
         'superadmin' => '*', // Soporte: auditoría, logs, generador de formularios y operación completa
-        'administrador' => '*', // Operación completa; la UI oculta auditoría/formularios de soporte
+        'administrador' => '*', // Operación completa (incluye contabilidad); la UI oculta auditoría/migración de soporte
         'cajero' => [
             'dashboard' => ['ver'],
             'clientes' => ['ver', 'crear'],

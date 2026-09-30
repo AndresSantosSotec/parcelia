@@ -7,6 +7,7 @@ use App\Http\Requests\StorePagoTerrenoRequest;
 use App\Models\Negociacion;
 use App\Models\PagoTerreno;
 use App\Services\Inmobiliario\PaymentAllocationService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -68,6 +69,44 @@ class PagoTerrenoController extends Controller
         } catch (\InvalidArgumentException|\RuntimeException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }
+    }
+
+    public function reciboPdf(int $id)
+    {
+        $pago = PagoTerreno::with(['comprador', 'lote.parcela.finca', 'negociacion'])->findOrFail($id);
+        $negociacion = $pago->negociacion;
+        $cliente = $pago->comprador;
+        $lote = $pago->lote;
+
+        $empresa = \App\Helpers\EmpresaConfigHelper::getConfig();
+
+        $data = [
+            'pago' => $pago,
+            'negociacion' => $negociacion,
+            'cliente' => [
+                'nombre_completo' => trim(($cliente->nombres ?? '') . ' ' . ($cliente->apellidos ?? '')),
+                'dpi' => $cliente->dpi ?? 'N/A',
+                'nit' => $cliente->nit ?? 'C/F',
+                'telefono' => $cliente->telefono ?? 'N/A',
+            ],
+            'inmueble' => [
+                'finca' => $lote->parcela?->finca?->nombre ?? '',
+                'parcela' => $lote->parcela?->nombre_identificador ?? '',
+                'codigo_unico' => $lote->codigo_unico,
+                'numero_lote' => $lote->numero_lote,
+            ],
+            'saldo_despues' => $negociacion->saldo_capital_pendiente ?? 0,
+        ];
+
+        $pdf = Pdf::loadView('reportes.inmobiliario-recibo-pago', [
+            'data' => $data,
+            'generado' => now(),
+            'empresa' => $empresa,
+        ])->setPaper('letter', 'portrait');
+
+        $recibo = $pago->numero_recibo ?? $id;
+
+        return $pdf->download("recibo-pago-{$recibo}.pdf");
     }
 
     public function anular(Request $request, $id)

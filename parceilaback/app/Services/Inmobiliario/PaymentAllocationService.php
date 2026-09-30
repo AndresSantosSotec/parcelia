@@ -73,7 +73,9 @@ class PaymentAllocationService
             $userId = Auth::id() ?? $negociacion->user_id;
             $caja = CajaService::getCajaAbierta($userId);
             if (!$caja && !$cajaAperturaId) {
-                throw new RuntimeException('Debe haber una caja abierta para registrar el cobro.');
+                throw new RuntimeException(
+                    'Debe tener una caja abierta para registrar el cobro. Vaya a Caja & Cobros → Aperturar Caja e intente de nuevo.'
+                );
             }
             $cajaId = $cajaAperturaId ?: $caja->id;
 

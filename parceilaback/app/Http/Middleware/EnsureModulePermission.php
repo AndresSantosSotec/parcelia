@@ -11,7 +11,9 @@ class EnsureModulePermission
     public function handle(Request $request, Closure $next, string $modulo, string $accion): Response
     {
         $user = $request->user();
-        if (!$user || !$user->hasPermission($modulo, $accion)) {
+        $acciones = array_filter(explode('|', $accion));
+        $autorizado = $user && collect($acciones)->contains(fn ($item) => $user->hasPermission($modulo, $item));
+        if (! $autorizado) {
             return response()->json([
                 'success' => false,
                 'message' => 'No tienes permiso para esta operación.',

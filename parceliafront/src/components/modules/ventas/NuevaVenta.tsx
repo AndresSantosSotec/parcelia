@@ -293,7 +293,7 @@ export function NuevaVenta({ onVolver, onVentaRegistrada }: NuevaVentaProps) {
       const data = response?.data
 
       if (response?.success && data != null) {
-        const lista = Array.isArray(data) ? data : (data?.data ?? [])
+        const lista = Array.isArray(data) ? data : []
         setPrendasDisponibles(lista)
         if (lista.length > 0) {
           toast.success(`${lista.length} productos disponibles para vender`)

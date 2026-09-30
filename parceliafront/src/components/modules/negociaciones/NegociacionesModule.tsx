@@ -5,11 +5,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Plus, Handshake, Calculator, Receipt, User, Package, Calendar, CurrencyDollar, CheckCircle, Clock, ArrowRight, Eye, ShieldCheck, Wallet, Printer, FileText, XCircle, DownloadSimple } from '@phosphor-icons/react'
+import { Plus, Handshake, Calculator, Receipt, User, Package, Calendar, CurrencyDollar, CheckCircle, Clock, ArrowRight, Eye, ShieldCheck, Wallet, Printer, FileText, XCircle, DownloadSimple, WarningCircle } from '@phosphor-icons/react'
 import { toast } from 'sonner'
-import { api, negociacionService, loteService, clienteService, pagoTerrenoService, moraInmobiliariaService, Negociacion, Lote, Cliente, SimuladorResponse, ParametrizacionMoraInmo } from '@/lib/api'
-import { useEmpresaConfig } from '@/hooks/useEmpresaConfig'
-import { imprimirDocumentoHTML } from '@/utils/impresionDocumentos'
+import { negociacionService, loteService, clienteService, pagoTerrenoService, moraInmobiliariaService, Negociacion, Lote, SimuladorResponse, ParametrizacionMoraInmo } from '@/lib/api'
+import type { Cliente } from '@/lib/types'
+import { cajaService } from '@/lib/services/caja.service'
+import { useNavigateModule } from '@/hooks/use-navigate-module'
 import { GastosCreditoSelector } from '@/components/modules/gastos/GastosCreditoSelector'
 
 function cuotasPlan(neg: any): any[] {
@@ -65,7 +66,7 @@ function resumenMoraContrato(neg: Negociacion) {
 }
 
 export function NegociacionesModule() {
-  const { config: empresaConfig } = useEmpresaConfig()
+  const { navigate } = useNavigateModule()
   const [negociaciones, setNegociaciones] = useState<Negociacion[]>([])
   const [lotesDisponibles, setLotesDisponibles] = useState<Lote[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -113,6 +114,9 @@ export function NegociacionesModule() {
     referencia_bancaria: '',
     observaciones: ''
   })
+  const [cajaPagoId, setCajaPagoId] = useState<number | null>(null)
+  const [cajaPagoAbierta, setCajaPagoAbierta] = useState<boolean | null>(null)
+  const [verificandoCajaPago, setVerificandoCajaPago] = useState(false)
 
   const cargarDatos = async () => {
     setCargando(true)
@@ -211,67 +215,14 @@ export function NegociacionesModule() {
     }
   }
 
-  const handleImprimirRecibo = (pago: any, neg: Negociacion) => {
-    const cuerpoHTML = `
-      <h2 style="text-align: center; color: #047857; text-transform: uppercase; margin-bottom: 3px;">RECIBO OFICIAL DE PAGO</h2>
-      <p style="text-align: center; font-weight: bold; margin-top: 0; color: #555;">NO. ${pago.numero_recibo || 'REC-TER'}</p>
-      <hr style="margin: 15px 0; border: 0; border-top: 1px solid #e5e7eb;" />
-
-      <table style="width: 100%; margin-bottom: 20px; font-size: 11px;">
-        <tr>
-          <td style="width: 50%; vertical-align: top;">
-            <strong>Comprador:</strong> ${neg.comprador?.nombres ? `${neg.comprador.nombres} ${neg.comprador.apellidos}` : neg.comprador?.nombre_completo || 'Cliente'}<br />
-            <strong>DPI / NIT:</strong> ${neg.comprador?.dpi || 'S/D'} / ${neg.comprador?.nit || 'C/F'}<br />
-            <strong>Contrato Ref:</strong> ${neg.codigo_negociacion}
-          </td>
-          <td style="width: 50%; vertical-align: top; text-align: right;">
-            <strong>Fecha de Pago:</strong> ${new Date().toLocaleDateString('es-GT')}<br />
-            <strong>Método:</strong> ${String(pago.metodo_pago || 'EFECTIVO').toUpperCase()}<br />
-            <strong>Referencia:</strong> ${pago.referencia_bancaria || 'N/A'}
-          </td>
-        </tr>
-      </table>
-
-      <table style="width: 100%; margin-bottom: 25px; font-size: 12px; border: 1px solid #e5e7eb;">
-        <tr style="background: #f0fdf4;">
-          <th style="padding: 10px; text-align: left; color: #166534;">Concepto / Descripción</th>
-          <th style="padding: 10px; text-align: right; color: #166534;">Monto (Q)</th>
-        </tr>
-        <tr>
-          <td style="padding: 10px; border-bottom: 1px solid #eee;">
-            <strong>${pago.tipo_pago === 'enganche' ? 'Pago de Enganche Inmobiliario' : pago.tipo_pago === 'abono_capital' ? 'Abono Extraordinario a Capital' : 'Pago de Cuota de Financiamiento'}</strong><br />
-            <span style="font-size: 10px; color: #666;">Terreno Lote ${neg.lote?.codigo_unico || 'Lote'} · ${neg.lote?.parcela?.finca?.nombre || 'Finca'}</span>
-          </td>
-          <td style="padding: 10px; text-align: right; font-weight: bold; border-bottom: 1px solid #eee;">
-            Q${Number(pago.monto_total || formPago.monto).toLocaleString('es-GT', { minimumFractionDigits: 2 })}
-          </td>
-        </tr>
-        <tr style="background: #f8fafc; font-weight: bold;">
-          <td style="padding: 10px; text-align: right;">TOTAL COBRADO:</td>
-          <td style="padding: 10px; text-align: right; color: #047857; font-size: 14px;">
-            Q${Number(pago.monto_total || formPago.monto).toLocaleString('es-GT', { minimumFractionDigits: 2 })}
-          </td>
-        </tr>
-      </table>
-
-      <table style="width: 100%; margin-top: 50px; text-align: center; font-size: 10px;">
-        <tr>
-          <td style="width: 45%; border-top: 1px solid #000; padding-top: 6px;">
-            Firma y Sello de Caja / Receptor
-          </td>
-          <td style="width: 10%;"></td>
-          <td style="width: 45%; border-top: 1px solid #000; padding-top: 6px;">
-            Firma del Comprador
-          </td>
-        </tr>
-      </table>
-    `
-    imprimirDocumentoHTML(`Recibo-${pago.numero_recibo || 'Pago'}`, cuerpoHTML, empresaConfig)
-  }
-
   const handleRegistrarPago = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!negociacionSeleccionada) return
+
+    if (cajaPagoAbierta !== true || !cajaPagoId) {
+      avisarAbrirCaja()
+      return
+    }
 
     try {
       const res = await pagoTerrenoService.registrar({
@@ -280,20 +231,24 @@ export function NegociacionesModule() {
         monto: formPago.monto,
         metodo_pago: formPago.metodo_pago,
         referencia_bancaria: formPago.referencia_bancaria,
-        observaciones: formPago.observaciones
+        observaciones: formPago.observaciones,
+        caja_apertura_cierre_id: cajaPagoId,
       })
 
       if (res.success) {
         toast.success('Pago aplicado exitosamente e ingresado en Caja')
-        if (res.data) {
-          handleImprimirRecibo(res.data, negociacionSeleccionada)
+        if (res.data?.id) {
+          pagoTerrenoService.descargarReciboPdf(res.data.id, res.data.numero_recibo).catch(() => {
+            toast.error('El pago se registró, pero no se pudo descargar el recibo')
+          })
         }
         setModalRegistrarPago(false)
         setFormPago({ tipo_pago: 'cuota_normal', monto: 0, metodo_pago: 'efectivo', referencia_bancaria: '', observaciones: '' })
         cargarDatos()
       }
     } catch (e: any) {
-      toast.error(e.response?.data?.message || 'Error al registrar el pago')
+      const msg = e?.message || e?.response?.data?.message || 'Error al registrar el pago'
+      toast.error(msg)
     }
   }
 
@@ -348,88 +303,66 @@ export function NegociacionesModule() {
     }
   }
 
-  const handleImprimirContrato = async (neg: Negociacion) => {
+  const handleDescargarContratoPdf = async (neg: Negociacion) => {
     try {
-      const res = await api.get<{ success: boolean; data: { html: string } }>(`/negociaciones/${neg.id}/contrato-html`)
-      if (res.success && res.data?.html) {
-        imprimirDocumentoHTML(`Contrato-${neg.codigo_negociacion}`, res.data.html, empresaConfig)
-      } else {
-        toast.error('No se pudo generar el contrato')
-      }
-    } catch (e) {
-      toast.error('Error al generar contrato para impresión')
+      setDescargandoDoc('contrato')
+      await negociacionService.descargarContratoPdf(neg.id, neg.codigo_negociacion)
+    } catch (e: any) {
+      toast.error(e.message || 'No se pudo descargar el contrato')
+    } finally {
+      setDescargandoDoc(null)
     }
   }
 
-  const handleImprimirEstadoCuentaDoc = (neg: Negociacion) => {
-    const cuerpoHTML = `
-      <h2 style="text-align: center; color: #047857; text-transform: uppercase; margin-bottom: 5px;">ESTADO DE CUENTA & KARDEX INMOBILIARIO</h2>
-      <p style="text-align: center; font-weight: bold; margin-top: 0; color: #555;">CONTRATO NO. ${neg.codigo_negociacion}</p>
-      <hr style="margin: 15px 0; border: 0; border-top: 1px solid #e5e7eb;" />
+  const handleDescargarReciboPdf = async (pagoId: number, numRecibo?: string) => {
+    try {
+      setDescargandoDoc('recibo')
+      await pagoTerrenoService.descargarReciboPdf(pagoId, numRecibo)
+    } catch (e: any) {
+      toast.error(e.message || 'No se pudo descargar el recibo')
+    } finally {
+      setDescargandoDoc(null)
+    }
+  }
 
-      <table style="width: 100%; margin-bottom: 20px; font-size: 11px;">
-        <tr>
-          <td style="width: 50%; vertical-align: top;">
-            <strong style="color: #047857;">DATOS DEL COMPRADOR</strong><br />
-            <strong>Nombre:</strong> ${neg.comprador?.nombres ? `${neg.comprador.nombres} ${neg.comprador.apellidos}` : neg.comprador?.nombre_completo || 'Cliente'}<br />
-            <strong>DPI:</strong> ${neg.comprador?.dpi || 'S/D'}<br />
-            <strong>NIT:</strong> ${neg.comprador?.nit || 'C/F'}<br />
-            <strong>Teléfono:</strong> ${neg.comprador?.telefono || '—'}
-          </td>
-          <td style="width: 50%; vertical-align: top;">
-            <strong style="color: #047857;">DATOS DEL TERRENO</strong><br />
-            <strong>Finca:</strong> ${neg.lote?.parcela?.finca?.nombre || 'Finca Principal'}<br />
-            <strong>Parcela / Manzana:</strong> ${neg.lote?.parcela?.nombre_identificador || 'N/A'}<br />
-            <strong>Lote:</strong> ${neg.lote?.numero_lote || neg.lote?.codigo_unico || 'Lote'}<br />
-            <strong>Área:</strong> ${neg.lote?.area_m2 || 0} m² (Frente: ${neg.lote?.frente_metros || 0}m, Fondo: ${neg.lote?.fondo_metros || 0}m)
-          </td>
-        </tr>
-      </table>
+  const avisarAbrirCaja = () => {
+    toast.error('Debes abrir caja para cobrar', {
+      description: 'Ve a Caja & Cobros → Aperturar Caja. Sin caja abierta no se puede registrar el pago ni emitir recibo.',
+      duration: 8000,
+      action: {
+        label: 'Ir a Caja',
+        onClick: () => {
+          setModalRegistrarPago(false)
+          navigate('caja')
+        },
+      },
+    })
+  }
 
-      <table style="width: 100%; margin-bottom: 20px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 11px; text-align: center;">
-        <tr>
-          <td style="padding: 10px;"><strong>Precio Total:</strong><br />Q${Number(neg.precio_final).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-          <td style="padding: 10px;"><strong>Enganche Pagado:</strong><br />Q${Number(neg.enganche_pagado || 0).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-          <td style="padding: 10px;"><strong>Capital Amortizado:</strong><br />Q${Number(neg.total_capital_pagado || 0).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-          <td style="padding: 10px; color: #b91c1c; font-weight: bold;"><strong>Saldo Pendiente:</strong><br />Q${Number(neg.saldo_capital_pendiente).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-        </tr>
-      </table>
+  const verificarCajaParaPago = async () => {
+    setVerificandoCajaPago(true)
+    setCajaPagoAbierta(null)
+    setCajaPagoId(null)
+    try {
+      const estado = await cajaService.checkEstado()
+      const abierta = estado?.estado === 'abierta' && !!estado?.caja?.id
+      setCajaPagoAbierta(abierta)
+      setCajaPagoId(abierta && estado.caja ? Number(estado.caja.id) : null)
+      if (!abierta) {
+        avisarAbrirCaja()
+      }
+    } catch {
+      setCajaPagoAbierta(false)
+      setCajaPagoId(null)
+      avisarAbrirCaja()
+    } finally {
+      setVerificandoCajaPago(false)
+    }
+  }
 
-      <h3 style="color: #047857; font-size: 13px; margin-bottom: 8px;">TABLA DE AMORTIZACIÓN Y CUOTAS</h3>
-      <table class="data-table" style="font-size: 10px;">
-        <thead>
-          <tr>
-            <th>Cuota</th>
-            <th>Vencimiento</th>
-            <th class="text-right">Capital</th>
-            <th class="text-right">Interés</th>
-            <th class="text-right">Total Cuota</th>
-            <th class="text-right">Saldo Restante</th>
-            <th class="text-center">Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${cuotasPlan(neg).length === 0 ? `
-            <tr><td colspan="7" style="text-align:center;padding:12px;">Aún no hay cronograma. El plan se genera al completar el enganche.</td></tr>
-          ` : cuotasPlan(neg).map((c: any) => `
-            <tr>
-              <td>#${c.numero_cuota}</td>
-              <td>${formatFechaCorta(c.fecha_vencimiento)}</td>
-              <td class="text-right">Q${Number(c.cuota_capital).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-              <td class="text-right">Q${Number(c.cuota_interes || 0).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-              <td class="text-right font-bold">Q${Number(c.cuota_monto_total).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-              <td class="text-right">Q${Number(c.saldo_capital_restante).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-              <td class="text-center">
-                <span class="badge ${c.estado === 'pagada' ? 'badge-success' : 'badge-warning'}">
-                  ${String(c.estado || 'pendiente').toUpperCase()}
-                </span>
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    `
-    imprimirDocumentoHTML(`EstadoCuenta-${neg.codigo_negociacion}`, cuerpoHTML, empresaConfig)
+  const irAAbrirCaja = () => {
+    setModalRegistrarPago(false)
+    navigate('caja')
   }
 
   const abrirPago = (neg: Negociacion) => {
@@ -443,6 +376,7 @@ export function NegociacionesModule() {
       observaciones: ''
     })
     setModalRegistrarPago(true)
+    void verificarCajaParaPago()
   }
 
   const abrirRescision = (neg: Negociacion) => {
@@ -545,8 +479,11 @@ export function NegociacionesModule() {
                         <Wallet size={14} /> Cobrar
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" onClick={() => handleImprimirContrato(neg)} className="h-8 gap-1 text-xs">
-                      <FileText size={14} /> Contrato
+                    <Button size="sm" variant="ghost" onClick={() => handleDescargarContratoPdf(neg)} className="h-8 gap-1 text-xs">
+                      <Printer size={14} /> Contrato
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDescargarContratoPdf(neg)} disabled={descargandoDoc === 'contrato'} className="h-8 gap-1 text-xs">
+                      <DownloadSimple size={14} /> PDF
                     </Button>
                   </div>
                 </div>
@@ -629,8 +566,11 @@ export function NegociacionesModule() {
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <Button size="sm" variant="ghost" onClick={() => handleImprimirContrato(neg)} className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground">
-                            <FileText size={14} /> Contrato
+                          <Button size="sm" variant="ghost" onClick={() => handleDescargarContratoPdf(neg)} className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground">
+                            <Printer size={14} /> Contrato
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleDescargarContratoPdf(neg)} disabled={descargandoDoc === 'contrato'} className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground" title="Descargar contrato PDF">
+                            <DownloadSimple size={14} />
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => abrirEstadoCuenta(neg)} className="h-8 gap-1 text-xs">
                             <Receipt size={14} /> Estado Cuenta
@@ -763,18 +703,25 @@ export function NegociacionesModule() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Plazo (Meses)</Label>
-                  <select
+                  <Input
+                    type="number"
+                    min={1}
+                    max={240}
+                    step={1}
                     value={formVenta.plazo_meses}
-                    onChange={(e) => setFormVenta({ ...formVenta, plazo_meses: parseInt(e.target.value) })}
-                    className="w-full bg-background border rounded-lg p-2 text-sm"
-                  >
-                    <option value="6">6 Meses</option>
-                    <option value="12">12 Meses (1 Año)</option>
-                    <option value="24">24 Meses (2 Años)</option>
-                    <option value="36">36 Meses (3 Años)</option>
-                    <option value="48">48 Meses (4 Años)</option>
-                    <option value="60">60 Meses (5 Años)</option>
-                  </select>
+                    onChange={(e) => {
+                      const raw = parseInt(e.target.value, 10)
+                      const meses = Number.isFinite(raw) ? Math.min(240, Math.max(1, raw)) : 1
+                      setFormVenta({ ...formVenta, plazo_meses: meses })
+                    }}
+                    placeholder="Ej. 18, 30, 72…"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Libre: 1 a 240 meses
+                    {formVenta.plazo_meses >= 12
+                      ? ` · ≈ ${(formVenta.plazo_meses / 12).toFixed(formVenta.plazo_meses % 12 === 0 ? 0 : 1)} año(s)`
+                      : ''}
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Tasa Interés Anual (%)</Label>
@@ -1034,6 +981,7 @@ export function NegociacionesModule() {
                           <th className="p-2">Concepto</th>
                           <th className="p-2">Abono</th>
                           <th className="p-2">Saldo</th>
+                          <th className="p-2 w-8"></th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
@@ -1044,6 +992,13 @@ export function NegociacionesModule() {
                             <td className="p-2">{mov.concepto}</td>
                             <td className="p-2">Q{Number(mov.abono || 0).toLocaleString()}</td>
                             <td className="p-2">Q{Number(mov.saldo || 0).toLocaleString()}</td>
+                            <td className="p-2">
+                              {mov.pago_id && !mov.anulado && (
+                                <Button size="sm" variant="ghost" onClick={() => handleDescargarReciboPdf(mov.pago_id, mov.documento)} disabled={descargandoDoc === 'recibo'} className="h-6 w-6 p-0" title="Descargar recibo PDF">
+                                  <DownloadSimple size={12} />
+                                </Button>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1055,17 +1010,17 @@ export function NegociacionesModule() {
 
             <DialogFooter className="flex items-center justify-between sm:justify-between w-full gap-2 flex-wrap">
               <div className="flex gap-2 flex-wrap">
-                <Button variant="outline" onClick={() => handleImprimirEstadoCuentaDoc(negociacionSeleccionada)} className="gap-1.5 text-xs">
-                  <Printer size={16} /> Imprimir
-                </Button>
                 <Button variant="outline" onClick={() => handleDescargarEstadoCuentaPdf(negociacionSeleccionada)} disabled={descargandoDoc === 'estado'} className="gap-1.5 text-xs">
                   <DownloadSimple size={16} /> {descargandoDoc === 'estado' ? 'Descargando...' : 'Estado de cuenta PDF'}
+                </Button>
+                <Button variant="outline" onClick={() => negociacionService.descargarEstadoCuentaExcel(negociacionSeleccionada.id, negociacionSeleccionada.codigo_negociacion)} className="gap-1.5 text-xs">
+                  Excel
                 </Button>
                 <Button variant="outline" onClick={() => handleDescargarPlanPagosPdf(negociacionSeleccionada)} disabled={descargandoDoc === 'plan'} className="gap-1.5 text-xs">
                   <DownloadSimple size={16} /> {descargandoDoc === 'plan' ? 'Descargando...' : 'Plan de pagos PDF'}
                 </Button>
-                <Button variant="ghost" onClick={() => handleImprimirContrato(negociacionSeleccionada)} className="gap-1.5 text-xs">
-                  <FileText size={16} /> Imprimir Contrato
+                <Button variant="outline" onClick={() => handleDescargarContratoPdf(negociacionSeleccionada)} disabled={descargandoDoc === 'contrato'} className="gap-1.5 text-xs">
+                  <DownloadSimple size={16} /> {descargandoDoc === 'contrato' ? 'Descargando...' : 'Contrato PDF'}
                 </Button>
               </div>
               <Button onClick={() => setModalEstadoCuenta(false)}>Cerrar</Button>
@@ -1088,6 +1043,34 @@ export function NegociacionesModule() {
               </CardDescription>
             </DialogHeader>
             <form onSubmit={handleRegistrarPago} className="space-y-4 py-2">
+              {verificandoCajaPago ? (
+                <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  Verificando caja...
+                </div>
+              ) : cajaPagoAbierta === false ? (
+                <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-3 text-sm text-destructive flex gap-2 items-start">
+                  <WarningCircle size={18} className="shrink-0 mt-0.5" weight="fill" />
+                  <div className="space-y-2 min-w-0">
+                    <p className="font-semibold">Debes abrir caja para cobrar</p>
+                    <p className="text-xs opacity-90">
+                      Sin caja abierta no se registra el pago ni se emite recibo. Ve a <strong>Caja &amp; Cobros</strong>, apertúra tu caja y vuelve.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" size="sm" className="h-8" onClick={irAAbrirCaja}>
+                        Ir a abrir caja
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => void verificarCajaParaPago()}>
+                        Ya abrí caja · verificar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : cajaPagoAbierta === true ? (
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-200">
+                  Caja abierta · lista para registrar el cobro
+                </div>
+              ) : null}
+
               <div className="space-y-2">
                 <Label>Tipo de Pago *</Label>
                 <select
@@ -1141,7 +1124,9 @@ export function NegociacionesModule() {
 
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setModalRegistrarPago(false)}>Cancelar</Button>
-                <Button type="submit">Ingresar a Caja & Emitir Recibo</Button>
+                <Button type="submit" disabled={verificandoCajaPago || cajaPagoAbierta !== true}>
+                  Ingresar a Caja & Emitir Recibo
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>

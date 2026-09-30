@@ -1,7 +1,10 @@
-import { Users, Calculator, CreditCard as CreditCardIcon, Package, Wallet, ChartBar, UserCircle, ShoppingCart, Storefront, Tag, Vault, FileText, Handbag, CurrencyDollar, ShieldCheck, Database, Book, Percent, ArrowsLeftRight, ReceiptX, Receipt, Gavel, PaintBrush, TreeStructure, Handshake, Compass } from '@phosphor-icons/react'
+import { Users, Calculator, CreditCard as CreditCardIcon, Package, Wallet, ChartBar, UserCircle, ShoppingCart, Storefront, Tag, Vault, FileText, Handbag, CurrencyDollar, ShieldCheck, Database, Book, Percent, ArrowsLeftRight, ReceiptX, Receipt, Gavel, PaintBrush, TreeStructure, Handshake, Compass, Coins, Bank, IdentificationBadge } from '@phosphor-icons/react'
 
 export const navigation = [
   { id: 'fincas', label: 'Fincas & Lotes', icon: TreeStructure },
+  { id: 'compra_fincas', label: 'Compra de fincas', icon: Coins },
+  { id: 'financistas', label: 'Financiamientos', icon: Bank },
+  { id: 'comisionistas', label: 'Comisionistas', icon: IdentificationBadge },
   { id: 'negociaciones', label: 'Ventas & Contratos', icon: Handshake },
   { id: 'tasas_inmobiliarias', label: 'Tasas & Mora', icon: Percent },
   { id: 'clientes', label: 'Compradores', icon: Users },

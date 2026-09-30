@@ -32,6 +32,7 @@ class StoreLoteRequest extends FormRequest
             'precision_metros' => 'nullable|numeric|min:0',
             'referencia_geo' => 'nullable|string|max:255',
             'publicado' => 'nullable|boolean',
+            'vendedor_id' => 'nullable|integer|exists:users,id',
         ];
     }
 }

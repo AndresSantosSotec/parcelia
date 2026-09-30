@@ -9,14 +9,10 @@ import {
   Wallet, CheckCircle, Warning, Clock, Receipt, ArrowsClockwise 
 } from '@phosphor-icons/react'
 import { format } from 'date-fns'
-import { es } from 'date-fns/locale'
 import { api } from '@/lib/api'
-import { useEmpresaConfig } from '@/hooks/useEmpresaConfig'
-import { imprimirDocumentoHTML } from '@/utils/impresionDocumentos'
 import { toast } from 'sonner'
 
 export function ReportesModule() {
-  const { config: empresaConfig } = useEmpresaConfig()
   const [cargando, setCargando] = useState(true)
 
   // Datos reales desde Laravel
@@ -59,61 +55,6 @@ export function ReportesModule() {
       toast.error('No se pudo descargar el reporte')
     }
   }
-  const handleImprimirReporteGeneral = () => {
-    const fechaHoy = format(new Date(), "d 'de' MMMM 'de' yyyy", { locale: es })
-    const cuerpoHTML = `
-      <h2 style="text-align: center; color: #047857; text-transform: uppercase; margin-bottom: 3px;">INFORME GENERAL DE GESTIÓN INMOBILIARIA</h2>
-      <p style="text-align: center; font-weight: bold; margin-top: 0; color: #555;">FECHA DE CORTE: ${fechaHoy.toUpperCase()}</p>
-      <hr style="margin: 15px 0; border: 0; border-top: 1px solid #e5e7eb;" />
-
-      <h3 style="color: #047857; font-size: 13px; margin-bottom: 8px;">1. RESUMEN DE INVENTARIO DE LOTES</h3>
-      <table style="width: 100%; margin-bottom: 20px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 11px; text-align: center;">
-        <tr>
-          <td style="padding: 10px;"><strong>Total Lotes:</strong><br />${inventario?.total_lotes || 0}</td>
-          <td style="padding: 10px; color: #166534;"><strong>Disponibles:</strong><br />${inventario?.disponibles || 0}</td>
-          <td style="padding: 10px; color: #0369a1;"><strong>Vendidos / Contratos:</strong><br />${inventario?.vendidos || 0}</td>
-          <td style="padding: 10px; color: #a16207;"><strong>Reservados:</strong><br />${inventario?.reservados || 0}</td>
-          <td style="padding: 10px;"><strong>Área Total:</strong><br />${inventario?.area_total_m2 || 0} m²</td>
-        </tr>
-      </table>
-
-      <h3 style="color: #047857; font-size: 13px; margin-bottom: 8px;">2. RESUMEN FINANCIERO Y CARTERA</h3>
-      <table style="width: 100%; margin-bottom: 20px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 11px; text-align: center;">
-        <tr>
-          <td style="padding: 10px;"><strong>Contratos Activos:</strong><br />${cobranza?.total_contratos_activos || 0}</td>
-          <td style="padding: 10px; color: #b91c1c; font-weight: bold;"><strong>Cartera por Cobrar:</strong><br />Q${Number(cobranza?.saldo_cartera_capital || 0).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-          <td style="padding: 10px; color: #166534; font-weight: bold;"><strong>Capital Recuperado:</strong><br />Q${Number(cobranza?.capital_recuperado || 0).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-          <td style="padding: 10px; color: #047857;"><strong>Intereses Cobrados:</strong><br />Q${Number(cobranza?.intereses_recaudados || 0).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-        </tr>
-      </table>
-
-      <h3 style="color: #047857; font-size: 13px; margin-bottom: 8px;">3. RECAUDACIÓN DEL DÍA EN CAJA</h3>
-      <table class="data-table" style="font-size: 11px; margin-bottom: 20px;">
-        <thead>
-          <tr>
-            <th>Concepto / Método</th>
-            <th class="text-right">Monto Recaudado</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Efectivo en Caja</td>
-            <td class="text-right font-bold">Q${Number(ingresosHoy?.desglose_por_metodo?.efectivo || 0).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-          </tr>
-          <tr>
-            <td>Transferencias y Depósitos Bancarios</td>
-            <td class="text-right font-bold">Q${Number((ingresosHoy?.desglose_por_metodo?.transferencia || 0) + (ingresosHoy?.desglose_por_metodo?.deposito || 0)).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-          </tr>
-          <tr style="background: #f0fdf4;">
-            <td><strong>TOTAL INGRESOS HOY (${ingresosHoy?.total_recibos || 0} recibos)</strong></td>
-            <td class="text-right font-bold" style="color: #047857; font-size: 13px;">Q${Number(ingresosHoy?.total_ingresos || 0).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</td>
-          </tr>
-        </tbody>
-      </table>
-    `
-    imprimirDocumentoHTML(`Reporte_General_${format(new Date(), 'yyyyMMdd')}`, cuerpoHTML, empresaConfig)
-  }
-
   return (
     <div className="space-y-6 animate-fade-in-up pb-10">
       {/* Encabezado */}
@@ -132,9 +73,10 @@ export function ReportesModule() {
             <ArrowsClockwise size={16} className={cargando ? 'animate-spin' : ''} />
             Actualizar
           </Button>
-          <Button onClick={handleImprimirReporteGeneral} className="gap-2 shadow-sm">
+          <Button variant="outline" onClick={() => descargar('/reportes-inmobiliarios/general', 'xlsx', 'informe-general.xlsx')}>Excel</Button>
+          <Button onClick={() => descargar('/reportes-inmobiliarios/general', 'pdf', 'informe-general.pdf')} className="gap-2 shadow-sm">
             <Printer size={16} />
-            Imprimir Informe
+            PDF
           </Button>
         </div>
       </div>

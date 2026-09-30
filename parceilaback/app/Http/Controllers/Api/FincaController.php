@@ -218,6 +218,14 @@ class FincaController extends Controller
             ? (bool) $validated['publicado']
             : true;
 
+        $user = $request->user();
+        $esAdmin = $user && in_array($user->rol, ['superadmin', 'administrador'], true);
+        if ($esAdmin && ! empty($validated['vendedor_id'])) {
+            $validated['vendedor_id'] = (int) $validated['vendedor_id'];
+        } else {
+            $validated['vendedor_id'] = $user?->id;
+        }
+
         $lote = $parcela->lotes()->create($validated);
 
         return response()->json([

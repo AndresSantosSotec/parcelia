@@ -1094,7 +1094,7 @@ function TabVentas({
       )}
 
       {estadisticas && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <StatCard label="Contado" value={estadisticas.ventas_contado ?? 0} icon={<Wallet size={18} />} color="success" />
           <StatCard label="Crédito" value={estadisticas.ventas_credito ?? 0} icon={<CreditCard size={18} />} color="warning" />
           <StatCard label="Apartado" value={estadisticas.ventas_apartado ?? 0} icon={<Package size={18} />} color="default" />
@@ -1501,7 +1501,7 @@ export function ReportesContablesModule() {
 
       {/* Tabs principales */}
       <Tabs defaultValue="caja" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 h-auto">
+        <TabsList className="h-auto w-full flex-wrap justify-start">
           <TabsTrigger value="caja" className="flex items-center gap-1.5 text-xs sm:text-sm py-2">
             <Wallet size={16} />
             <span>Caja</span>

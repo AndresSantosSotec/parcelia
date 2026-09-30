@@ -1,0 +1,397 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { toast } from 'sonner'
+import {
+  api,
+  comisionistaService,
+  negociacionService,
+  type ComisionItem,
+  type ComisionistaItem,
+  type ComisionRegla,
+  type Negociacion,
+} from '@/lib/api'
+import { usePermissions } from '@/hooks/use-permissions'
+
+const q = (n: number | string | null | undefined) =>
+  `Q ${Number(n || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const campo = 'mt-1 flex h-9 w-full rounded-md border border-input bg-popover px-3 text-sm text-popover-foreground'
+
+const MOMENTO: Record<string, string> = {
+  al_contrato: 'Al firmar el contrato',
+  al_enganche: 'Al cobrar el enganche',
+  al_liquidar: 'Al liquidar la venta',
+}
+const BASE: Record<string, string> = {
+  precio_final: 'Precio final de la venta',
+  precio_venta: 'Precio de lista',
+  enganche: 'Enganche',
+}
+
+export function ComisionistasModule({ userSession }: { userSession?: { userData?: { rol?: string; permisos?: unknown } | null } }) {
+  const { hasPermission } = usePermissions(userSession?.userData)
+  const puedeEditar = hasPermission('comisionistas', 'editar')
+  const puedePagar = hasPermission('comisionistas', 'pagar')
+  const puedeReglas = hasPermission('comisionistas', 'reglas')
+  const puedeReportes = hasPermission('comisionistas', 'reportes')
+  const [personas, setPersonas] = useState<ComisionistaItem[]>([])
+  const [reglas, setReglas] = useState<ComisionRegla[]>([])
+  const [comisiones, setComisiones] = useState<ComisionItem[]>([])
+  const [ventas, setVentas] = useState<Negociacion[]>([])
+  const [persona, setPersona] = useState({ nombre: '', telefono: '', direccion: '', dpi: '' })
+  const [regla, setRegla] = useState({ nombre: '', tipo: 'porcentaje', base: 'precio_final', valor: '', momento: 'al_contrato' })
+  const [aplicar, setAplicar] = useState({ comisionista_id: '', negociacion_id: '', regla_id: '', monto: '' })
+  const [pago, setPago] = useState({ id: 0, fecha: '', monto: '', referencia: '' })
+
+  const cargar = useCallback(async () => {
+    const [a, b, c, d] = await Promise.all([
+      comisionistaService.listar(),
+      comisionistaService.reglas(),
+      comisionistaService.comisiones(),
+      negociacionService.getAll({ per_page: 200 }),
+    ])
+    setPersonas(a.data || [])
+    setReglas(b.data || [])
+    setComisiones(c.data || [])
+    setVentas(Array.isArray(d.data) ? d.data : [])
+  }, [])
+
+  useEffect(() => {
+    cargar().catch(() => toast.error('No se pudo cargar comisionistas'))
+  }, [cargar])
+
+  const venta = useMemo(
+    () => ventas.find((v) => String(v.id) === aplicar.negociacion_id),
+    [ventas, aplicar.negociacion_id],
+  )
+  const reglaSel = useMemo(
+    () => reglas.find((r) => String(r.id) === aplicar.regla_id),
+    [reglas, aplicar.regla_id],
+  )
+  const calculada = useMemo(() => {
+    if (!venta || !reglaSel) return 0
+    if (reglaSel.tipo === 'monto_fijo') return Number(reglaSel.valor)
+    const base = reglaSel.base === 'precio_venta'
+      ? Number(venta.precio_original)
+      : reglaSel.base === 'enganche'
+        ? Number(venta.enganche_pactado)
+        : Number(venta.precio_final)
+    return Math.round(base * (Number(reglaSel.valor) / 100) * 100) / 100
+  }, [venta, reglaSel])
+
+  async function bajar(url: string, nombre: string) {
+    try {
+      await api.downloadFile(url, nombre)
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo descargar')
+    }
+  }
+
+  return (
+    <div className="space-y-4 p-3 sm:p-4 md:p-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-semibold">Comisionistas</h1>
+          <p className="text-sm text-muted-foreground">Personas externas, reglas de comisión y el vínculo con cada venta de terreno.</p>
+        </div>
+        {puedeReportes && (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => bajar('/comisionistas/reporte?formato=pdf', 'comisionistas.pdf')}>Listado PDF</Button>
+          <Button size="sm" variant="outline" onClick={() => bajar('/comisionistas/reporte?formato=xlsx', 'comisionistas.xlsx')}>Listado Excel</Button>
+          <Button size="sm" variant="outline" onClick={() => bajar('/comisiones/reporte?formato=pdf', 'comisiones.pdf')}>Comisiones PDF</Button>
+          <Button size="sm" variant="outline" onClick={() => bajar('/comisiones/reporte?formato=xlsx', 'comisiones.xlsx')}>Comisiones Excel</Button>
+        </div>
+        )}
+      </div>
+
+      <Tabs defaultValue="comisiones">
+        <TabsList className="h-auto w-full flex-wrap justify-start">
+          <TabsTrigger value="comisiones">Comisiones de ventas</TabsTrigger>
+          <TabsTrigger value="personas">Personas</TabsTrigger>
+          <TabsTrigger value="reglas">Reglas</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="comisiones" className="space-y-4">
+          <Card>
+            <CardHeader><CardTitle>Comisiones registradas</CardTitle></CardHeader>
+            <CardContent className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Persona</TableHead>
+                    <TableHead>Venta</TableHead>
+                    <TableHead>Lote</TableHead>
+                    <TableHead>Regla</TableHead>
+                    <TableHead>Comisión</TableHead>
+                    <TableHead>Pendiente</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {comisiones.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell>{c.comisionista?.nombre}</TableCell>
+                      <TableCell>{c.negociacion?.codigo_negociacion || '—'}</TableCell>
+                      <TableCell>{c.lote?.codigo_unico || '—'}</TableCell>
+                      <TableCell>{c.regla?.nombre || c.descripcion || '—'}</TableCell>
+                      <TableCell>{q(c.monto_comision)}</TableCell>
+                      <TableCell>{q(c.pendiente)}</TableCell>
+                      <TableCell>{c.estado}</TableCell>
+                      <TableCell className="space-x-1 whitespace-nowrap">
+                        {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/comisiones/${c.id}/reporte?formato=pdf`, `estado-comision-${c.id}.pdf`)}>PDF</Button>}
+                        {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/comisiones/${c.id}/recibo-pdf`, `recibo-comision-${c.id}.pdf`)}>Recibo</Button>}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {comisiones.length === 0 && <TableRow><TableCell colSpan={8}>Todavía no hay comisiones ligadas a ventas.</TableCell></TableRow>}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          {puedeEditar && (
+            <Card>
+              <CardHeader><CardTitle>Ligar una comisión a una venta</CardTitle></CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <Label>Venta de terreno</Label>
+                  <select className={campo} value={aplicar.negociacion_id} onChange={(e) => setAplicar({ ...aplicar, negociacion_id: e.target.value })}>
+                    <option value="">Elegir</option>
+                    {ventas.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.codigo_negociacion} · {v.lote?.codigo_unico || 'lote'} · {q(v.precio_final)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label>Comisionista</Label>
+                  <select className={campo} value={aplicar.comisionista_id} onChange={(e) => setAplicar({ ...aplicar, comisionista_id: e.target.value })}>
+                    <option value="">Elegir</option>
+                    {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label>Regla</Label>
+                  <select className={campo} value={aplicar.regla_id} onChange={(e) => setAplicar({ ...aplicar, regla_id: e.target.value, monto: '' })}>
+                    <option value="">Monto manual</option>
+                    {reglas.filter((r) => r.activo).map((r) => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label>Monto de la comisión</Label>
+                  <Input
+                    type="number"
+                    value={aplicar.regla_id ? String(calculada || '') : aplicar.monto}
+                    readOnly={Boolean(aplicar.regla_id)}
+                    onChange={(e) => setAplicar({ ...aplicar, monto: e.target.value })}
+                  />
+                  {aplicar.regla_id && <p className="mt-1 text-xs text-muted-foreground">Calculado con la regla sobre la venta.</p>}
+                </div>
+                <Button onClick={async () => {
+                  if (!aplicar.negociacion_id || !aplicar.comisionista_id) {
+                    toast.error('Elige la venta y el comisionista')
+                    return
+                  }
+                  try {
+                    await comisionistaService.aplicar({
+                      negociacion_id: Number(aplicar.negociacion_id),
+                      comisionista_id: Number(aplicar.comisionista_id),
+                      regla_id: aplicar.regla_id ? Number(aplicar.regla_id) : null,
+                      monto_comision: aplicar.regla_id ? null : Number(aplicar.monto),
+                    })
+                    setAplicar({ comisionista_id: '', negociacion_id: '', regla_id: '', monto: '' })
+                    await cargar()
+                    toast.success('Comisión ligada a la venta')
+                  } catch (e: any) {
+                    toast.error(e?.response?.data?.message || e?.message || 'No se pudo registrar')
+                  }
+                }}>Registrar comisión</Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {puedePagar && (
+            <Card>
+              <CardHeader><CardTitle>Pago de una comisión</CardTitle></CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-4">
+                <div>
+                  <Label>Comisión</Label>
+                  <select className={campo} value={pago.id} onChange={(e) => setPago({ ...pago, id: Number(e.target.value) })}>
+                    <option value={0}>Elegir</option>
+                    {comisiones.filter((c) => c.estado !== 'pagada').map((c) => (
+                      <option key={c.id} value={c.id}>{c.comisionista?.nombre} · {c.negociacion?.codigo_negociacion || c.lote?.codigo_unico} · pendiente {q(c.pendiente)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div><Label>Fecha</Label><Input type="date" value={pago.fecha} onChange={(e) => setPago({ ...pago, fecha: e.target.value })} /></div>
+                <div><Label>Monto</Label><Input type="number" value={pago.monto} onChange={(e) => setPago({ ...pago, monto: e.target.value })} /></div>
+                <div><Label>Referencia</Label><Input value={pago.referencia} onChange={(e) => setPago({ ...pago, referencia: e.target.value })} /></div>
+                <Button onClick={async () => {
+                  if (!pago.id || !pago.monto) return
+                  try {
+                    await comisionistaService.pagar(pago.id, {
+                      fecha: pago.fecha || new Date().toISOString().slice(0, 10),
+                      monto: Number(pago.monto),
+                      referencia: pago.referencia,
+                    })
+                    await cargar()
+                    if (puedeReportes) await bajar(`/comisiones/${pago.id}/recibo-pdf`, `recibo-comision-${pago.id}.pdf`)
+                    toast.success('Pago registrado')
+                  } catch (e: any) {
+                    toast.error(e?.response?.data?.message || e?.message || 'No se pudo pagar')
+                  }
+                }}>Guardar pago y recibo</Button>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="personas" className="space-y-4">
+          <Card>
+            <CardHeader><CardTitle>Personas registradas</CardTitle></CardHeader>
+            <CardContent className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Teléfono</TableHead>
+                    <TableHead>Dirección</TableHead>
+                    <TableHead>DPI</TableHead>
+                    <TableHead>Comisiones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {personas.map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell>{p.nombre}</TableCell>
+                      <TableCell>{p.telefono || '—'}</TableCell>
+                      <TableCell>{p.direccion || '—'}</TableCell>
+                      <TableCell>{p.dpi || '—'}</TableCell>
+                      <TableCell>{p.comisiones_count ?? 0}</TableCell>
+                    </TableRow>
+                  ))}
+                  {personas.length === 0 && <TableRow><TableCell colSpan={5}>No hay comisionistas.</TableCell></TableRow>}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+          {puedeEditar && (
+            <Card>
+              <CardHeader><CardTitle>Nueva persona</CardTitle></CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-4">
+                <div><Label>Nombre</Label><Input value={persona.nombre} onChange={(e) => setPersona({ ...persona, nombre: e.target.value })} /></div>
+                <div><Label>Teléfono</Label><Input value={persona.telefono} onChange={(e) => setPersona({ ...persona, telefono: e.target.value })} /></div>
+                <div><Label>Dirección</Label><Input value={persona.direccion} onChange={(e) => setPersona({ ...persona, direccion: e.target.value })} /></div>
+                <div><Label>DPI</Label><Input value={persona.dpi} onChange={(e) => setPersona({ ...persona, dpi: e.target.value })} /></div>
+                <Button onClick={async () => {
+                  if (!persona.nombre.trim()) return
+                  try {
+                    await comisionistaService.crear(persona)
+                    setPersona({ nombre: '', telefono: '', direccion: '', dpi: '' })
+                    await cargar()
+                    toast.success('Comisionista registrado')
+                  } catch (e: any) {
+                    toast.error(e?.message || 'No se pudo crear')
+                  }
+                }}>Agregar</Button>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="reglas" className="space-y-4">
+          <Card>
+            <CardHeader><CardTitle>Reglas vigentes</CardTitle></CardHeader>
+            <CardContent className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Cálculo</TableHead>
+                    <TableHead>Se reconoce</TableHead>
+                    <TableHead>Estado</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reglas.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell>{r.nombre}</TableCell>
+                      <TableCell>
+                        {r.tipo === 'monto_fijo'
+                          ? `Monto fijo ${q(r.valor)}`
+                          : `${r.valor}% sobre ${BASE[r.base] || r.base}`}
+                      </TableCell>
+                      <TableCell>{MOMENTO[r.momento] || r.momento}</TableCell>
+                      <TableCell>{r.activo ? 'Activa' : 'Inactiva'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {reglas.length === 0 && <TableRow><TableCell colSpan={4}>Crea una regla para calcular la comisión al ligarla a una venta.</TableCell></TableRow>}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+          {puedeReglas && (
+            <Card>
+              <CardHeader><CardTitle>Nueva regla</CardTitle></CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-2">
+                <div><Label>Nombre</Label><Input value={regla.nombre} onChange={(e) => setRegla({ ...regla, nombre: e.target.value })} placeholder="Ej. 5% al contrato" /></div>
+                <div>
+                  <Label>Tipo</Label>
+                  <select className={campo} value={regla.tipo} onChange={(e) => setRegla({ ...regla, tipo: e.target.value })}>
+                    <option value="porcentaje">Porcentaje</option>
+                    <option value="monto_fijo">Monto fijo</option>
+                  </select>
+                </div>
+                {regla.tipo === 'porcentaje' && (
+                  <div>
+                    <Label>Se calcula sobre</Label>
+                    <select className={campo} value={regla.base} onChange={(e) => setRegla({ ...regla, base: e.target.value })}>
+                      <option value="precio_final">Precio final de la venta</option>
+                      <option value="precio_venta">Precio de lista</option>
+                      <option value="enganche">Enganche</option>
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <Label>{regla.tipo === 'porcentaje' ? 'Porcentaje' : 'Monto fijo'}</Label>
+                  <Input type="number" value={regla.valor} onChange={(e) => setRegla({ ...regla, valor: e.target.value })} />
+                </div>
+                <div>
+                  <Label>Cuándo se reconoce</Label>
+                  <select className={campo} value={regla.momento} onChange={(e) => setRegla({ ...regla, momento: e.target.value })}>
+                    <option value="al_contrato">Al firmar el contrato</option>
+                    <option value="al_enganche">Al cobrar el enganche</option>
+                    <option value="al_liquidar">Al liquidar la venta</option>
+                  </select>
+                </div>
+                <Button onClick={async () => {
+                  if (!regla.nombre || !regla.valor) return
+                  try {
+                    await comisionistaService.crearRegla({
+                      nombre: regla.nombre,
+                      tipo: regla.tipo,
+                      base: regla.base,
+                      valor: Number(regla.valor),
+                      momento: regla.momento,
+                    })
+                    setRegla({ nombre: '', tipo: 'porcentaje', base: 'precio_final', valor: '', momento: 'al_contrato' })
+                    await cargar()
+                    toast.success('Regla registrada')
+                  } catch (e: any) {
+                    toast.error(e?.message || 'No se pudo crear la regla')
+                  }
+                }}>Guardar regla</Button>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}

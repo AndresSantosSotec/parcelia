@@ -13,7 +13,8 @@ class LoteController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Lote::with(['parcela.finca', 'servicios', 'imagenes', 'negociacionActiva.comprador']);
+        $query = Lote::with(['parcela.finca', 'servicios', 'imagenes', 'negociacionActiva.comprador', 'vendedor'])
+            ->visiblePara($request->user());
 
         if ($request->filled('estado') && $request->estado !== 'todos') {
             $query->where('estado', $request->estado);
@@ -27,6 +28,10 @@ class LoteController extends Controller
             $query->whereHas('parcela', function ($q) use ($request) {
                 $q->where('finca_id', $request->finca_id);
             });
+        }
+
+        if ($request->filled('vendedor_id') && $request->user()?->hasRole(['superadmin', 'administrador'])) {
+            $query->where('vendedor_id', (int) $request->vendedor_id);
         }
 
         if ($request->filled('busqueda')) {
@@ -52,9 +57,10 @@ class LoteController extends Controller
         ]);
     }
 
-    public function disponibles()
+    public function disponibles(Request $request)
     {
-        $lotes = Lote::with(['parcela.finca', 'servicios'])
+        $lotes = Lote::with(['parcela.finca', 'servicios', 'vendedor'])
+            ->visiblePara($request->user())
             ->where('estado', 'disponible')
             ->orderBy('codigo_unico')
             ->get();
@@ -65,16 +71,21 @@ class LoteController extends Controller
         ]);
     }
 
-    public function show($id)
+    public function show(Request $request, $id)
     {
         $lote = Lote::with([
             'parcela.finca',
             'servicios',
             'imagenes',
+            'vendedor',
             'negociaciones.comprador',
             'negociaciones.planPagos',
             'negociaciones.pagos'
         ])->findOrFail($id);
+
+        if (! $lote->esVisiblePara($request->user())) {
+            return response()->json(['success' => false, 'message' => 'No tiene acceso a este lote.'], 403);
+        }
 
         return response()->json([
             'success' => true,
@@ -85,6 +96,10 @@ class LoteController extends Controller
     public function update(Request $request, $id)
     {
         $lote = Lote::findOrFail($id);
+
+        if (! $lote->esVisiblePara($request->user())) {
+            return response()->json(['success' => false, 'message' => 'No tiene acceso a este lote.'], 403);
+        }
 
         $validated = $request->validate([
             'numero_lote' => 'nullable|string|max:50|unique:lotes,numero_lote,'.$lote->id.',id,parcela_id,'.$lote->parcela_id,
@@ -102,6 +117,7 @@ class LoteController extends Controller
             'precision_metros' => 'nullable|numeric|min:0',
             'referencia_geo' => 'nullable|string|max:255',
             'publicado' => 'nullable|boolean',
+            'vendedor_id' => 'nullable|integer|exists:users,id',
         ]);
 
         if (isset($request['estado'])) {
@@ -109,6 +125,12 @@ class LoteController extends Controller
                 'success' => false,
                 'message' => 'El estado del lote no se cambia desde el formulario. Sigue el flujo de negociación, enganche y pagos.',
             ], 422);
+        }
+
+        $user = $request->user();
+        $esAdmin = $user && in_array($user->rol, ['superadmin', 'administrador'], true);
+        if (! $esAdmin) {
+            unset($validated['vendedor_id']);
         }
 
         $estadoService = app(\App\Services\Inmobiliario\LoteEstadoService::class);
@@ -141,7 +163,7 @@ class LoteController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $lote->fresh(['imagenes', 'parcela.finca']),
+            'data' => $lote->fresh(['imagenes', 'parcela.finca', 'vendedor']),
             'area_aproximada_m2' => (!empty($lote->frente_metros) && !empty($lote->fondo_metros))
                 ? round((float) $lote->frente_metros * (float) $lote->fondo_metros, 2)
                 : null,
@@ -149,9 +171,14 @@ class LoteController extends Controller
         ]);
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         $lote = Lote::findOrFail($id);
+
+        if (! $lote->esVisiblePara($request->user())) {
+            return response()->json(['success' => false, 'message' => 'No tiene acceso a este lote.'], 403);
+        }
+
         $estadoService = app(\App\Services\Inmobiliario\LoteEstadoService::class);
 
         if (! $estadoService->puedeEliminar($lote)) {

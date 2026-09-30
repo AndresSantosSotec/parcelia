@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 use App\Services\Inmobiliario\FinancingService;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class NegociacionController extends Controller
 {
@@ -40,6 +41,16 @@ class NegociacionController extends Controller
 
         if ($request->filled('_sucursal_scope')) {
             $query->where('sucursal_id', $request->_sucursal_scope);
+        }
+
+        $user = $request->user();
+        if ($user && ! in_array($user->rol, ['superadmin', 'administrador'], true)) {
+            $query->where(function ($q) use ($user) {
+                $q->where('user_id', $user->id)
+                    ->orWhereHas('lote', function ($lq) use ($user) {
+                        $lq->where('vendedor_id', $user->id);
+                    });
+            });
         }
 
         $perPage = min(200, max(10, (int) $request->input('per_page', 50)));
@@ -110,6 +121,66 @@ class NegociacionController extends Controller
             'success' => true,
             'data' => $simulacion,
         ]);
+    }
+
+    public function cotizacionPdf(Request $request)
+    {
+        $validated = $request->validate([
+            'precio_lote' => 'required|numeric|min:0.01',
+            'descuento' => 'nullable|numeric|min:0|lt:precio_lote',
+            'enganche' => 'nullable|numeric|min:0',
+            'gastos_escrituracion' => 'nullable|numeric|min:0',
+            'gastos_administrativos' => 'nullable|numeric|min:0',
+            'plazo_meses' => 'required|integer|min:1|max:240',
+            'tasa_interes_anual' => 'nullable|numeric|min:0|max:100',
+            'metodo' => 'nullable|string|in:frances,aleman,americano,plano,flat,simple',
+            'fecha_primer_pago' => 'nullable|date',
+            'nombre_prospecto' => 'nullable|string|max:160',
+            'telefono_prospecto' => 'nullable|string|max:40',
+            'lote_id' => 'nullable|integer|exists:lotes,id',
+        ]);
+
+        $simulacion = $this->financingService->simularFinanciamiento(
+            (float) $validated['precio_lote'],
+            (float) ($validated['descuento'] ?? 0),
+            (float) ($validated['gastos_escrituracion'] ?? 0),
+            (float) ($validated['gastos_administrativos'] ?? 0),
+            (float) ($validated['enganche'] ?? 0),
+            (float) ($validated['tasa_interes_anual'] ?? 0),
+            (int) $validated['plazo_meses'],
+            $validated['metodo'] ?? 'frances',
+            $validated['fecha_primer_pago'] ?? null
+        );
+
+        $lote = ! empty($validated['lote_id'])
+            ? Lote::with('parcela.finca')->find($validated['lote_id'])
+            : null;
+
+        $filas = collect($simulacion['cuotas'] ?? [])->map(fn ($c) => [
+            $c['numero_cuota'] ?? '',
+            $c['fecha_vencimiento'] ?? '',
+            $c['cuota_capital'] ?? 0,
+            $c['cuota_interes'] ?? 0,
+            $c['cuota_monto_total'] ?? 0,
+            $c['saldo_capital_restante'] ?? 0,
+        ])->all();
+
+        $empresa = \App\Helpers\EmpresaConfigHelper::getConfig();
+        $pdf = Pdf::loadView('reportes.documento-tabla', [
+            'titulo' => 'Cotización de financiamiento inmobiliario',
+            'lineas' => [
+                'Prospecto: '.($validated['nombre_prospecto'] ?: 'Cliente prospecto').' · Tel. '.($validated['telefono_prospecto'] ?: '—'),
+                'Lote: '.($lote ? $lote->codigo_unico.' ('.$lote->numero_lote.') · '.($lote->parcela?->finca?->nombre ?? '') : 'Precio ingresado manualmente'),
+                'Precio '.$simulacion['precio_original'].' · Descuento '.$simulacion['descuento'].' · Precio final '.$simulacion['precio_final'],
+                'Enganche '.$simulacion['enganche'].' · Cuota '.$simulacion['cuota_mensual'].' · '.$simulacion['plazo_meses'].' meses · Tasa '.$simulacion['tasa_anual'].'%',
+            ],
+            'encabezados' => ['Cuota', 'Vencimiento', 'Capital', 'Interés', 'Cuota total', 'Saldo'],
+            'filas' => $filas,
+            'generado' => now(),
+            'empresa' => $empresa,
+        ])->setPaper('letter', 'portrait');
+
+        return $pdf->download('cotizacion-financiamiento.pdf');
     }
 
     /**

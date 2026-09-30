@@ -75,12 +75,11 @@ export interface DetalleCajaResponse {
 export const cajaService = {
     checkEstado: async (): Promise<CheckEstadoResponse> => {
         const response = await api.get<any>('/cajas/check-estado')
-        // La API retorna directamente el objeto, no wrapeado en .data
-        const data = response as any
-        
-        // Normalizar la respuesta
+        // Puede venir plano ({ estado, caja }) o envuelto en ApiResponse ({ data: { estado, caja } })
+        const raw = response as any
+        const data = raw?.estado != null ? raw : (raw?.data?.estado != null ? raw.data : (raw?.data ?? raw))
+
         if (data?.estado === 'abierta' && data?.caja) {
-            // Asegurar que los campos numéricos sean números
             return {
                 estado: 'abierta',
                 caja: {
@@ -95,11 +94,11 @@ export const cajaService = {
                 mensaje: data.mensaje
             }
         }
-        
-        return { 
-            estado: 'cerrada', 
+
+        return {
+            estado: 'cerrada',
             cash_vault_integration_enabled: data?.cash_vault_integration_enabled || false,
-            mensaje: data?.mensaje || 'No hay caja abierta' 
+            mensaje: data?.mensaje || 'No hay caja abierta'
         }
     },
 

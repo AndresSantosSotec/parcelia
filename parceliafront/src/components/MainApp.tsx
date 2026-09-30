@@ -28,12 +28,15 @@ import { OtrosGastosModule } from './modules/otros-gastos/OtrosGastosModule'
 import { TransferenciasModule } from './modules/transferencias/TransferenciasModule'
 import { PersonalizacionModule } from './modules/personalizacion/PersonalizacionModule'
 import { FincasModule } from './modules/fincas/FincasModule'
+import { DesarrolladoraModule } from './modules/desarrolladora/DesarrolladoraModule'
+import { FinancistasModule } from './modules/desarrolladora/FinancistasModule'
+import { ComisionistasModule } from './modules/desarrolladora/ComisionistasModule'
 import { NegociacionesModule } from './modules/negociaciones/NegociacionesModule'
 import { TasasInmobiliariasModule } from './modules/tasas/TasasInmobiliariasModule'
 import { useEmpresaConfig } from '@/hooks/useEmpresaConfig'
 import { ChatbotHelper } from './ChatbotHelper'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Package, Wallet, Receipt, ChartBar, UserCircle, ClockCounterClockwise, CreditCard as CreditCardIcon, List, SignOut, Moon, Sun, Monitor, Lock, Storefront, Users, CurrencyDollar, Warning, Coins, PaintBrush, Handshake, TreeStructure } from '@phosphor-icons/react'
+import { Package, Wallet, Receipt, ChartBar, UserCircle, ClockCounterClockwise, CreditCard as CreditCardIcon, List, SignOut, Moon, Sun, Monitor, Lock, Storefront, Users, CurrencyDollar, Warning, Coins, PaintBrush, Handshake, TreeStructure, Chats } from '@phosphor-icons/react'
 import { useKV } from '@/hooks/use-kv'
 import { Cliente, Credito } from '@/lib/types'
 import { MoneyDisplay } from './MoneyDisplay'
@@ -86,6 +89,7 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
   const [clientes] = useKV<Cliente[]>('clientes', [])
   const [creditos] = useKV<Credito[]>('creditos', [])
   const [menuAbierto, setMenuAbierto] = useState(false)
+  const [instalacion, setInstalacion] = useState<any>(null)
   const [sidebarColapsado, setSidebarColapsado] = useKV<boolean>('sidebar-colapsado', false)
   const [sucursalActiva, setSucursalActiva] = useKV<string | null>('sucursal-activa', null)
   const [sucursales, setSucursales] = useState<Array<{ id: string; codigo: string; nombre: string }>>([])
@@ -163,8 +167,7 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
 
   const esModuloSoloSoporte = (modulo: string) =>
     modulo === 'auditoria' ||
-    modulo === 'migracion' ||
-    modulo === 'contabilidad'
+    modulo === 'migracion'
 
   const creditosActivos = (creditos || []).filter(c => c.estado === 'activo')
   const creditosVencidos = (creditos || []).filter(c => c.estado === 'vencido')
@@ -182,7 +185,8 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
       return
     }
     // Verificar permiso antes de navegar
-    if (modulo !== 'dashboard' && !hasModuleAccess(modulo as Modulo)) {
+    const permitido = modulo === 'dashboard' || hasModuleAccess(modulo as Modulo)
+    if (!permitido) {
       toast.error('No tienes permiso para acceder a este módulo')
       return
     }
@@ -216,6 +220,29 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
     })
   }, [hasModuleAccess, esSuperAdmin])
 
+  useEffect(() => {
+    const guardar = (event: Event) => {
+      event.preventDefault()
+      setInstalacion(event)
+    }
+    window.addEventListener('beforeinstallprompt', guardar)
+    return () => window.removeEventListener('beforeinstallprompt', guardar)
+  }, [])
+
+  const atajosMovil = useMemo(() => {
+    const base = [
+      { id: 'dashboard', label: 'Inicio', icon: ChartBar },
+      { id: 'fincas', label: 'Fincas', icon: TreeStructure },
+      { id: 'compra_fincas', label: 'Compra', icon: Coins },
+      { id: 'negociaciones', label: 'Ventas', icon: Handshake },
+      { id: 'caja', label: 'Caja', icon: Wallet },
+    ]
+    return base.filter((item) => {
+      if (item.id === 'dashboard') return true
+      return hasModuleAccess(item.id as Modulo)
+    })
+  }, [hasModuleAccess])
+
   const renderModulo = () => {
     if (isModuloOcultoEnOperacion(moduloActivo, esSuperAdmin)) {
       return (
@@ -232,13 +259,14 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
         <Card className="p-12 text-center">
           <Lock className="mx-auto mb-4 text-muted-foreground" size={64} />
           <p className="text-lg font-medium mb-2">Acceso exclusivo de soporte</p>
-          <p className="text-muted-foreground">Auditoría, formularios y depuración son para el superadmin de soporte.</p>
+          <p className="text-muted-foreground">Auditoría y herramientas de depuración son exclusivas de soporte (superadmin).</p>
         </Card>
       )
     }
 
     // Verificar permisos para el módulo actual
-    if (moduloActivo !== 'dashboard' && !hasModuleAccess(moduloActivo as Modulo)) {
+    const tieneAcceso = hasModuleAccess(moduloActivo as Modulo)
+    if (moduloActivo !== 'dashboard' && !tieneAcceso) {
       return (
         <Card className="p-12 text-center">
           <Lock className="mx-auto mb-4 text-muted-foreground" size={64} />
@@ -303,7 +331,13 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
       case 'contabilidad':
         return <ContabilidadModule />
       case 'fincas':
-        return <FincasModule />
+        return <FincasModule userSession={userSession} />
+      case 'compra_fincas':
+        return <DesarrolladoraModule userSession={userSession} />
+      case 'financistas':
+        return <FinancistasModule userSession={userSession} />
+      case 'comisionistas':
+        return <ComisionistasModule userSession={userSession} />
       case 'negociaciones':
         return <NegociacionesModule />
       case 'tasas_inmobiliarias':
@@ -448,6 +482,16 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
                 </div>
               </div>
             </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="lg:hidden h-9 w-9"
+                aria-label="Asistente"
+                onClick={() => window.dispatchEvent(new Event('terracloud-chat'))}
+              >
+                <Chats size={18} />
+              </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="user-avatar-btn">
@@ -540,6 +584,7 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            </div>
           </div>
         </div>
       </header>
@@ -590,11 +635,41 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
             </aside>
           )}
 
-          <main className="flex-1 min-w-0 page-transition pb-20 lg:pb-0" key={moduloActivo}>
+          <main className="flex-1 min-w-0 page-transition pb-28 lg:pb-0" key={moduloActivo}>
             {renderModulo()}
           </main>
         </div>
       </div>
+      {!isDesktop && instalacion && (
+        <div className="mobile-install">
+          <p>Instala TerraCloud para usarla como aplicación.</p>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={async () => {
+              await instalacion.prompt()
+              setInstalacion(null)
+            }}>Instalar</Button>
+            <Button size="sm" variant="ghost" onClick={() => setInstalacion(null)}>Ahora no</Button>
+          </div>
+        </div>
+      )}
+      {!isDesktop && (
+        <nav className="mobile-tabbar" style={{ gridTemplateColumns: `repeat(${atajosMovil.length + 1}, minmax(0, 1fr))` }} aria-label="Accesos del celular">
+          {atajosMovil.map((item) => {
+            const Icon = item.icon
+            const activo = moduloActivo === item.id
+            return (
+              <button key={item.id} type="button" className={activo ? 'active' : ''} onClick={() => handleNavegacion(item.id)}>
+                <Icon size={22} weight={activo ? 'fill' : 'duotone'} />
+                <span>{item.label}</span>
+              </button>
+            )
+          })}
+          <button type="button" onClick={() => setMenuAbierto(true)}>
+            <List size={22} weight="duotone" />
+            <span>Más</span>
+          </button>
+        </nav>
+      )}
       <ChatbotHelper rol={userSession.userData?.rol || userSession.role} />
     </div>
   )

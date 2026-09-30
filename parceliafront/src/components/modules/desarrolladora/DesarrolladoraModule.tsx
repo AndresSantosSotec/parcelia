@@ -174,6 +174,7 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
         regenerar_plan: regenerar,
       })
       if (res.data) aplicar(res.data)
+      if (modo === 'crear' && puedeEditar) setModo('editar')
       toast.success(res.message || 'Compra guardada')
     } catch (e: any) {
       toast.error(e?.message || 'No se pudo guardar')
@@ -319,7 +320,7 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
             onChange={(e) => setFincaId(e.target.value ? Number(e.target.value) : '')}
           >
             <option value="">{modo === 'crear' ? 'Selecciona una finca sin compra' : 'Finca'}</option>
-            {(modo === 'crear' ? fincasParaAlta : fincas).map((f) => (
+            {(modo === 'crear' ? fincas.filter((f) => f.id === fincaId || fincasParaAlta.some((alta) => alta.id === f.id)) : fincas.filter((f) => f.id === fincaId)).map((f) => (
               <option key={f.id} value={f.id}>{f.codigo} — {f.nombre}</option>
             ))}
           </select>

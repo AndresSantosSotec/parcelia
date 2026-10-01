@@ -120,6 +120,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/parcelas/{parcelaId}/lotes', [FincaController::class, 'storeLote'])->middleware('permiso:lotes,crear');
 
             Route::get('/compras-fincas', [\App\Http\Controllers\Api\CompraFincaController::class, 'index'])->middleware('permiso:compra_fincas,ver');
+            Route::post('/compras-fincas', [\App\Http\Controllers\Api\CompraFincaController::class, 'store'])->middleware('permiso:compra_fincas,crear');
             Route::get('/fincas/{id}/compra', [\App\Http\Controllers\Api\CompraFincaController::class, 'detalle'])->middleware('permiso:compra_fincas,ver');
             Route::put('/fincas/{id}/compra', [\App\Http\Controllers\Api\CompraFincaController::class, 'guardarCompra'])->middleware('permiso:compra_fincas,crear|editar');
             Route::delete('/fincas/{id}/compra', [\App\Http\Controllers\Api\CompraFincaController::class, 'destroy'])->middleware('permiso:compra_fincas,eliminar');
@@ -130,29 +131,44 @@ Route::prefix('v1')->group(function () {
             Route::post('/fincas/{id}/gastos-urbanizacion', [\App\Http\Controllers\Api\CompraFincaController::class, 'storeGasto'])->middleware('permiso:compra_fincas,crear|editar');
             Route::delete('/fincas/{id}/gastos-urbanizacion/{gastoId}', [\App\Http\Controllers\Api\CompraFincaController::class, 'destroyGasto'])->middleware('permiso:compra_fincas,crear|editar');
             Route::post('/fincas/{id}/cuotas-compra/{cuotaId}/pagar', [\App\Http\Controllers\Api\CompraFincaController::class, 'pagarCuota'])->middleware('permiso:compra_fincas,editar');
-            Route::post('/fincas/{id}/lotes-medidas', [\App\Http\Controllers\Api\CompraFincaController::class, 'sincronizarLotes'])->middleware('permiso:compra_fincas,editar');
+            Route::post('/fincas/{id}/lotes-medidas', [\App\Http\Controllers\Api\CompraFincaController::class, 'sincronizarLotes'])->middleware('permiso:compra_fincas,crear|editar');
             Route::post('/fincas/{id}/rehacer-plan-pendiente', [\App\Http\Controllers\Api\CompraFincaController::class, 'rehacerPendiente'])->middleware('permiso:compra_fincas,editar');
             Route::post('/fincas/{id}/aplicar-precios', [\App\Http\Controllers\Api\CompraFincaController::class, 'aplicarPrecios'])->middleware('permiso:compra_fincas,editar');
 
+            Route::get('/financistas/guia', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'guiaFlujo'])->middleware('permiso:financistas,ver');
+            Route::get('/financistas/requisitos', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'requisitos'])->middleware('permiso:financistas,ver');
+            Route::get('/financistas/reporte-vencimientos', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'vencimientos'])->middleware('permiso:financistas,reportes');
             Route::get('/financistas', [\App\Http\Controllers\Api\FinancistaController::class, 'index'])->middleware('permiso:financistas,ver');
             Route::post('/financistas', [\App\Http\Controllers\Api\FinancistaController::class, 'store'])->middleware('permiso:financistas,editar');
             Route::put('/financistas/{id}', [\App\Http\Controllers\Api\FinancistaController::class, 'update'])->middleware('permiso:financistas,editar');
+            Route::delete('/financistas/{id}', [\App\Http\Controllers\Api\FinancistaController::class, 'destroy'])->middleware('permiso:financistas,editar');
             Route::post('/financistas/{id}/pagos', [\App\Http\Controllers\Api\FinancistaController::class, 'pagar'])->middleware('permiso:financistas,pagar');
+            Route::get('/financistas/{id}/preview-pago', [\App\Http\Controllers\Api\FinancistaController::class, 'previewPago'])->middleware('permiso:financistas,pagar');
             Route::get('/financistas/{id}/estado', [\App\Http\Controllers\Api\FinancistaController::class, 'estado'])->middleware('permiso:financistas,ver');
 
             Route::get('/comision-reglas', [\App\Http\Controllers\Api\ComisionistaController::class, 'reglas'])->middleware('permiso:comisionistas,ver');
             Route::post('/comision-reglas', [\App\Http\Controllers\Api\ComisionistaController::class, 'storeRegla'])->middleware('permiso:comisionistas,reglas');
             Route::put('/comision-reglas/{id}', [\App\Http\Controllers\Api\ComisionistaController::class, 'updateRegla'])->middleware('permiso:comisionistas,reglas');
+            Route::delete('/comision-reglas/{id}', [\App\Http\Controllers\Api\ComisionistaController::class, 'destroyRegla'])->middleware('permiso:comisionistas,reglas');
             Route::post('/comisiones/aplicar', [\App\Http\Controllers\Api\ComisionistaController::class, 'aplicar'])->middleware('permiso:comisionistas,editar');
+            Route::get('/comisionistas/guia', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'guiaFlujo'])->middleware('permiso:comisionistas,ver');
+            Route::get('/comisionistas/requisitos', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'requisitos'])->middleware('permiso:comisionistas,ver');
+            Route::get('/comisiones/reporte-pendientes', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'comisionesPendientes'])->middleware('permiso:comisionistas,reportes');
             Route::get('/comisionistas', [\App\Http\Controllers\Api\ComisionistaController::class, 'index'])->middleware('permiso:comisionistas,ver');
             Route::post('/comisionistas', [\App\Http\Controllers\Api\ComisionistaController::class, 'store'])->middleware('permiso:comisionistas,editar');
             Route::put('/comisionistas/{id}', [\App\Http\Controllers\Api\ComisionistaController::class, 'update'])->middleware('permiso:comisionistas,editar');
+            Route::delete('/comisionistas/{id}', [\App\Http\Controllers\Api\ComisionistaController::class, 'destroy'])->middleware('permiso:comisionistas,editar');
             Route::get('/comisiones', [\App\Http\Controllers\Api\ComisionistaController::class, 'comisiones'])->middleware('permiso:comisionistas,ver');
             Route::post('/comisiones', [\App\Http\Controllers\Api\ComisionistaController::class, 'storeComision'])->middleware('permiso:comisionistas,editar');
             Route::post('/comisiones/{id}/pagos', [\App\Http\Controllers\Api\ComisionistaController::class, 'pagar'])->middleware('permiso:comisionistas,pagar');
+            Route::delete('/comisiones/{id}', [\App\Http\Controllers\Api\ComisionistaController::class, 'destroyComision'])->middleware('permiso:comisionistas,editar');
             Route::get('/comisiones/{id}/estado', [\App\Http\Controllers\Api\ComisionistaController::class, 'estado'])->middleware('permiso:comisionistas,ver');
 
+            Route::get('/reportes-compra-fincas/guia', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'guiaFlujo'])->middleware('permiso:compra_fincas,ver');
+            Route::get('/reportes-compra-fincas/requisitos', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'requisitos'])->middleware('permiso:compra_fincas,ver');
             Route::get('/reportes-compra-fincas/listado', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'listado'])->middleware('permiso:compra_fincas,reportes');
+            Route::get('/reportes-compra-fincas/cuotas-pendientes', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'cuotasPendientes'])->middleware('permiso:compra_fincas,reportes');
+            Route::get('/reportes-compra-fincas/urbanizacion', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'urbanizacion'])->middleware('permiso:compra_fincas,reportes');
             Route::get('/fincas/{id}/reportes/registro', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'registro'])->middleware('permiso:compra_fincas,reportes');
             Route::get('/fincas/{id}/reportes/estado-compra', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'estadoCompra'])->middleware('permiso:compra_fincas,reportes');
             Route::get('/fincas/{id}/reportes/contrato-compra', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'contratoCompra'])->middleware('permiso:compra_fincas,reportes');

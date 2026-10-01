@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, TreeStructure, Compass, Camera, Trash, Pencil, Power, WarningCircle, MapPin, ShareNetwork, User, CaretLeft, CaretRight } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { fincaService, loteService, userService, Finca, Parcela, Lote } from '@/lib/api'
+import { SelectorUbicacion } from '@/components/shared/SelectorUbicacion'
 import { MapPickerField, type GeoCoords } from '@/components/ui/MapPickerField'
 import { urlFichaTerreno, urlFotoLote } from '@/lib/media'
 import { usePermissions } from '@/hooks/use-permissions'
@@ -987,20 +988,11 @@ export function FincasModule({ userSession }: FincasModuleProps) {
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Municipio</Label>
-                <Input
-                  value={formFinca.municipio}
-                  onChange={(e) => setFormFinca({ ...formFinca, municipio: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Departamento</Label>
-                <Input
-                  value={formFinca.departamento}
-                  onChange={(e) => setFormFinca({ ...formFinca, departamento: e.target.value })}
-                />
-              </div>
+              <SelectorUbicacion
+                departamento={formFinca.departamento}
+                municipio={formFinca.municipio}
+                onChange={(valor) => setFormFinca({ ...formFinca, departamento: valor.departamento, municipio: valor.municipio })}
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

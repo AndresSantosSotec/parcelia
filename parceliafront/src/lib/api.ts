@@ -1857,6 +1857,7 @@ export interface CompraFincaListado {
 
 export const compraFincaService = {
   listar: () => api.get<CompraFincaListado[]>('/compras-fincas'),
+  crear: (data: Record<string, unknown>) => api.post<CompraFincaPayload>('/compras-fincas', data),
   eliminar: (id: number) => api.delete<{ id: number }>(`/fincas/${id}/compra`),
   detalle: (id: number) => api.get<CompraFincaPayload>(`/fincas/${id}/compra`),
   guardar: (id: number, data: Record<string, unknown>) => api.put<CompraFincaPayload>(`/fincas/${id}/compra`, data),
@@ -1903,6 +1904,7 @@ export interface FinancistaItem {
   fecha_inicio?: string | null
   fecha_vencimiento?: string | null
   cuota: number
+  numero_cuotas?: number
   capital_al_vencimiento: boolean
   estado: string
   observaciones?: string | null
@@ -1918,7 +1920,19 @@ export interface FinancistaItem {
 export const financistaService = {
   listar: (fincaId?: number) => api.get<FinancistaItem[]>(`/financistas${fincaId ? `?finca_id=${fincaId}` : ''}`),
   crear: (data: Record<string, unknown>) => api.post<FinancistaItem>('/financistas', data),
-  pagar: (id: number, data: Record<string, unknown>) => api.post<FinancistaItem>(`/financistas/${id}/pagos`, data),
+  actualizar: (id: number, data: Record<string, unknown>) => api.put<FinancistaItem>(`/financistas/${id}`, data),
+  eliminar: (id: number) => api.delete<FinancistaItem>(`/financistas/${id}`),
+  pagar: (id: number, data: { fecha: string; monto_capital: number; monto_interes: number; monto_mora: number; descuento_interes: number; archivo?: File | null }) => {
+    const body = new FormData()
+    body.append('fecha', data.fecha)
+    body.append('monto_capital', String(data.monto_capital))
+    body.append('monto_interes', String(data.monto_interes))
+    body.append('monto_mora', String(data.monto_mora))
+    body.append('descuento_interes', String(data.descuento_interes))
+    if (data.archivo) body.append('archivo', data.archivo)
+    return api.post<FinancistaItem>(`/financistas/${id}/pagos`, body)
+  },
+  previewPago: (id: number, fecha: string) => api.get<{ capital: number; interes: number; mora: number; nota: string }>(`/financistas/${id}/preview-pago?fecha=${fecha}`),
   estado: (id: number) => api.get<{ financista: FinancistaItem; pagos: Array<Record<string, unknown>> }>(`/financistas/${id}/estado`),
 }
 
@@ -1963,11 +1977,17 @@ export const comisionistaService = {
   listar: () => api.get<ComisionistaItem[]>('/comisionistas'),
   crear: (data: { nombre: string; telefono?: string; direccion?: string; dpi?: string }) =>
     api.post<ComisionistaItem>('/comisionistas', data),
+  actualizar: (id: number, data: { nombre: string; telefono?: string; direccion?: string; dpi?: string }) =>
+    api.put<ComisionistaItem>(`/comisionistas/${id}`, data),
+  eliminar: (id: number) => api.delete<ComisionistaItem>(`/comisionistas/${id}`),
   comisiones: (comisionistaId?: number) =>
     api.get<ComisionItem[]>(`/comisiones${comisionistaId ? `?comisionista_id=${comisionistaId}` : ''}`),
   crearComision: (data: Record<string, unknown>) => api.post<ComisionItem>('/comisiones', data),
   reglas: () => api.get<ComisionRegla[]>('/comision-reglas'),
   crearRegla: (data: Record<string, unknown>) => api.post<ComisionRegla>('/comision-reglas', data),
+  actualizarRegla: (id: number, data: Record<string, unknown>) => api.put<ComisionRegla>(`/comision-reglas/${id}`, data),
+  eliminarRegla: (id: number) => api.delete<ComisionRegla>(`/comision-reglas/${id}`),
+  eliminarComision: (id: number) => api.delete<ComisionItem>(`/comisiones/${id}`),
   aplicar: (data: { comisionista_id: number; negociacion_id: number; regla_id?: number | null; monto_comision?: number | null }) =>
     api.post<ComisionItem>('/comisiones/aplicar', data),
   pagar: (id: number, data: { fecha: string; monto: number; referencia?: string }) =>

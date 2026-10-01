@@ -11,6 +11,7 @@ import { Camera, Trash, Package, Buildings, CaretDown, CaretUp } from '@phosphor
 import { Card, CardContent } from '@/components/ui/card'
 import { toast } from 'sonner'
 import { MapPickerField, type GeoCoords } from '@/components/ui/MapPickerField'
+import { SelectorUbicacion, claveUbicacion } from '@/components/shared/SelectorUbicacion'
 
 // Configuración de campos base del formulario
 interface CamposFormulario {
@@ -196,6 +197,25 @@ export function PasoRegistrarPrenda({
   // Renderizar un campo adicional dinámico
   const renderCampoAdicional = (campo: CampoAdicional) => {
     const valor = datosAdicionales[campo.nombre] || ''
+    const rol = claveUbicacion(campo)
+    const hayPar = camposAdicionales.some((item) => claveUbicacion(item) === 'departamento')
+      && camposAdicionales.some((item) => claveUbicacion(item) === 'municipio')
+    if (hayPar && rol === 'municipio') return null
+    if (hayPar && rol === 'departamento') {
+      const campoMunicipio = camposAdicionales.find((item) => claveUbicacion(item) === 'municipio')
+      return (
+        <SelectorUbicacion
+          key={`ubicacion-${campo.nombre}`}
+          requerido={campo.requerido}
+          departamento={String(datosAdicionales[campo.nombre] || '')}
+          municipio={String(campoMunicipio ? datosAdicionales[campoMunicipio.nombre] || '' : '')}
+          onChange={(valorUbicacion) => {
+            handleDatoAdicionalChange(campo.nombre, valorUbicacion.departamento)
+            if (campoMunicipio) handleDatoAdicionalChange(campoMunicipio.nombre, valorUbicacion.municipio)
+          }}
+        />
+      )
+    }
     
     switch (campo.tipo) {
       case 'text':

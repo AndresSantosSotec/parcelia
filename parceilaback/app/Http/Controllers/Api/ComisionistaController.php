@@ -46,6 +46,20 @@ class ComisionistaController extends Controller
         return response()->json(['success' => true, 'data' => $item->fresh()]);
     }
 
+    public function destroy($id)
+    {
+        $item = Comisionista::withCount('comisiones')->findOrFail($id);
+        if ($item->comisiones_count > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se elimina un comisionista que ya tiene comisiones de venta.',
+            ], 422);
+        }
+        $item->delete();
+
+        return response()->json(['success' => true, 'message' => 'Comisionista eliminado.']);
+    }
+
     public function reglas()
     {
         return response()->json([
@@ -68,6 +82,36 @@ class ComisionistaController extends Controller
         $regla->update($this->validarRegla($request, true));
 
         return response()->json(['success' => true, 'data' => $regla->fresh()]);
+    }
+
+    public function destroyRegla($id)
+    {
+        $regla = ComisionRegla::findOrFail($id);
+        if (ComisionVenta::where('regla_id', $regla->id)->exists()) {
+            $regla->update(['activo' => false]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'La regla ya se usó en ventas. Quedó inactiva y las comisiones anteriores no cambian.',
+            ]);
+        }
+        $regla->delete();
+
+        return response()->json(['success' => true, 'message' => 'Regla eliminada.']);
+    }
+
+    public function destroyComision($id)
+    {
+        $comision = ComisionVenta::findOrFail($id);
+        if ($comision->pagos()->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se elimina una comisión que ya tiene pagos. El recibo y el estado de cuenta se conservan.',
+            ], 422);
+        }
+        $comision->delete();
+
+        return response()->json(['success' => true, 'message' => 'Comisión eliminada.']);
     }
 
     public function aplicar(Request $request)

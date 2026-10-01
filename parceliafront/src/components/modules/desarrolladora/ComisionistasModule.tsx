@@ -16,6 +16,7 @@ import {
   type Negociacion,
 } from '@/lib/api'
 import { usePermissions } from '@/hooks/use-permissions'
+import { AccionesRegistro, PaginacionLista } from './AccionesRegistro'
 
 const q = (n: number | string | null | undefined) =>
   `Q ${Number(n || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -46,6 +47,22 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
   const [regla, setRegla] = useState({ nombre: '', tipo: 'porcentaje', base: 'precio_final', valor: '', momento: 'al_contrato' })
   const [aplicar, setAplicar] = useState({ comisionista_id: '', negociacion_id: '', regla_id: '', monto: '' })
   const [pago, setPago] = useState({ id: 0, fecha: '', monto: '', referencia: '' })
+  const [personaId, setPersonaId] = useState<number | null>(null)
+  const [mostrarPersona, setMostrarPersona] = useState(false)
+  const [altaRapida, setAltaRapida] = useState(false)
+  const [reglaId, setReglaId] = useState<number | null>(null)
+  const [mostrarRegla, setMostrarRegla] = useState(false)
+  const [textoCom, setTextoCom] = useState('')
+  const [estadoCom, setEstadoCom] = useState('')
+  const [paginaCom, setPaginaCom] = useState(1)
+  const [porCom, setPorCom] = useState(10)
+  const [textoPer, setTextoPer] = useState('')
+  const [paginaPer, setPaginaPer] = useState(1)
+  const [porPer, setPorPer] = useState(10)
+  const [textoReg, setTextoReg] = useState('')
+  const [estadoReg, setEstadoReg] = useState('')
+  const [paginaReg, setPaginaReg] = useState(1)
+  const [porReg, setPorReg] = useState(10)
 
   const cargar = useCallback(async () => {
     const [a, b, c, d] = await Promise.all([
@@ -83,6 +100,35 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
     return Math.round(base * (Number(reglaSel.valor) / 100) * 100) / 100
   }, [venta, reglaSel])
 
+  const comisionesVisibles = comisiones.filter((c) => {
+    const texto = textoCom.trim().toLowerCase()
+    const coincideTexto = !texto || [c.comisionista?.nombre, c.negociacion?.codigo_negociacion, c.lote?.codigo_unico, c.regla?.nombre, c.estado]
+      .some((valor) => String(valor || '').toLowerCase().includes(texto))
+    return coincideTexto && (!estadoCom || c.estado === estadoCom)
+  })
+  const paginasCom = Math.max(1, Math.ceil(comisionesVisibles.length / porCom))
+  const paginaComSegura = Math.min(paginaCom, paginasCom)
+  const comisionesPagina = comisionesVisibles.slice((paginaComSegura - 1) * porCom, paginaComSegura * porCom)
+
+  const personasVisibles = personas.filter((p) => {
+    const texto = textoPer.trim().toLowerCase()
+    if (!texto) return true
+    return [p.nombre, p.telefono, p.direccion, p.dpi].some((valor) => String(valor || '').toLowerCase().includes(texto))
+  })
+  const paginasPer = Math.max(1, Math.ceil(personasVisibles.length / porPer))
+  const paginaPerSegura = Math.min(paginaPer, paginasPer)
+  const personasPagina = personasVisibles.slice((paginaPerSegura - 1) * porPer, paginaPerSegura * porPer)
+
+  const reglasVisibles = reglas.filter((r) => {
+    const texto = textoReg.trim().toLowerCase()
+    const coincideTexto = !texto || r.nombre.toLowerCase().includes(texto)
+    const coincideEstado = !estadoReg || (estadoReg === 'activa' ? r.activo : !r.activo)
+    return coincideTexto && coincideEstado
+  })
+  const paginasReg = Math.max(1, Math.ceil(reglasVisibles.length / porReg))
+  const paginaRegSegura = Math.min(paginaReg, paginasReg)
+  const reglasPagina = reglasVisibles.slice((paginaRegSegura - 1) * porReg, paginaRegSegura * porReg)
+
   async function bajar(url: string, nombre: string) {
     try {
       await api.downloadFile(url, nombre)
@@ -96,16 +142,16 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold">Comisionistas</h1>
-          <p className="text-sm text-muted-foreground">Personas externas, reglas de comisión y el vínculo con cada venta de terreno.</p>
+          <p className="text-sm text-muted-foreground">Paso 3. Comisión de la venta, después de comprar la finca y registrar su financiamiento.</p>
         </div>
-        {puedeReportes && (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => bajar('/comisionistas/reporte?formato=pdf', 'comisionistas.pdf')}>Listado PDF</Button>
-          <Button size="sm" variant="outline" onClick={() => bajar('/comisionistas/reporte?formato=xlsx', 'comisionistas.xlsx')}>Listado Excel</Button>
-          <Button size="sm" variant="outline" onClick={() => bajar('/comisiones/reporte?formato=pdf', 'comisiones.pdf')}>Comisiones PDF</Button>
-          <Button size="sm" variant="outline" onClick={() => bajar('/comisiones/reporte?formato=xlsx', 'comisiones.xlsx')}>Comisiones Excel</Button>
+          {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/comisiones/reporte-pendientes?formato=pdf', 'comisiones-pendientes.pdf')}>Pendientes</Button>}
+          {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/comisionistas/reporte?formato=pdf', 'comisionistas.pdf')}>Listado PDF</Button>}
+          {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/comisionistas/reporte?formato=xlsx', 'comisionistas.xlsx')}>Listado Excel</Button>}
+          {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/comisiones/reporte?formato=pdf', 'comisiones.pdf')}>Comisiones PDF</Button>}
+          {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/comisiones/reporte?formato=xlsx', 'comisiones.xlsx')}>Comisiones Excel</Button>}
+          <Button size="sm" variant="outline" onClick={() => bajar('/comisionistas/requisitos', 'registro-modulos.pdf')}>Registro PDF</Button>
         </div>
-        )}
       </div>
 
       <Tabs defaultValue="comisiones">
@@ -119,6 +165,15 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
           <Card>
             <CardHeader><CardTitle>Comisiones registradas</CardTitle></CardHeader>
             <CardContent className="overflow-x-auto">
+              <div className="mb-3 grid gap-2 md:grid-cols-3">
+                <Input placeholder="Buscar persona, venta o lote" value={textoCom} onChange={(e) => { setTextoCom(e.target.value); setPaginaCom(1) }} />
+                <select className={campo} value={estadoCom} onChange={(e) => { setEstadoCom(e.target.value); setPaginaCom(1) }}>
+                  <option value="">Todos los estados</option>
+                  <option value="pendiente">Pendiente</option>
+                  <option value="parcial">Parcial</option>
+                  <option value="pagada">Pagada</option>
+                </select>
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -129,11 +184,11 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                     <TableHead>Comisión</TableHead>
                     <TableHead>Pendiente</TableHead>
                     <TableHead>Estado</TableHead>
-                    <TableHead></TableHead>
+                    <TableHead className="w-px"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {comisiones.map((c) => (
+                  {comisionesPagina.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell>{c.comisionista?.nombre}</TableCell>
                       <TableCell>{c.negociacion?.codigo_negociacion || '—'}</TableCell>
@@ -142,15 +197,34 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                       <TableCell>{q(c.monto_comision)}</TableCell>
                       <TableCell>{q(c.pendiente)}</TableCell>
                       <TableCell>{c.estado}</TableCell>
-                      <TableCell className="space-x-1 whitespace-nowrap">
-                        {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/comisiones/${c.id}/reporte?formato=pdf`, `estado-comision-${c.id}.pdf`)}>PDF</Button>}
-                        {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/comisiones/${c.id}/recibo-pdf`, `recibo-comision-${c.id}.pdf`)}>Recibo</Button>}
+                      <TableCell className="w-px whitespace-nowrap text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/comisiones/${c.id}/recibo-pdf`, `recibo-comision-${c.id}.pdf`)}>Recibo</Button>}
+                          <AccionesRegistro
+                            onVer={puedeReportes ? () => bajar(`/comisiones/${c.id}/reporte?formato=pdf`, `estado-comision-${c.id}.pdf`) : undefined}
+                            onDescargar={puedeReportes ? () => bajar(`/comisiones/${c.id}/reporte?formato=pdf`, `estado-comision-${c.id}.pdf`) : undefined}
+                            onEliminar={puedeEditar ? () => {
+                              if (!window.confirm('Eliminar esta comisión? Solo procede si todavía no tiene pagos.')) return
+                              comisionistaService.eliminarComision(c.id).then((res) => {
+                                toast.success(res.message || 'Comisión eliminada')
+                                cargar()
+                              }).catch((e: any) => toast.error(e?.message || 'No se pudo eliminar'))
+                            } : undefined}
+                          />
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
-                  {comisiones.length === 0 && <TableRow><TableCell colSpan={8}>Todavía no hay comisiones ligadas a ventas.</TableCell></TableRow>}
+                  {comisionesVisibles.length === 0 && <TableRow><TableCell colSpan={8}>Todavía no hay comisiones ligadas a ventas.</TableCell></TableRow>}
                 </TableBody>
               </Table>
+              <PaginacionLista
+                total={comisionesVisibles.length}
+                pagina={paginaComSegura}
+                porPagina={porCom}
+                onPagina={setPaginaCom}
+                onPorPagina={(cantidad) => { setPorCom(cantidad); setPaginaCom(1) }}
+              />
             </CardContent>
           </Card>
 
@@ -170,11 +244,36 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                   </select>
                 </div>
                 <div>
-                  <Label>Comisionista</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>Comisionista</Label>
+                    {puedeEditar && <Button type="button" size="sm" variant="outline" onClick={() => setAltaRapida((v) => !v)}>Crear y seleccionar</Button>}
+                  </div>
                   <select className={campo} value={aplicar.comisionista_id} onChange={(e) => setAplicar({ ...aplicar, comisionista_id: e.target.value })}>
                     <option value="">Elegir</option>
                     {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   </select>
+                  {altaRapida && (
+                    <div className="mt-2 grid gap-2">
+                      <Input placeholder="Nombre completo" value={persona.nombre} onChange={(e) => setPersona({ ...persona, nombre: e.target.value })} />
+                      <Input placeholder="Teléfono" value={persona.telefono} onChange={(e) => setPersona({ ...persona, telefono: e.target.value })} />
+                      <Input placeholder="Dirección" value={persona.direccion} onChange={(e) => setPersona({ ...persona, direccion: e.target.value })} />
+                      <Input placeholder="DPI" value={persona.dpi} onChange={(e) => setPersona({ ...persona, dpi: e.target.value })} />
+                      <Button type="button" size="sm" onClick={async () => {
+                        if (!persona.nombre.trim()) return
+                        try {
+                          const res = await comisionistaService.crear(persona)
+                          const id = res.data?.id
+                          setPersona({ nombre: '', telefono: '', direccion: '', dpi: '' })
+                          setAltaRapida(false)
+                          await cargar()
+                          if (id) setAplicar((prev) => ({ ...prev, comisionista_id: String(id) }))
+                          toast.success('Comisionista creado y seleccionado')
+                        } catch (e: any) {
+                          toast.error(e?.message || 'No se pudo crear')
+                        }
+                      }}>Guardar y usar</Button>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Label>Regla</Label>
@@ -254,8 +353,12 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
 
         <TabsContent value="personas" className="space-y-4">
           <Card>
-            <CardHeader><CardTitle>Personas registradas</CardTitle></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Personas registradas</CardTitle>
+              {puedeEditar && <Button size="sm" onClick={() => { setPersonaId(null); setPersona({ nombre: '', telefono: '', direccion: '', dpi: '' }); setMostrarPersona(true) }}>Nueva persona</Button>}
+            </CardHeader>
             <CardContent className="overflow-x-auto">
+              <Input className="mb-3" placeholder="Buscar nombre, teléfono o DPI" value={textoPer} onChange={(e) => { setTextoPer(e.target.value); setPaginaPer(1) }} />
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -264,26 +367,51 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                     <TableHead>Dirección</TableHead>
                     <TableHead>DPI</TableHead>
                     <TableHead>Comisiones</TableHead>
+                    <TableHead className="w-px"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {personas.map((p) => (
+                  {personasPagina.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell>{p.nombre}</TableCell>
                       <TableCell>{p.telefono || '—'}</TableCell>
                       <TableCell>{p.direccion || '—'}</TableCell>
                       <TableCell>{p.dpi || '—'}</TableCell>
                       <TableCell>{p.comisiones_count ?? 0}</TableCell>
+                      <TableCell className="w-px whitespace-nowrap text-right">
+                        <AccionesRegistro
+                          onDescargar={puedeReportes ? () => bajar(`/comisiones/reporte?formato=pdf&comisionista_id=${p.id}`, `comisiones-${p.id}.pdf`) : undefined}
+                          onEditar={puedeEditar ? () => {
+                            setPersonaId(p.id)
+                            setPersona({ nombre: p.nombre, telefono: p.telefono || '', direccion: p.direccion || '', dpi: p.dpi || '' })
+                            setMostrarPersona(true)
+                          } : undefined}
+                          onEliminar={puedeEditar ? () => {
+                            if (!window.confirm(`Eliminar a ${p.nombre}? Solo procede si no tiene comisiones.`)) return
+                            comisionistaService.eliminar(p.id).then((res) => {
+                              toast.success(res.message || 'Comisionista eliminado')
+                              cargar()
+                            }).catch((e: any) => toast.error(e?.message || 'No se pudo eliminar'))
+                          } : undefined}
+                        />
+                      </TableCell>
                     </TableRow>
                   ))}
-                  {personas.length === 0 && <TableRow><TableCell colSpan={5}>No hay comisionistas.</TableCell></TableRow>}
+                  {personasVisibles.length === 0 && <TableRow><TableCell colSpan={6}>No hay comisionistas.</TableCell></TableRow>}
                 </TableBody>
               </Table>
+              <PaginacionLista
+                total={personasVisibles.length}
+                pagina={paginaPerSegura}
+                porPagina={porPer}
+                onPagina={setPaginaPer}
+                onPorPagina={(cantidad) => { setPorPer(cantidad); setPaginaPer(1) }}
+              />
             </CardContent>
           </Card>
-          {puedeEditar && (
+          {puedeEditar && mostrarPersona && (
             <Card>
-              <CardHeader><CardTitle>Nueva persona</CardTitle></CardHeader>
+              <CardHeader><CardTitle>{personaId ? 'Editar persona' : 'Nueva persona'}</CardTitle></CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-4">
                 <div><Label>Nombre</Label><Input value={persona.nombre} onChange={(e) => setPersona({ ...persona, nombre: e.target.value })} /></div>
                 <div><Label>Teléfono</Label><Input value={persona.telefono} onChange={(e) => setPersona({ ...persona, telefono: e.target.value })} /></div>
@@ -292,14 +420,17 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                 <Button onClick={async () => {
                   if (!persona.nombre.trim()) return
                   try {
-                    await comisionistaService.crear(persona)
+                    if (personaId) await comisionistaService.actualizar(personaId, persona)
+                    else await comisionistaService.crear(persona)
                     setPersona({ nombre: '', telefono: '', direccion: '', dpi: '' })
+                    setPersonaId(null)
+                    setMostrarPersona(false)
                     await cargar()
-                    toast.success('Comisionista registrado')
+                    toast.success(personaId ? 'Comisionista actualizado' : 'Comisionista registrado')
                   } catch (e: any) {
                     toast.error(e?.message || 'No se pudo crear')
                   }
-                }}>Agregar</Button>
+                }}>{personaId ? 'Guardar cambios' : 'Agregar'}</Button>
               </CardContent>
             </Card>
           )}
@@ -307,8 +438,19 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
 
         <TabsContent value="reglas" className="space-y-4">
           <Card>
-            <CardHeader><CardTitle>Reglas vigentes</CardTitle></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Reglas vigentes</CardTitle>
+              {puedeReglas && <Button size="sm" onClick={() => { setReglaId(null); setRegla({ nombre: '', tipo: 'porcentaje', base: 'precio_final', valor: '', momento: 'al_contrato' }); setMostrarRegla(true) }}>Nueva regla</Button>}
+            </CardHeader>
             <CardContent className="overflow-x-auto">
+              <div className="mb-3 grid gap-2 md:grid-cols-3">
+                <Input placeholder="Buscar regla" value={textoReg} onChange={(e) => { setTextoReg(e.target.value); setPaginaReg(1) }} />
+                <select className={campo} value={estadoReg} onChange={(e) => { setEstadoReg(e.target.value); setPaginaReg(1) }}>
+                  <option value="">Todas</option>
+                  <option value="activa">Activas</option>
+                  <option value="inactiva">Inactivas</option>
+                </select>
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -316,10 +458,11 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                     <TableHead>Cálculo</TableHead>
                     <TableHead>Se reconoce</TableHead>
                     <TableHead>Estado</TableHead>
+                    <TableHead className="w-px"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {reglas.map((r) => (
+                  {reglasPagina.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell>{r.nombre}</TableCell>
                       <TableCell>
@@ -329,16 +472,39 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                       </TableCell>
                       <TableCell>{MOMENTO[r.momento] || r.momento}</TableCell>
                       <TableCell>{r.activo ? 'Activa' : 'Inactiva'}</TableCell>
+                      <TableCell className="w-px whitespace-nowrap text-right">
+                        <AccionesRegistro
+                          onEditar={puedeReglas ? () => {
+                            setReglaId(r.id)
+                            setRegla({ nombre: r.nombre, tipo: r.tipo, base: r.base, valor: String(r.valor), momento: r.momento })
+                            setMostrarRegla(true)
+                          } : undefined}
+                          onEliminar={puedeReglas ? () => {
+                            if (!window.confirm(`Quitar la regla ${r.nombre}? Si ya se usó, solo se desactiva.`)) return
+                            comisionistaService.eliminarRegla(r.id).then((res) => {
+                              toast.success(res.message || 'Regla actualizada')
+                              cargar()
+                            }).catch((e: any) => toast.error(e?.message || 'No se pudo eliminar'))
+                          } : undefined}
+                        />
+                      </TableCell>
                     </TableRow>
                   ))}
-                  {reglas.length === 0 && <TableRow><TableCell colSpan={4}>Crea una regla para calcular la comisión al ligarla a una venta.</TableCell></TableRow>}
+                  {reglasVisibles.length === 0 && <TableRow><TableCell colSpan={5}>Crea una regla para calcular la comisión al ligarla a una venta.</TableCell></TableRow>}
                 </TableBody>
               </Table>
+              <PaginacionLista
+                total={reglasVisibles.length}
+                pagina={paginaRegSegura}
+                porPagina={porReg}
+                onPagina={setPaginaReg}
+                onPorPagina={(cantidad) => { setPorReg(cantidad); setPaginaReg(1) }}
+              />
             </CardContent>
           </Card>
-          {puedeReglas && (
+          {puedeReglas && mostrarRegla && (
             <Card>
-              <CardHeader><CardTitle>Nueva regla</CardTitle></CardHeader>
+              <CardHeader><CardTitle>{reglaId ? 'Editar regla' : 'Nueva regla'}</CardTitle></CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-2">
                 <div><Label>Nombre</Label><Input value={regla.nombre} onChange={(e) => setRegla({ ...regla, nombre: e.target.value })} placeholder="Ej. 5% al contrato" /></div>
                 <div>
@@ -373,20 +539,24 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                 <Button onClick={async () => {
                   if (!regla.nombre || !regla.valor) return
                   try {
-                    await comisionistaService.crearRegla({
+                    const payload = {
                       nombre: regla.nombre,
                       tipo: regla.tipo,
                       base: regla.base,
                       valor: Number(regla.valor),
                       momento: regla.momento,
-                    })
+                    }
+                    if (reglaId) await comisionistaService.actualizarRegla(reglaId, payload)
+                    else await comisionistaService.crearRegla(payload)
                     setRegla({ nombre: '', tipo: 'porcentaje', base: 'precio_final', valor: '', momento: 'al_contrato' })
+                    setReglaId(null)
+                    setMostrarRegla(false)
                     await cargar()
-                    toast.success('Regla registrada')
+                    toast.success(reglaId ? 'Regla actualizada' : 'Regla registrada')
                   } catch (e: any) {
                     toast.error(e?.message || 'No se pudo crear la regla')
                   }
-                }}>Guardar regla</Button>
+                }}>{reglaId ? 'Guardar cambios' : 'Guardar regla'}</Button>
               </CardContent>
             </Card>
           )}

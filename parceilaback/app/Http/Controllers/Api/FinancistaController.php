@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Financista;
+use App\Models\ParametrizacionMoraInmobiliaria;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -27,7 +28,7 @@ class FinancistaController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $this->aplicarInteres($this->validar($request));
+        $validated = $this->aplicarPlan($this->validar($request));
         $item = Financista::create($validated);
 
         return response()->json([
@@ -40,11 +41,28 @@ class FinancistaController extends Controller
     public function update(Request $request, $id)
     {
         $item = Financista::findOrFail($id);
-        $item->update($this->aplicarInteres($this->validar($request)));
+        $item->update($this->aplicarPlan($this->validar($request)));
 
         return response()->json([
             'success' => true,
             'data' => $this->presentar($item->fresh()),
+        ]);
+    }
+
+    public function destroy($id)
+    {
+        $item = Financista::findOrFail($id);
+        if ($item->pagos()->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se elimina un financiamiento que ya tiene pagos.',
+            ], 422);
+        }
+        $item->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Financiamiento eliminado.',
         ]);
     }
 
@@ -58,6 +76,7 @@ class FinancistaController extends Controller
             'monto_mora' => 'nullable|numeric|min:0',
             'descuento_interes' => 'nullable|numeric|min:0',
             'referencia' => 'nullable|string|max:255',
+            'archivo' => 'nullable|file|max:10240|mimes:pdf,jpg,jpeg,png,webp',
         ]);
 
         $capital = round((float) ($validated['monto_capital'] ?? 0), 2);
@@ -72,6 +91,7 @@ class FinancistaController extends Controller
             ], 422);
         }
 
+        $archivo = $request->file('archivo');
         $item->pagos()->create([
             'fecha' => $validated['fecha'],
             'monto_capital' => $capital,
@@ -79,6 +99,8 @@ class FinancistaController extends Controller
             'monto_mora' => $mora,
             'descuento_interes' => $descuento,
             'referencia' => $validated['referencia'] ?? null,
+            'archivo_path' => $archivo ? $archivo->store('financista-pagos', 'public') : null,
+            'archivo_nombre' => $archivo ? $archivo->getClientOriginalName() : null,
             'user_id' => $request->user()?->id,
         ]);
 
@@ -94,6 +116,21 @@ class FinancistaController extends Controller
             'success' => true,
             'message' => 'Pago al financista registrado.',
             'data' => $vista,
+        ]);
+    }
+
+    public function previewPago(Request $request, $id)
+    {
+        $fecha = Carbon::parse($request->validate([
+            'fecha' => 'required|date',
+        ])['fecha'])->startOfDay();
+        $item = Financista::withSum('pagos as capital_pagado', 'monto_capital')
+            ->withSum('pagos as interes_pagado', 'monto_interes')
+            ->findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->sugerirPago($item, $fecha),
         ]);
     }
 
@@ -130,16 +167,177 @@ class FinancistaController extends Controller
         ]);
     }
 
-    private function aplicarInteres(array $datos): array
+    private function aplicarPlan(array $datos): array
     {
-        $tasa = (float) ($datos['tasa_anual'] ?? 0);
-        $interes = (float) ($datos['interes_total'] ?? 0);
         $meses = (int) ($datos['plazo'] ?? 0);
-        if ($interes <= 0 && $tasa > 0 && $meses > 0) {
-            $datos['interes_total'] = round((float) $datos['monto'] * ($tasa / 100) * ($meses / 12), 2);
+        $tasa = (float) ($datos['tasa_anual'] ?? 0);
+        $monto = (float) ($datos['monto'] ?? 0);
+        $datos['interes_total'] = ($tasa > 0 && $meses > 0)
+            ? round($monto * ($tasa / 100) * ($meses / 12), 2)
+            : round((float) ($datos['interes_total'] ?? 0), 2);
+
+        $n = $this->numeroDesdePlazo($meses, $datos['frecuencia'] ?? 'mensual');
+        $capitalAlFinal = (bool) ($datos['capital_al_vencimiento'] ?? false);
+        $datos['cuota'] = $n > 0
+            ? round(($capitalAlFinal ? (float) $datos['interes_total'] : $monto + (float) $datos['interes_total']) / $n, 2)
+            : 0;
+
+        if (empty($datos['fecha_inicio'])) {
+            $datos['fecha_inicio'] = Carbon::today()->toDateString();
+        }
+        if ($meses > 0) {
+            $datos['fecha_vencimiento'] = Carbon::parse($datos['fecha_inicio'])->addMonths($meses)->toDateString();
         }
 
         return $datos;
+    }
+
+    private function mesesPorFrecuencia(?string $frecuencia): int
+    {
+        return match ($frecuencia) {
+            'bimensual' => 2,
+            'trimestral' => 3,
+            'semestral' => 6,
+            'anual' => 12,
+            default => 1,
+        };
+    }
+
+    private function numeroDesdePlazo(int $plazo, ?string $frecuencia): int
+    {
+        if ($plazo < 1) {
+            return 0;
+        }
+
+        return (int) ceil($plazo / $this->mesesPorFrecuencia($frecuencia));
+    }
+
+    private function repartir(float $total, int $n): array
+    {
+        if ($n < 1) {
+            return [];
+        }
+        $base = round($total / $n, 2);
+        $filas = array_fill(0, $n, $base);
+        $filas[$n - 1] = round($total - ($base * ($n - 1)), 2);
+
+        return $filas;
+    }
+
+    private function cuotasDe(Financista $f): array
+    {
+        $plazo = (int) $f->plazo;
+        $n = $this->numeroDesdePlazo($plazo, $f->frecuencia);
+        if ($n < 1 || ! $f->fecha_inicio) {
+            return [];
+        }
+
+        $paso = $this->mesesPorFrecuencia($f->frecuencia);
+        $inicio = Carbon::parse($f->fecha_inicio);
+        $capitales = $this->repartir($f->capital_al_vencimiento ? 0 : (float) $f->monto, $n);
+        $intereses = $this->repartir((float) $f->interes_total, $n);
+        if ($f->capital_al_vencimiento) {
+            $capitales[$n - 1] = round((float) $f->monto, 2);
+        }
+
+        $filas = [];
+        for ($i = 1; $i <= $n; $i++) {
+            $filas[] = [
+                'numero' => $i,
+                'fecha' => $inicio->copy()->addMonths(min($plazo, $i * $paso))->toDateString(),
+                'capital' => $capitales[$i - 1],
+                'interes' => $intereses[$i - 1],
+            ];
+        }
+
+        return $filas;
+    }
+
+    private function sugerirPago(Financista $f, Carbon $fecha): array
+    {
+        $capitalPagado = round((float) $f->capital_pagado, 2);
+        $interesPagado = round((float) $f->interes_pagado, 2);
+        $cuotas = $this->cuotasDe($f);
+        $config = ParametrizacionMoraInmobiliaria::vigente();
+        $vencidas = [];
+        $proxima = null;
+
+        foreach ($cuotas as $cuota) {
+            $tomarCapital = min($cuota['capital'], $capitalPagado);
+            $tomarInteres = min($cuota['interes'], $interesPagado);
+            $capitalPagado = round($capitalPagado - $tomarCapital, 2);
+            $interesPagado = round($interesPagado - $tomarInteres, 2);
+            $pendienteCapital = round($cuota['capital'] - $tomarCapital, 2);
+            $pendienteInteres = round($cuota['interes'] - $tomarInteres, 2);
+            if ($pendienteCapital <= 0.009 && $pendienteInteres <= 0.009) {
+                continue;
+            }
+            $fila = [
+                'numero' => $cuota['numero'],
+                'fecha' => $cuota['fecha'],
+                'capital' => $pendienteCapital,
+                'interes' => $pendienteInteres,
+            ];
+            if (Carbon::parse($cuota['fecha'])->startOfDay()->lte($fecha)) {
+                $vencidas[] = $fila;
+            } elseif ($proxima === null) {
+                $proxima = $fila;
+            }
+        }
+
+        $objetivo = $vencidas !== [] ? $vencidas : ($proxima ? [$proxima] : []);
+        $capital = round(array_sum(array_column($objetivo, 'capital')), 2);
+        $interes = round(array_sum(array_column($objetivo, 'interes')), 2);
+        $mora = 0.0;
+        foreach ($vencidas as $fila) {
+            $mora += $this->moraDe($fila['capital'], Carbon::parse($fila['fecha'])->startOfDay(), $fecha, $config);
+        }
+
+        if ($cuotas === []) {
+            $saldo = round(max(0, (float) $f->monto - (float) $f->capital_pagado), 2);
+            $interes = round(max(0, (float) $f->interes_total - (float) $f->interes_pagado), 2);
+            $capital = $saldo;
+            $nota = 'Este financiamiento no tiene plan de cuotas. Se toma el saldo y el interés pendientes.';
+            if ($f->fecha_vencimiento && $fecha->gt(Carbon::parse($f->fecha_vencimiento)->startOfDay())) {
+                $mora = $this->moraDe($saldo, Carbon::parse($f->fecha_vencimiento)->startOfDay(), $fecha, $config);
+            }
+        } elseif ($objetivo === []) {
+            $nota = 'No quedan cuotas pendientes.';
+        } elseif ($vencidas !== []) {
+            $nota = count($vencidas) === 1
+                ? 'Cuota '.$vencidas[0]['numero'].' vencida el '.$vencidas[0]['fecha'].'.'
+                : 'Se suman '.count($vencidas).' cuotas vencidas a la fecha elegida.';
+        } else {
+            $nota = 'A esa fecha aún no vence una cuota. Se toma la próxima, la '.$proxima['numero'].' del '.$proxima['fecha'].'.';
+        }
+
+        if ($mora <= 0.009 && $vencidas !== [] && ! $config) {
+            $nota .= ' No hay mora parametrizada, así que la mora queda en 0.';
+        }
+
+        return [
+            'capital' => round($capital, 2),
+            'interes' => round($interes, 2),
+            'mora' => round($mora, 2),
+            'nota' => $nota,
+        ];
+    }
+
+    private function moraDe(float $capital, Carbon $vence, Carbon $pago, ?ParametrizacionMoraInmobiliaria $config): float
+    {
+        if (! $config || $capital <= 0.009) {
+            return 0;
+        }
+        $inicio = $vence->copy()->addDays((int) $config->dias_gracia);
+        $dias = max(0, (int) $inicio->diffInDays($pago, false));
+        if ($dias <= 0) {
+            return 0;
+        }
+        if ($config->tipo_calculo === 'monto_fijo_diario') {
+            return round((float) $config->monto_fijo_diario * $dias, 2);
+        }
+
+        return round($capital * ((float) $config->porcentaje_diario / 100) * $dias, 2);
     }
 
     private function presentar(Financista $f): array
@@ -178,6 +376,7 @@ class FinancistaController extends Controller
             'fecha_inicio' => $f->fecha_inicio?->toDateString(),
             'fecha_vencimiento' => $f->fecha_vencimiento?->toDateString(),
             'cuota' => (float) $f->cuota,
+            'numero_cuotas' => $this->numeroDesdePlazo((int) $f->plazo, $f->frecuencia),
             'capital_al_vencimiento' => (bool) $f->capital_al_vencimiento,
             'estado' => $f->estado,
             'observaciones' => $f->observaciones,

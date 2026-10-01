@@ -8,6 +8,8 @@ use App\Models\FincaCompraPago;
 use App\Models\Comisionista;
 use App\Models\ComisionVenta;
 use App\Models\Finca;
+use App\Models\FincaCuotaCompra;
+use App\Models\FincaGastoUrbanizacion;
 use App\Models\Financista;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -16,6 +18,114 @@ use Symfony\Component\HttpFoundation\Response;
 
 class DesarrolladoraReporteController extends Controller
 {
+    public function guiaFlujo(): Response
+    {
+        $pdf = Pdf::loadView('reportes.guia-flujo-modulos', [
+            'generado' => now(),
+            'empresa' => \App\Helpers\EmpresaConfigHelper::getConfig(),
+        ])->setPaper('letter', 'portrait');
+
+        return $pdf->download('guia-compra-financiamiento-comisiones.pdf');
+    }
+
+    public function requisitos(): Response
+    {
+        $pdf = Pdf::loadView('reportes.requisitos-modulos', [
+            'generado' => now(),
+            'empresa' => \App\Helpers\EmpresaConfigHelper::getConfig(),
+        ])->setPaper('letter', 'portrait');
+
+        return $pdf->download('registro-modulos.pdf');
+    }
+
+    public function cuotasPendientes(Request $request): Response
+    {
+        $filas = FincaCuotaCompra::with('finca:id,codigo,nombre')
+            ->orderBy('fecha_vencimiento')
+            ->get()
+            ->filter(fn (FincaCuotaCompra $c) => (float) $c->monto_pagado + 0.009 < (float) $c->monto)
+            ->map(fn (FincaCuotaCompra $c) => [
+                $c->finca?->codigo,
+                $c->finca?->nombre,
+                $c->numero_cuota,
+                optional($c->fecha_vencimiento)->format('d/m/Y'),
+                $c->monto,
+                $c->monto_pagado,
+                round(max(0, (float) $c->monto - (float) $c->monto_pagado), 2),
+                $c->estado,
+            ])->values()->all();
+
+        return $this->entregar($request, 'Cuotas pendientes de compra', [
+            'Saldo de cada cuota de las compras de finca que todavía no está cubierta.',
+        ], ['Código', 'Finca', 'Cuota', 'Vence', 'Monto', 'Pagado', 'Saldo', 'Estado'], $filas, 'cuotas-pendientes');
+    }
+
+    public function urbanizacion(Request $request): Response
+    {
+        $gastos = FincaGastoUrbanizacion::with(['finca' => fn ($q) => $q->withCount('lotes')])->orderBy('fecha')->get();
+        $filas = $gastos->map(fn (FincaGastoUrbanizacion $g) => [
+            $g->finca?->codigo,
+            $g->finca?->nombre,
+            $g->finca?->lotes_count,
+            $g->categoria,
+            $g->concepto,
+            optional($g->fecha)->format('d/m/Y'),
+            $g->monto,
+        ])->all();
+
+        return $this->entregar($request, 'Gastos de urbanización', [
+            'Gasto real por finca. El costo del lote sale de la inversión dividida entre los metros cuadrados negociables.',
+            'Total de gastos: '.round((float) $gastos->sum('monto'), 2),
+        ], ['Código', 'Finca', 'Lotes', 'Categoría', 'Concepto', 'Fecha', 'Monto'], $filas, 'urbanizacion');
+    }
+
+    public function vencimientos(Request $request): Response
+    {
+        $filas = Financista::with('finca:id,nombre,codigo')
+            ->withSum('pagos as capital_pagado', 'monto_capital')
+            ->whereNotNull('fecha_vencimiento')
+            ->orderBy('fecha_vencimiento')
+            ->get()
+            ->filter(fn (Financista $f) => (float) $f->monto - (float) $f->capital_pagado > 0.01)
+            ->map(fn (Financista $f) => [
+                $f->finca?->nombre,
+                $f->tipo,
+                $f->nombre,
+                $f->monto,
+                round((float) $f->monto - (float) $f->capital_pagado, 2),
+                $f->cuota,
+                $f->frecuencia,
+                optional($f->fecha_vencimiento)->format('d/m/Y'),
+                optional($f->fecha_vencimiento)->lte(now()->addDays(15)) ? 'Por vencer' : 'Vigente',
+            ])->values()->all();
+
+        return $this->entregar($request, 'Vencimientos de financiamientos', [
+            'Préstamos con saldo de capital. Se marca por vencer cuando faltan 15 días o menos.',
+        ], ['Finca', 'Tipo', 'Nombre', 'Capital', 'Saldo', 'Cuota', 'Frecuencia', 'Vence', 'Aviso'], $filas, 'vencimientos');
+    }
+
+    public function comisionesPendientes(Request $request): Response
+    {
+        $filas = ComisionVenta::with(['comisionista', 'lote:id,codigo_unico'])
+            ->withSum('pagos as pagado', 'monto')
+            ->orderByDesc('id')
+            ->get()
+            ->filter(fn (ComisionVenta $c) => (float) $c->monto_comision - (float) $c->pagado > 0.01)
+            ->map(fn (ComisionVenta $c) => [
+                $c->comisionista?->nombre,
+                $c->comisionista?->telefono,
+                $c->lote?->codigo_unico,
+                $c->monto_venta,
+                $c->monto_comision,
+                round((float) $c->pagado, 2),
+                round(max(0, (float) $c->monto_comision - (float) $c->pagado), 2),
+            ])->values()->all();
+
+        return $this->entregar($request, 'Comisiones pendientes de pago', [], [
+            'Comisionista', 'Teléfono', 'Lote', 'Venta', 'Comisión', 'Pagado', 'Pendiente',
+        ], $filas, 'comisiones-pendientes');
+    }
+
     public function planCompra(Request $request, $id): Response
     {
         $finca = Finca::with(['escrituras', 'cuotasCompra', 'gastosUrbanizacion', 'pagosCompra'])->findOrFail($id);

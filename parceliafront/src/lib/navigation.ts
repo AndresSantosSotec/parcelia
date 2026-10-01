@@ -2,7 +2,7 @@ import { Users, Calculator, CreditCard as CreditCardIcon, Package, Wallet, Chart
 
 export const navigation = [
   { id: 'fincas', label: 'Fincas & Lotes', icon: TreeStructure },
-  { id: 'compra_fincas', label: 'Compra de fincas', icon: Coins },
+  { id: 'compra_fincas', label: 'Comprar', icon: Coins },
   { id: 'financistas', label: 'Financiamientos', icon: Bank },
   { id: 'comisionistas', label: 'Comisionistas', icon: IdentificationBadge },
   { id: 'negociaciones', label: 'Ventas & Contratos', icon: Handshake },

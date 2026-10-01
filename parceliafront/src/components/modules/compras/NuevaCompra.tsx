@@ -14,6 +14,7 @@ import { compraService } from '@/services/compraService'
 import { ClienteDialog } from '../clientes/ClienteDialog'
 import type { Cliente } from '@/lib/types'
 import { MapPickerField, type GeoCoords } from '@/components/ui/MapPickerField'
+import { SelectorUbicacion, claveUbicacion } from '@/components/shared/SelectorUbicacion'
 
 // Tipos para campos dinámicos de categoría
 interface CamposFormulario {
@@ -213,6 +214,25 @@ export function NuevaCompra({ onVolver, onCompraRegistrada }: NuevaCompraProps) 
     // Renderizar campo dinámico
     const renderCampoDinamico = (campo: CampoDinamico) => {
         const valor = camposDinamicos[campo.nombre] || ''
+        const rol = claveUbicacion(campo)
+        const hayPar = camposAdicionales.some((item) => claveUbicacion(item) === 'departamento')
+            && camposAdicionales.some((item) => claveUbicacion(item) === 'municipio')
+        if (hayPar && rol === 'municipio') return null
+        if (hayPar && rol === 'departamento') {
+            const campoMunicipio = camposAdicionales.find((item) => claveUbicacion(item) === 'municipio')
+            return (
+                <SelectorUbicacion
+                    key={`ubicacion-${campo.nombre}`}
+                    requerido={campo.requerido}
+                    departamento={String(camposDinamicos[campo.nombre] || '')}
+                    municipio={String(campoMunicipio ? camposDinamicos[campoMunicipio.nombre] || '' : '')}
+                    onChange={(valorUbicacion) => {
+                        handleCampoDinamicoChange(campo.nombre, valorUbicacion.departamento)
+                        if (campoMunicipio) handleCampoDinamicoChange(campoMunicipio.nombre, valorUbicacion.municipio)
+                    }}
+                />
+            )
+        }
 
         switch (campo.tipo) {
             case 'text':

@@ -174,7 +174,13 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
       geoNamesService.getDepartamentos()
         .then(response => {
           if (response.success && response.data) {
-            setDepartamentos(response.data)
+            const lista = Array.isArray(response.data) ? response.data : []
+            setDepartamentos(lista)
+            const id = cliente?.departamentoGeonameId
+            if (id && lista.some((item) => item.geonameId === id)) {
+              setDepartamentoSeleccionado(id)
+              cargarMunicipios(id)
+            }
           }
         })
         .catch(error => {

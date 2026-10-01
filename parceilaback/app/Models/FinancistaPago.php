@@ -14,6 +14,8 @@ class FinancistaPago extends Model
         'monto_mora',
         'descuento_interes',
         'referencia',
+        'archivo_path',
+        'archivo_nombre',
         'user_id',
     ];
 

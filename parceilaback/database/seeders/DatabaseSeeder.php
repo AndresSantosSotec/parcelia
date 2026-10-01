@@ -33,6 +33,7 @@ class DatabaseSeeder extends Seeder
             CreateSuperAdminSeeder::class,
             NuevosModulosPermisosSeeder::class,
             ParceliaInmobiliariaSeeder::class,
+            GuatemalaUbicacionSeeder::class,
         ]);
     }
 }

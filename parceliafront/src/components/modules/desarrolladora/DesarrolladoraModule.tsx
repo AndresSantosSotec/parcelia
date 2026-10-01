@@ -16,6 +16,8 @@ import {
   type Finca,
 } from '@/lib/api'
 import { usePermissions } from '@/hooks/use-permissions'
+import { AccionesRegistro, PaginacionLista } from './AccionesRegistro'
+import { SelectorUbicacion } from '@/components/shared/SelectorUbicacion'
 
 const q = (n: number | string | null | undefined) =>
   `Q ${Number(n || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -51,6 +53,10 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
   const [vista, setVista] = useState<'lista' | 'ficha'>('lista')
   const [modo, setModo] = useState<'crear' | 'editar' | 'ver'>('ver')
   const [busqueda, setBusqueda] = useState('')
+  const [filtroTipo, setFiltroTipo] = useState('')
+  const [filtroEstado, setFiltroEstado] = useState('')
+  const [pagina, setPagina] = useState(1)
+  const [porPagina, setPorPagina] = useState(10)
   const [compras, setCompras] = useState<CompraFincaListado[]>([])
   const [fincas, setFincas] = useState<Finca[]>([])
   const [fincaId, setFincaId] = useState<number | ''>('')
@@ -58,6 +64,7 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
   const [detalle, setDetalle] = useState<CompraFincaPayload | null>(null)
   const [cargando, setCargando] = useState(false)
   const [compra, setCompra] = useState({
+    nombre: '',
     vendedor_nombre: '',
     vendedor_dpi: '',
     referencia: '',
@@ -125,6 +132,7 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
     setDetalle(data)
     const f = data.finca
     setCompra({
+      nombre: f.nombre || '',
       vendedor_nombre: f.vendedor_nombre || '',
       vendedor_dpi: f.vendedor_dpi || '',
       referencia: f.referencia || '',
@@ -155,10 +163,8 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
     }
   }
 
-  async function guardar(regenerar: boolean) {
-    if (!fincaId || !formularioEditable) return
-    try {
-      const res = await compraFincaService.guardar(fincaId, {
+  function datosCompra(regenerar: boolean) {
+    return {
         ...compra,
         precio_compra: num(compra.precio_compra),
         gastos_escrituracion: num(compra.gastos_escrituracion),
@@ -172,9 +178,26 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
         area_tecnica_m2: compra.area_tecnica_m2 === '' ? null : num(compra.area_tecnica_m2),
         fecha_inicio_pagos: compra.fecha_inicio_pagos || null,
         regenerar_plan: regenerar,
-      })
-      if (res.data) aplicar(res.data)
+    }
+  }
+
+  async function guardar(regenerar: boolean) {
+    if (!formularioEditable) return
+    if (!fincaId && (!compra.nombre.trim() || !compra.municipio.trim() || !compra.departamento.trim())) {
+      toast.error('Escribe el nombre de la finca, el municipio y el departamento.')
+      return
+    }
+    try {
+      const res = fincaId
+        ? await compraFincaService.guardar(fincaId, datosCompra(regenerar))
+        : await compraFincaService.crear(datosCompra(regenerar))
+      if (res.data) {
+        aplicar(res.data)
+        setFincaId(res.data.finca.id)
+      }
       if (modo === 'crear' && puedeEditar) setModo('editar')
+      await cargarFincas()
+      await cargarCompras()
       toast.success(res.message || 'Compra guardada')
     } catch (e: any) {
       toast.error(e?.message || 'No se pudo guardar')
@@ -199,10 +222,15 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
   const resumen = detalle?.resumen
   const comprasVisibles = compras.filter((c) => {
     const texto = busqueda.trim().toLowerCase()
-    if (!texto) return true
-    return [c.codigo, c.nombre, c.vendedor_nombre, c.vendedor_dpi, c.municipio, c.departamento, c.estado]
+    const coincideTexto = !texto || [c.codigo, c.nombre, c.vendedor_nombre, c.vendedor_dpi, c.municipio, c.departamento, c.estado]
       .some((valor) => String(valor || '').toLowerCase().includes(texto))
+    const coincideTipo = !filtroTipo || c.tipo_compra === filtroTipo
+    const coincideEstado = !filtroEstado || c.estado === filtroEstado
+    return coincideTexto && coincideTipo && coincideEstado
   })
+  const paginasCompra = Math.max(1, Math.ceil(comprasVisibles.length / porPagina))
+  const paginaCompra = Math.min(pagina, paginasCompra)
+  const comprasPagina = comprasVisibles.slice((paginaCompra - 1) * porPagina, paginaCompra * porPagina)
   const fincasParaAlta = fincas.filter((f) => !compras.some((c) => c.id === f.id))
 
   function abrirCrear() {
@@ -211,6 +239,7 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
     setFincaId('')
     setDetalle(null)
     setCompra({
+      nombre: '',
       vendedor_nombre: '',
       vendedor_dpi: '',
       referencia: '',
@@ -262,21 +291,37 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
       <div className="space-y-4 p-3 sm:p-4 md:p-6">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-xl sm:text-2xl font-semibold">Compras de finca</h1>
-            <p className="text-sm text-muted-foreground">Listado de compras con vendedor, precio, pagos y saldo. Desde aquí se consulta, edita o elimina.</p>
+            <h1 className="text-xl sm:text-2xl font-semibold">Comprar</h1>
+            <p className="text-sm text-muted-foreground">Paso 1. Al guardar se crea la finca. Desde Parcelar se divide en lotes y aparecen en Fincas y lotes.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/listado?formato=pdf', 'reporte-fincas.pdf')}>Listado PDF</Button>}
             {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/listado?formato=xlsx', 'reporte-fincas.xlsx')}>Listado Excel</Button>}
+            {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/cuotas-pendientes?formato=pdf', 'cuotas-pendientes.pdf')}>Cuotas pendientes</Button>}
+            {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/urbanizacion?formato=pdf', 'urbanizacion.pdf')}>Urbanización</Button>}
             {puedeCrear && <Button size="sm" onClick={abrirCrear}>Nueva compra</Button>}
+            <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/requisitos', 'registro-modulos.pdf')}>Registro PDF</Button>
           </div>
         </div>
-        <Input placeholder="Buscar por código, finca, vendedor o municipio" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
+        <div className="grid gap-2 md:grid-cols-4">
+          <Input placeholder="Buscar por código, finca, vendedor o municipio" value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setPagina(1) }} />
+          <select className="flex h-9 w-full rounded-md border border-input bg-popover px-3 text-sm text-popover-foreground" value={filtroTipo} onChange={(e) => { setFiltroTipo(e.target.value); setPagina(1) }}>
+            <option value="">Todos los tipos</option>
+            <option value="contado">Contado</option>
+            <option value="pagos">Por pagos</option>
+          </select>
+          <select className="flex h-9 w-full rounded-md border border-input bg-popover px-3 text-sm text-popover-foreground" value={filtroEstado} onChange={(e) => { setFiltroEstado(e.target.value); setPagina(1) }}>
+            <option value="">Todos los estados</option>
+            <option value="Vigente">Vigente</option>
+            <option value="Cancelada">Cancelada</option>
+            <option value="Sin precio">Sin precio</option>
+          </select>
+        </div>
         <Card>
           <CardContent className="pt-4 overflow-x-auto">
             <TablaSimple
               headers={['Código', 'Finca', 'Vendedor', 'Lugar', 'Precio', 'Tipo', 'Pagado', 'Pendiente', 'Escrituras', 'Estado', '']}
-              rows={comprasVisibles.map((c) => [
+              rows={comprasPagina.map((c) => [
                 c.codigo,
                 c.nombre,
                 c.vendedor_nombre || '—',
@@ -287,12 +332,21 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
                 q(c.pendiente),
                 String(c.escrituras),
                 c.estado,
-                <div key={c.id} className="flex flex-wrap gap-1">
-                  <Button size="sm" variant="outline" onClick={() => abrirFicha(c.id, 'ver')}>Ver</Button>
-                  {puedeEditar && <Button size="sm" variant="outline" onClick={() => abrirFicha(c.id, 'editar')}>Editar</Button>}
-                  {puedeEliminar && <Button size="sm" variant="ghost" onClick={() => eliminarCompra(c)}>Eliminar</Button>}
-                </div>,
+                <AccionesRegistro
+                  key={c.id}
+                  onVer={() => abrirFicha(c.id, 'ver')}
+                  onEditar={puedeEditar ? () => abrirFicha(c.id, 'editar') : undefined}
+                  onDescargar={puedeReportes ? () => bajar(`/fincas/${c.id}/reportes/registro`, `registro-${c.codigo}.pdf`) : undefined}
+                  onEliminar={puedeEliminar ? () => eliminarCompra(c) : undefined}
+                />,
               ])}
+            />
+            <PaginacionLista
+              total={comprasVisibles.length}
+              pagina={paginaCompra}
+              porPagina={porPagina}
+              onPagina={setPagina}
+              onPorPagina={(cantidad) => { setPorPagina(cantidad); setPagina(1) }}
             />
           </CardContent>
         </Card>
@@ -305,25 +359,11 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold">{modo === 'crear' ? 'Nueva compra' : modo === 'editar' ? 'Editar compra' : 'Detalle de la compra'}</h1>
-          <p className="text-sm text-muted-foreground">Ubicación, vendedor, escrituras, urbanización y costeo. Los financiamientos y las comisiones están en su propio menú.</p>
+          <p className="text-sm text-muted-foreground">La finca se crea aquí y queda en Fincas y lotes. Luego se parcela en lotes.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={volver}>Volver al listado</Button>
           {puedeReportes && <Button size="sm" variant="outline" disabled={!fincaId} onClick={() => bajar(`/fincas/${fincaId}/reportes/registro`, `registro-${detalle?.finca.codigo || 'finca'}.pdf`)}>Registro PDF</Button>}
-        </div>
-        <div className="w-full md:w-80">
-          <Label>Finca</Label>
-          <select
-            className={campoSelect}
-            value={fincaId}
-            disabled={modo !== 'crear'}
-            onChange={(e) => setFincaId(e.target.value ? Number(e.target.value) : '')}
-          >
-            <option value="">{modo === 'crear' ? 'Selecciona una finca sin compra' : 'Finca'}</option>
-            {(modo === 'crear' ? fincas.filter((f) => f.id === fincaId || fincasParaAlta.some((alta) => alta.id === f.id)) : fincas.filter((f) => f.id === fincaId)).map((f) => (
-              <option key={f.id} value={f.id}>{f.codigo} — {f.nombre}</option>
-            ))}
-          </select>
         </div>
       </div>
 
@@ -345,7 +385,7 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
           <TabsTrigger value="compra">Compra</TabsTrigger>
           <TabsTrigger value="escrituras">Escrituras</TabsTrigger>
           <TabsTrigger value="urbanizacion">Urbanización</TabsTrigger>
-          <TabsTrigger value="medidas">Medidas de lotes</TabsTrigger>
+          <TabsTrigger value="medidas">Parcelar</TabsTrigger>
           <TabsTrigger value="costeo">Costeo</TabsTrigger>
           <TabsTrigger value="plan">Plan de pagos</TabsTrigger>
         </TabsList>
@@ -354,29 +394,53 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
           <Card>
             <CardHeader><CardTitle>{modo === 'crear' ? 'Registrar compra' : 'Datos de compra'}</CardTitle></CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-2">
-              <Campo label="Vendedor" value={compra.vendedor_nombre} onChange={(v) => setCompra({ ...compra, vendedor_nombre: v })} disabled={!formularioEditable || !fincaId} />
-              <Campo label="DPI del vendedor" value={compra.vendedor_dpi} onChange={(v) => setCompra({ ...compra, vendedor_dpi: v })} disabled={!formularioEditable || !fincaId} />
-              <Campo label="Dirección" value={compra.ubicacion} onChange={(v) => setCompra({ ...compra, ubicacion: v })} disabled={!formularioEditable || !fincaId} />
-              <Campo label="Municipio" value={compra.municipio} onChange={(v) => setCompra({ ...compra, municipio: v })} disabled={!formularioEditable || !fincaId} />
-              <Campo label="Departamento" value={compra.departamento} onChange={(v) => setCompra({ ...compra, departamento: v })} disabled={!formularioEditable || !fincaId} />
-              <Campo label="Referencia" value={compra.referencia} onChange={(v) => setCompra({ ...compra, referencia: v })} disabled={!formularioEditable || !fincaId} />
-              <Campo label="Precio de compra" type="number" value={compra.precio_compra} onChange={(v) => setCompra({ ...compra, precio_compra: v })} disabled={!formularioEditable || !fincaId} />
-              <Campo label="Costo de escrituración" type="number" value={compra.gastos_escrituracion} onChange={(v) => setCompra({ ...compra, gastos_escrituracion: v })} disabled={!formularioEditable || !fincaId} />
+              {modo === 'crear' && !fincaId && fincasParaAlta.length > 0 && (
+                <div className="md:col-span-2">
+                  <Label>Finca que ya existe</Label>
+                  <select
+                    className="mt-1 flex h-9 w-full rounded-md border border-input bg-popover px-3 text-sm text-popover-foreground"
+                    value=""
+                    onChange={(e) => setFincaId(e.target.value ? Number(e.target.value) : '')}
+                  >
+                    <option value="">Crear una finca nueva al guardar</option>
+                    {fincasParaAlta.map((f) => (
+                      <option key={f.id} value={f.id}>{f.codigo} — {f.nombre}</option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-sm text-muted-foreground">Si la dejas vacía, al guardar se crea la finca en Fincas y lotes.</p>
+                </div>
+              )}
+              {fincaId && (
+                <p className="text-sm md:col-span-2">Finca: <strong>{detalle?.finca.codigo || 'Nueva'} — {compra.nombre || detalle?.finca.nombre}</strong></p>
+              )}
+              <Campo label="Nombre de la finca" value={compra.nombre} onChange={(v) => setCompra({ ...compra, nombre: v })} disabled={!formularioEditable} />
+              <Campo label="Vendedor" value={compra.vendedor_nombre} onChange={(v) => setCompra({ ...compra, vendedor_nombre: v })} disabled={!formularioEditable} />
+              <Campo label="DPI del vendedor" value={compra.vendedor_dpi} onChange={(v) => setCompra({ ...compra, vendedor_dpi: v })} disabled={!formularioEditable} />
+              <Campo label="Dirección" value={compra.ubicacion} onChange={(v) => setCompra({ ...compra, ubicacion: v })} disabled={!formularioEditable} />
+              <SelectorUbicacion
+                departamento={compra.departamento}
+                municipio={compra.municipio}
+                disabled={!formularioEditable}
+                onChange={(valor) => setCompra({ ...compra, departamento: valor.departamento, municipio: valor.municipio })}
+              />
+              <Campo label="Referencia" value={compra.referencia} onChange={(v) => setCompra({ ...compra, referencia: v })} disabled={!formularioEditable} />
+              <Campo label="Precio de compra" type="number" value={compra.precio_compra} onChange={(v) => setCompra({ ...compra, precio_compra: v })} disabled={!formularioEditable} />
+              <Campo label="Costo de escrituración" type="number" value={compra.gastos_escrituracion} onChange={(v) => setCompra({ ...compra, gastos_escrituracion: v })} disabled={!formularioEditable} />
               <div>
                 <Label>Tipo de compra</Label>
-                <select className={campoSelect} value={compra.tipo_compra} disabled={!formularioEditable || !fincaId} onChange={(e) => setCompra({ ...compra, tipo_compra: e.target.value })}>
+                <select className={campoSelect} value={compra.tipo_compra} disabled={!formularioEditable} onChange={(e) => setCompra({ ...compra, tipo_compra: e.target.value })}>
                   <option value="contado">Contado</option>
                   <option value="pagos">Por pagos, sin interés</option>
                 </select>
               </div>
-              <Campo label="% de utilidad para precio sugerido" type="number" value={compra.porcentaje_utilidad} onChange={(v) => setCompra({ ...compra, porcentaje_utilidad: v })} disabled={!formularioEditable || !fincaId} />
+              <Campo label="% de utilidad para precio sugerido" type="number" value={compra.porcentaje_utilidad} onChange={(v) => setCompra({ ...compra, porcentaje_utilidad: v })} disabled={!formularioEditable} />
               {compra.tipo_compra === 'pagos' && (
                 <>
-                  <Campo label="Enganche" type="number" value={compra.enganche} onChange={(v) => setCompra({ ...compra, enganche: v })} disabled={!formularioEditable || !fincaId} />
-                  <Campo label="Número de cuotas" type="number" value={compra.numero_cuotas} onChange={(v) => setCompra({ ...compra, numero_cuotas: v })} disabled={!formularioEditable || !fincaId} />
+                  <Campo label="Enganche" type="number" value={compra.enganche} onChange={(v) => setCompra({ ...compra, enganche: v })} disabled={!formularioEditable} />
+                  <Campo label="Número de cuotas" type="number" value={compra.numero_cuotas} onChange={(v) => setCompra({ ...compra, numero_cuotas: v })} disabled={!formularioEditable} />
                   <div>
                     <Label>Frecuencia</Label>
-                    <select className={campoSelect} value={compra.frecuencia_pago} disabled={!formularioEditable || !fincaId} onChange={(e) => setCompra({ ...compra, frecuencia_pago: e.target.value })}>
+                    <select className={campoSelect} value={compra.frecuencia_pago} disabled={!formularioEditable} onChange={(e) => setCompra({ ...compra, frecuencia_pago: e.target.value })}>
                       <option value="mensual">Mensual</option>
                       <option value="bimensual">Bimensual</option>
                       <option value="trimestral">Trimestral</option>
@@ -384,17 +448,17 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
                       <option value="anual">Anual</option>
                     </select>
                   </div>
-                  <Campo label="Inicio de pagos" type="date" value={compra.fecha_inicio_pagos} onChange={(v) => setCompra({ ...compra, fecha_inicio_pagos: v })} disabled={!formularioEditable || !fincaId} />
+                  <Campo label="Inicio de pagos" type="date" value={compra.fecha_inicio_pagos} onChange={(v) => setCompra({ ...compra, fecha_inicio_pagos: v })} disabled={!formularioEditable} />
                   <p className="text-sm md:col-span-2">Cuota calculada: <strong>{q(cuotaVista)}</strong>. El saldo es precio menos enganche, sin interés.</p>
                 </>
               )}
-              <Campo label="m² negociables (lotes)" type="number" value={compra.area_negociable_m2} onChange={(v) => setCompra({ ...compra, area_negociable_m2: v })} disabled={!formularioEditable || !fincaId} />
-              <Campo label="m² no negociables" type="number" value={compra.area_no_negociable_m2} onChange={(v) => setCompra({ ...compra, area_no_negociable_m2: v })} disabled={!formularioEditable || !fincaId} />
+              <Campo label="m² negociables (lotes)" type="number" value={compra.area_negociable_m2} onChange={(v) => setCompra({ ...compra, area_negociable_m2: v })} disabled={!formularioEditable} />
+              <Campo label="m² no negociables" type="number" value={compra.area_no_negociable_m2} onChange={(v) => setCompra({ ...compra, area_no_negociable_m2: v })} disabled={!formularioEditable} />
               <p className="text-sm text-muted-foreground md:col-span-2">Calles, área verde y área técnica no entran al costo por metro. Si dejas los m² negociables vacíos, se usa la suma de los lotes.</p>
               {formularioEditable && (
                 <div className="flex flex-col gap-2 sm:flex-row md:col-span-2">
-                  <Button disabled={!fincaId || cargando} onClick={() => guardar(false)}>Guardar</Button>
-                  <Button variant="outline" disabled={!fincaId || cargando} onClick={() => guardar(true)}>Guardar y rehacer plan</Button>
+                  <Button disabled={cargando} onClick={() => guardar(false)}>Guardar</Button>
+                  <Button variant="outline" disabled={cargando} onClick={() => guardar(true)}>Guardar y rehacer plan</Button>
                 </div>
               )}
             </CardContent>
@@ -523,9 +587,10 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
 
         <TabsContent value="medidas">
           <Card>
-            <CardHeader><CardTitle>Medidas que pasan al inventario de lotes</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Parcelar en lotes</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">Cada fila crea o actualiza un lote de esta finca. Comercial, residencial o mixto. El precio de venta no se cambia aquí; el costeo lo sugiere.</p>
+              {!fincaId && <p className="text-sm text-muted-foreground">Guarda la compra primero. Con eso se crea la finca y aquí puedes dividirla en lotes.</p>}
+              <p className="text-sm text-muted-foreground">Cada fila crea o actualiza un lote. Al guardarlos quedan en Fincas y lotes, listos para la venta. El precio de venta no se cambia aquí.</p>
               {medidas.map((fila, i) => (
                 <div key={i} className="grid gap-2 md:grid-cols-4">
                   <Input value={fila.numero} placeholder="Número" onChange={(e) => setMedidas(medidas.map((m, j) => j === i ? { ...m, numero: e.target.value } : m))} />
@@ -558,7 +623,7 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
                       }
                       toast.success(res.message || 'Lotes actualizados')
                     } catch (e: any) { toast.error(e?.message || 'No se pudieron crear los lotes') }
-                  }}>Pasar al inventario</Button>
+                  }}>Crear lotes en Fincas y lotes</Button>
                 </div>
               )}
             </CardContent>
@@ -776,12 +841,12 @@ function TablaSimple({ headers, rows }: { headers: string[]; rows: Array<Array<R
   return (
     <Table>
       <TableHeader>
-        <TableRow>{headers.map((h) => <TableHead key={h}>{h}</TableHead>)}</TableRow>
+        <TableRow>{headers.map((h, i) => <TableHead key={`${h}-${i}`} className={i === headers.length - 1 ? 'w-px' : undefined}>{h}</TableHead>)}</TableRow>
       </TableHeader>
       <TableBody>
         {rows.length === 0 && <TableRow><TableCell colSpan={headers.length}>Sin registros</TableCell></TableRow>}
         {rows.map((row, i) => (
-          <TableRow key={i}>{row.map((cell, j) => <TableCell key={j}>{cell}</TableCell>)}</TableRow>
+          <TableRow key={i}>{row.map((cell, j) => <TableCell key={j} className={j === row.length - 1 ? 'w-px whitespace-nowrap text-right' : undefined}>{cell}</TableCell>)}</TableRow>
         ))}
       </TableBody>
     </Table>

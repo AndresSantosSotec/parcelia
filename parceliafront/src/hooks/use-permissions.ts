@@ -234,7 +234,7 @@ export const MODULO_LABELS: Record<Modulo, string> = {
   planes_interes: 'Productos Crediticios',
   transferencias: 'Transferencias',
   fincas: 'Fincas y lotes',
-  compra_fincas: 'Compra de fincas',
+  compra_fincas: 'Comprar',
   financistas: 'Financiamientos',
   comisionistas: 'Comisionistas',
   lotes: 'Lotes',

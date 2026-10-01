@@ -233,7 +233,7 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
     const base = [
       { id: 'dashboard', label: 'Inicio', icon: ChartBar },
       { id: 'fincas', label: 'Fincas', icon: TreeStructure },
-      { id: 'compra_fincas', label: 'Compra', icon: Coins },
+      { id: 'compra_fincas', label: 'Comprar', icon: Coins },
       { id: 'negociaciones', label: 'Ventas', icon: Handshake },
       { id: 'caja', label: 'Caja', icon: Wallet },
     ]

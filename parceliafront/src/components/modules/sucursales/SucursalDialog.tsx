@@ -42,13 +42,19 @@ export function SucursalDialog({ abierto, onCerrar, onGuardar, sucursal }: Sucur
   const cargarMunicipios = async (departamentoId: number) => {
     setCargandoMunicipios(true)
     setMunicipios([])
-    setFormData(prev => ({ ...prev, municipio: '', municipioGeonameId: undefined }))
     try {
       const response = await geoNamesService.getMunicipios(departamentoId)
       if (response.success && response.data) {
-        // El backend devuelve { data: Municipio[] } dentro de response.data
         const municipiosData = Array.isArray(response.data) ? response.data : (response.data as any).data || []
         setMunicipios(municipiosData)
+        setFormData((prev) => {
+          if (prev.municipioGeonameId && municipiosData.some((item: Municipio) => item.geonameId === prev.municipioGeonameId)) {
+            return prev
+          }
+          const encontrado = municipiosData.find((item: Municipio) => item.name.toLowerCase() === (prev.municipio || '').toLowerCase())
+          if (!encontrado) return prev
+          return { ...prev, municipioGeonameId: encontrado.geonameId, municipio: encontrado.name }
+        })
       }
     } catch (error) {
       console.error('Error cargando municipios:', error)
@@ -96,10 +102,15 @@ export function SucursalDialog({ abierto, onCerrar, onGuardar, sucursal }: Sucur
             // El backend devuelve { data: Departamento[] } dentro de response.data
             const departamentosData = Array.isArray(response.data) ? response.data : (response.data as any).data || []
             setDepartamentos(departamentosData)
-            // Si la sucursal tiene departamento, cargar sus municipios
-            if (sucursal?.departamentoGeonameId) {
-              setDepartamentoSeleccionado(sucursal.departamentoGeonameId)
-              cargarMunicipios(sucursal.departamentoGeonameId)
+            const porId = sucursal?.departamentoGeonameId && departamentosData.some((item: Departamento) => item.geonameId === sucursal.departamentoGeonameId)
+              ? sucursal.departamentoGeonameId
+              : departamentosData.find((item: Departamento) => item.name.toLowerCase() === (sucursal?.departamento || '').toLowerCase())?.geonameId
+            if (porId) {
+              setDepartamentoSeleccionado(porId)
+              if (porId !== sucursal?.departamentoGeonameId) {
+                setFormData((prev) => ({ ...prev, departamentoGeonameId: porId, departamento: departamentosData.find((item: Departamento) => item.geonameId === porId)?.name || prev.departamento }))
+              }
+              cargarMunicipios(porId)
             }
           }
         })

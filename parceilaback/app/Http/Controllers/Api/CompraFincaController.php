@@ -93,6 +93,32 @@ class CompraFincaController extends Controller
         ]);
     }
 
+    public function store(Request $request)
+    {
+        $request->validate([
+            'nombre' => 'required|string|max:255',
+            'municipio' => 'required|string|max:120',
+            'departamento' => 'required|string|max:120',
+        ]);
+
+        $request->attributes->set('compra_recien_creada', true);
+        $finca = Finca::create([
+            'nombre' => trim(strip_tags((string) $request->input('nombre'))),
+            'codigo' => $this->siguienteCodigoFinca(),
+            'ubicacion' => $request->input('ubicacion'),
+            'municipio' => $request->input('municipio'),
+            'departamento' => $request->input('departamento'),
+            'activo' => true,
+        ]);
+
+        $respuesta = $this->guardarCompra($request, $finca->id);
+        if ($respuesta->getStatusCode() >= 400) {
+            $finca->delete();
+        }
+
+        return $respuesta;
+    }
+
     public function guardarCompra(Request $request, $id)
     {
         $finca = Finca::findOrFail($id);
@@ -101,6 +127,7 @@ class CompraFincaController extends Controller
         }
 
         $validated = $request->validate([
+            'nombre' => 'nullable|string|max:255',
             'vendedor_nombre' => 'nullable|string|max:255',
             'vendedor_dpi' => 'nullable|string|max:30',
             'referencia' => 'nullable|string|max:255',
@@ -144,6 +171,12 @@ class CompraFincaController extends Controller
         $forzar = (bool) ($validated['forzar_plan'] ?? false);
         unset($validated['regenerar_plan'], $validated['forzar_plan']);
 
+        if (! empty($validated['nombre'])) {
+            $validated['nombre'] = trim(strip_tags($validated['nombre']));
+        } else {
+            unset($validated['nombre']);
+        }
+
         $noLotificada = round(
             (float) ($validated['area_vialidades_m2'] ?? 0)
             + (float) ($validated['area_verde_m2'] ?? 0)
@@ -173,7 +206,9 @@ class CompraFincaController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Compra de finca actualizada.',
+            'message' => $request->attributes->get('compra_recien_creada')
+                ? 'Compra registrada. La finca ya está en Fincas y lotes. Desde Parcelar puedes dividirla en lotes.'
+                : 'Compra de finca actualizada.',
             'data' => [
                 'finca' => $finca->fresh(['escrituras', 'cuotasCompra', 'gastosUrbanizacion', 'pagosCompra']),
                 'resumen' => $resumen,
@@ -480,7 +515,7 @@ class CompraFincaController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => "Lotes listos: {$creados} nuevos y {$actualizados} actualizados.",
+            'message' => "Lotes listos en Fincas y lotes: {$creados} nuevos y {$actualizados} actualizados.",
             'data' => [
                 'finca' => $finca->fresh(['escrituras', 'cuotasCompra', 'gastosUrbanizacion', 'pagosCompra']),
                 'resumen' => $this->inversion->recalcular($finca->fresh()),
@@ -645,6 +680,21 @@ class CompraFincaController extends Controller
             'success' => false,
             'message' => 'No tienes permiso para esta operación.',
         ], 403);
+    }
+
+    private function siguienteCodigoFinca(): string
+    {
+        $anio = date('Y');
+        $ultimo = Finca::withTrashed()
+            ->where('codigo', 'like', "FIN-{$anio}-%")
+            ->orderByDesc('id')
+            ->value('codigo');
+        $n = 1;
+        if ($ultimo && preg_match('/(\d+)$/', $ultimo, $m)) {
+            $n = intval($m[1]) + 1;
+        }
+
+        return sprintf('FIN-%s-%03d', $anio, $n);
     }
 
     private function cargar($id): Finca

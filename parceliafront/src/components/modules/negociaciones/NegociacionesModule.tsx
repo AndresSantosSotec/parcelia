@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +12,7 @@ import type { Cliente } from '@/lib/types'
 import { cajaService } from '@/lib/services/caja.service'
 import { useNavigateModule } from '@/hooks/use-navigate-module'
 import { GastosCreditoSelector } from '@/components/modules/gastos/GastosCreditoSelector'
+import { CLAVE_VENTA_DESDE_PLANO, CLAVE_VER_NEGOCIACION } from '@/components/modules/lotificacion/estadosLote'
 
 function cuotasPlan(neg: any): any[] {
   const rows = neg?.planPagos ?? neg?.plan_pagos ?? []
@@ -72,6 +73,7 @@ export function NegociacionesModule() {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [reglasMora, setReglasMora] = useState<ParametrizacionMoraInmo[]>([])
   const [cargando, setCargando] = useState(false)
+  const [datosListos, setDatosListos] = useState(false)
 
   // Modales
   const [modalNuevaVenta, setModalNuevaVenta] = useState(false)
@@ -146,12 +148,53 @@ export function NegociacionesModule() {
       console.error(e)
     } finally {
       setCargando(false)
+      setDatosListos(true)
     }
   }
 
   useEffect(() => {
     cargarDatos()
   }, [])
+
+  const solicitudPlanoAtendida = useRef(false)
+  useEffect(() => {
+    if (!datosListos || cargando || solicitudPlanoAtendida.current) return
+    const venta = sessionStorage.getItem(CLAVE_VENTA_DESDE_PLANO)
+    const verId = sessionStorage.getItem(CLAVE_VER_NEGOCIACION)
+    if (!venta && !verId) return
+    solicitudPlanoAtendida.current = true
+    sessionStorage.removeItem(CLAVE_VENTA_DESDE_PLANO)
+    sessionStorage.removeItem(CLAVE_VER_NEGOCIACION)
+
+    if (verId) {
+      const neg = negociaciones.find((n) => n.id === Number(verId))
+      if (neg) abrirEstadoCuenta(neg)
+      else toast.error('No se encontró la negociación del lote')
+      return
+    }
+
+    try {
+      const datos = JSON.parse(venta!)
+      const lote = lotesDisponibles.find((l) => l.id === Number(datos.lote_id))
+      if (!lote) {
+        toast.error('El lote ya no está disponible para una nueva venta')
+        return
+      }
+      setFormVenta((prev) => ({
+        ...prev,
+        lote_id: String(lote.id),
+        precio_original: Number(lote.precio_venta),
+        tipo_negociacion: datos.tipo_negociacion ?? prev.tipo_negociacion,
+        enganche_pactado: Number(datos.enganche_pactado ?? prev.enganche_pactado),
+        plazo_meses: Number(datos.plazo_meses ?? prev.plazo_meses),
+        tasa_interes_anual: Number(datos.tasa_interes_anual ?? prev.tasa_interes_anual),
+        sistema_amortizacion: datos.sistema_amortizacion ?? prev.sistema_amortizacion,
+      }))
+      setModalNuevaVenta(true)
+    } catch {
+      toast.error('No se pudo abrir la venta desde el plano')
+    }
+  }, [datosListos, cargando, lotesDisponibles, negociaciones])
 
   // Ejecutar simulación cuando cambian los valores del formulario
   useEffect(() => {

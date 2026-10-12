@@ -1,20 +1,15 @@
 import { useCallback } from 'react'
-import { useKV } from './use-kv'
+
+export const EVENTO_NAVEGAR_MODULO = 'parcelia:navegar-modulo'
 
 /**
  * Hook para navegar entre módulos
- * Usa useKV para comunicarse con MainApp
+ * Emite un evento de ventana que escucha MainApp
  */
 export function useNavigateModule() {
-  const [, setNavigateRequest] = useKV<{ modulo: string } | null>('navigate-module-request', null)
-
   const navigate = useCallback((modulo: string) => {
-    setNavigateRequest({ modulo })
-    // Limpiar después de un momento para permitir navegaciones repetidas
-    setTimeout(() => {
-      setNavigateRequest(null)
-    }, 100)
-  }, [setNavigateRequest])
+    window.dispatchEvent(new CustomEvent<{ modulo: string }>(EVENTO_NAVEGAR_MODULO, { detail: { modulo } }))
+  }, [])
 
   return { navigate }
 }

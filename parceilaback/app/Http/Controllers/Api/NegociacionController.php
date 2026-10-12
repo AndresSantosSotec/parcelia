@@ -94,8 +94,10 @@ class NegociacionController extends Controller
     public function simular(Request $request)
     {
         $validated = $request->validate([
-            'precio_lote' => 'required|numeric|min:0.01',
-            'descuento' => 'nullable|numeric|min:0|lt:precio_lote',
+            'lote_id' => 'nullable|integer',
+            'tasa_interes_id' => 'nullable|integer',
+            'precio_lote' => 'required_without:lote_id|nullable|numeric|min:0.01',
+            'descuento' => 'nullable|numeric|min:0',
             'enganche' => 'nullable|numeric|min:0',
             'gastos_escrituracion' => 'nullable|numeric|min:0',
             'gastos_administrativos' => 'nullable|numeric|min:0',
@@ -105,22 +107,71 @@ class NegociacionController extends Controller
             'fecha_primer_pago' => 'nullable|date',
         ]);
 
+        $precio = (float) ($validated['precio_lote'] ?? 0);
+        $lote = null;
+        if (! empty($validated['lote_id'])) {
+            $lote = Lote::find($validated['lote_id']);
+            if (! $lote || ! $lote->esVisiblePara($request->user())) {
+                return response()->json(['success' => false, 'message' => 'No tiene acceso a este lote.'], 403);
+            }
+            $precio = round((float) $lote->precio_venta, 2);
+            if ($precio < 0.01) {
+                return response()->json(['success' => false, 'message' => 'El lote no tiene un precio de venta válido.'], 422);
+            }
+        }
+
+        $descuento = (float) ($validated['descuento'] ?? 0);
+        if ($descuento >= $precio) {
+            return response()->json(['success' => false, 'message' => 'El descuento no puede ser igual o mayor al precio del lote.'], 422);
+        }
+
+        $tasa = (float) ($validated['tasa_interes_anual'] ?? 0);
+        if (! empty($validated['tasa_interes_id'])) {
+            try {
+                $tasa = (float) $this->tasaVigente((int) $validated['tasa_interes_id'])->porcentaje_anual;
+            } catch (\InvalidArgumentException $e) {
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+            }
+        }
+
         $simulacion = $this->financingService->simularFinanciamiento(
-            (float) $validated['precio_lote'],
-            (float) ($validated['descuento'] ?? 0),
+            $precio,
+            $descuento,
             (float) ($validated['gastos_escrituracion'] ?? 0),
             (float) ($validated['gastos_administrativos'] ?? 0),
             (float) ($validated['enganche'] ?? 0),
-            (float) ($validated['tasa_interes_anual'] ?? 0),
+            $tasa,
             (int) $validated['plazo_meses'],
             $validated['metodo'] ?? 'frances',
             $validated['fecha_primer_pago'] ?? null
         );
 
+        if ($lote) {
+            $simulacion['lote_id'] = $lote->id;
+            $simulacion['lote_estado'] = $lote->estado;
+        }
+
         return response()->json([
             'success' => true,
             'data' => $simulacion,
         ]);
+    }
+
+    private function tasaVigente(int $id): \App\Models\TasaInteres
+    {
+        $tasa = \App\Models\TasaInteres::where('id', $id)->where('activo', true)->first();
+        if (! $tasa) {
+            throw new \InvalidArgumentException('La tasa de interés no está vigente.');
+        }
+        $hoy = now()->toDateString();
+        if ($tasa->vigencia_inicio && $tasa->vigencia_inicio->format('Y-m-d') > $hoy) {
+            throw new \InvalidArgumentException('La tasa de interés aún no está vigente.');
+        }
+        if ($tasa->vigencia_fin && $tasa->vigencia_fin->format('Y-m-d') < $hoy) {
+            throw new \InvalidArgumentException('La tasa de interés está vencida.');
+        }
+
+        return $tasa;
     }
 
     public function cotizacionPdf(Request $request)

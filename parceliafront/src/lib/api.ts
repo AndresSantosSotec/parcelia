@@ -365,6 +365,25 @@ class ApiClient {
     }
   }
 
+  async fetchBlob(endpoint: string): Promise<Blob> {
+    const headers: HeadersInit = { 'Accept': '*/*' }
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`
+    }
+    const response = await fetch(`${this.baseUrl}${endpoint}`, { method: 'GET', headers, credentials: 'include' })
+    if (!response.ok) {
+      if (response.status === 401) {
+        this.clearToken()
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('auth:unauthorized'))
+        }
+        throw new Error('No autorizado. Por favor inicia sesión nuevamente.')
+      }
+      throw new Error('No se pudo abrir el documento')
+    }
+    return response.blob()
+  }
+
   async downloadPost(endpoint: string, body: unknown, filename?: string): Promise<void> {
     const headers: HeadersInit = {
       Accept: 'application/pdf,application/octet-stream',
@@ -1552,12 +1571,55 @@ export const loteService = {
   },
 }
 
+export type PuntoPlano = [number, number]
+
+export interface LotePlano {
+  id: number
+  numero_lote: string
+  codigo_unico: string
+  estado: string
+  parcela: { id: number; nombre: string } | null
+  puntos: PuntoPlano[] | null
+  visible: boolean
+  area_m2?: number | string
+  frente_metros?: number | string | null
+  fondo_metros?: number | string | null
+  tipo_terreno?: string | null
+  colindancias?: string | null
+  precio_venta?: number | string | null
+  precio_m2?: number | string | null
+  observaciones?: string | null
+  vendedor?: string | null
+  servicios?: Array<{ nombre: string; estado: string }>
+  negociacion?: { id: number; codigo: string; tipo: string; estado: string; comprador: string | null } | null
+}
+
+export interface PlanoFinca {
+  finca: { id: number; codigo: string; nombre: string }
+  plano: { id: number | null; ancho: number; alto: number; tiene_imagen: boolean; imagen_nombre: string | null; actualizado: string | null }
+  lotes: LotePlano[]
+}
+
+export const planoLotificacionService = {
+  get: (fincaId: number) => api.get<PlanoFinca>(`/fincas/${fincaId}/plano`),
+  imagen: (fincaId: number) => api.fetchBlob(`/fincas/${fincaId}/plano/imagen`),
+  subirImagen: (fincaId: number, archivo: File) => {
+    const form = new FormData()
+    form.append('archivo', archivo)
+    return api.post<{ ancho: number; alto: number; imagen_nombre: string }>(`/fincas/${fincaId}/plano/imagen`, form)
+  },
+  guardarGeometrias: (fincaId: number, geometrias: Array<{ lote_id: number; puntos: PuntoPlano[] | null }>) =>
+    api.put<{ guardadas: number; quitadas: number }>(`/fincas/${fincaId}/plano/geometrias`, { geometrias }),
+}
+
 // ==========================================
 // 💼 NEGOCIACIONES & SIMULADOR INMOBILIARIO
 // ==========================================
 
 export interface SimuladorRequest {
-  precio_lote: number
+  lote_id?: number
+  tasa_interes_id?: number
+  precio_lote?: number
   descuento?: number
   enganche?: number
   gastos_escrituracion?: number

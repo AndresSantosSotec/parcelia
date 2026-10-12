@@ -32,12 +32,14 @@ import { DesarrolladoraModule } from './modules/desarrolladora/DesarrolladoraMod
 import { FinancistasModule } from './modules/desarrolladora/FinancistasModule'
 import { ComisionistasModule } from './modules/desarrolladora/ComisionistasModule'
 import { NegociacionesModule } from './modules/negociaciones/NegociacionesModule'
+import { PlanoLotesModule } from './modules/lotificacion/PlanoLotesModule'
 import { TasasInmobiliariasModule } from './modules/tasas/TasasInmobiliariasModule'
 import { useEmpresaConfig } from '@/hooks/useEmpresaConfig'
 import { ChatbotHelper } from './ChatbotHelper'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Package, Wallet, Receipt, ChartBar, UserCircle, ClockCounterClockwise, CreditCard as CreditCardIcon, List, SignOut, Moon, Sun, Monitor, Lock, Storefront, Users, CurrencyDollar, Warning, Coins, PaintBrush, Handshake, TreeStructure, Chats } from '@phosphor-icons/react'
 import { useKV } from '@/hooks/use-kv'
+import { EVENTO_NAVEGAR_MODULO } from '@/hooks/use-navigate-module'
 import { Cliente, Credito } from '@/lib/types'
 import { MoneyDisplay } from './MoneyDisplay'
 import { StatusBadge } from './StatusBadge'
@@ -195,13 +197,14 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
   }, [hasModuleAccess, esSuperAdmin])
 
   // Escuchar solicitudes de navegación desde componentes hijos
-  const [navigateRequest] = useKV<{ modulo: string } | null>('navigate-module-request', null)
-
   useEffect(() => {
-    if (navigateRequest?.modulo) {
-      handleNavegacion(navigateRequest.modulo)
+    const alNavegar = (e: Event) => {
+      const modulo = (e as CustomEvent<{ modulo: string }>).detail?.modulo
+      if (modulo) handleNavegacion(modulo)
     }
-  }, [navigateRequest, handleNavegacion])
+    window.addEventListener(EVENTO_NAVEGAR_MODULO, alNavegar)
+    return () => window.removeEventListener(EVENTO_NAVEGAR_MODULO, alNavegar)
+  }, [handleNavegacion])
 
   // Filtrar navegación según permisos
   const filteredNavigation = useMemo(() => {
@@ -332,6 +335,8 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
         return <ContabilidadModule />
       case 'fincas':
         return <FincasModule userSession={userSession} />
+      case 'lotes':
+        return <PlanoLotesModule sessionUser={userWithPermissions} />
       case 'compra_fincas':
         return <DesarrolladoraModule userSession={userSession} />
       case 'financistas':

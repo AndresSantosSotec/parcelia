@@ -122,6 +122,11 @@ class Lote extends Model
         return $this->hasMany(LoteImagen::class, 'lote_id')->orderBy('orden');
     }
 
+    public function geometria()
+    {
+        return $this->hasOne(LoteGeometria::class, 'lote_id');
+    }
+
     public function ocupacion()
     {
         return $this->belongsTo(Negociacion::class, 'negociacion_activa_id');

@@ -68,6 +68,11 @@ class Finca extends Model
         return $this->hasMany(Parcela::class, 'finca_id');
     }
 
+    public function plano()
+    {
+        return $this->hasOne(FincaPlano::class, 'finca_id');
+    }
+
     public function lotes()
     {
         return $this->hasManyThrough(Lote::class, Parcela::class, 'finca_id', 'parcela_id');

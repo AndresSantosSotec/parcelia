@@ -18,6 +18,7 @@ import {
 import { usePermissions } from '@/hooks/use-permissions'
 import { AccionesRegistro, PaginacionLista } from './AccionesRegistro'
 import { SelectorUbicacion } from '@/components/shared/SelectorUbicacion'
+import { MarcoDocumento, VistaPreviaDocumento } from './VistaPreviaDocumento'
 
 const q = (n: number | string | null | undefined) =>
   `Q ${Number(n || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -44,6 +45,72 @@ function num(v: string) {
   return Number.isFinite(n) ? n : 0
 }
 
+const COMPRA_VACIA = {
+  nombre: '',
+  vendedor_nombre: '',
+  vendedor_dpi: '',
+  referencia: '',
+  ubicacion: '',
+  municipio: '',
+  departamento: '',
+  precio_compra: '',
+  gastos_escrituracion: '',
+  tipo_compra: 'pagos',
+  enganche: '',
+  numero_cuotas: '12',
+  frecuencia_pago: 'mensual',
+  fecha_inicio_pagos: '',
+  porcentaje_utilidad: '30',
+  area_negociable_m2: '',
+  area_no_negociable_m2: '',
+  area_vialidades_m2: '',
+  area_verde_m2: '',
+  area_tecnica_m2: '',
+}
+
+type DatosCompra = typeof COMPRA_VACIA
+
+const CLAVE_BORRADORES = 'parcelia_borradores_compra'
+const CLAVE_BORRADOR_ANTERIOR = 'parcelia_borrador_nueva_compra'
+const MAX_BORRADORES = 10
+
+type BorradorCompra = { id: string; datos: DatosCompra; guardado: string }
+
+function leerBorradores(): BorradorCompra[] {
+  try {
+    const lista: BorradorCompra[] = JSON.parse(localStorage.getItem(CLAVE_BORRADORES) || '[]')
+    const anterior = localStorage.getItem(CLAVE_BORRADOR_ANTERIOR)
+    if (anterior) {
+      const valor = JSON.parse(anterior)
+      if (valor?.datos && lista.length < MAX_BORRADORES) {
+        lista.push({ id: `b${Date.now()}`, datos: valor.datos, guardado: String(valor.guardado || new Date().toISOString()) })
+      }
+      localStorage.removeItem(CLAVE_BORRADOR_ANTERIOR)
+      localStorage.setItem(CLAVE_BORRADORES, JSON.stringify(lista))
+    }
+    return lista
+      .filter((b) => b?.id && b?.datos)
+      .map((b) => ({ ...b, datos: { ...COMPRA_VACIA, ...b.datos } }))
+      .sort((a, b) => b.guardado.localeCompare(a.guardado))
+  } catch {
+    return []
+  }
+}
+
+function escribirBorradores(lista: BorradorCompra[]) {
+  localStorage.setItem(CLAVE_BORRADORES, JSON.stringify(lista))
+}
+
+function etiquetaBorrador(b: BorradorCompra) {
+  const cuando = new Date(b.guardado)
+  const lugar = [b.datos.municipio, b.datos.departamento].filter(Boolean).join(', ')
+  return `${b.datos.nombre.trim() || 'Sin nombre'}${lugar ? ` · ${lugar}` : ''} · ${cuando.toLocaleDateString('es-GT')} ${cuando.toLocaleTimeString('es-GT', { hour: '2-digit', minute: '2-digit' })}`
+}
+
+function borradorTieneDatos(datos: DatosCompra) {
+  return (Object.keys(COMPRA_VACIA) as Array<keyof DatosCompra>).some((clave) => datos[clave] !== COMPRA_VACIA[clave])
+}
+
 export function DesarrolladoraModule({ userSession }: { userSession?: { userData?: { rol?: string; permisos?: unknown } | null } }) {
   const { hasPermission } = usePermissions(userSession?.userData as any)
   const puedeCrear = hasPermission('compra_fincas', 'crear')
@@ -63,30 +130,14 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
   const formularioEditable = modo === 'ver' ? false : modo === 'crear' ? (puedeCrear || puedeEditar) : puedeEditar
   const [detalle, setDetalle] = useState<CompraFincaPayload | null>(null)
   const [cargando, setCargando] = useState(false)
-  const [compra, setCompra] = useState({
-    nombre: '',
-    vendedor_nombre: '',
-    vendedor_dpi: '',
-    referencia: '',
-    ubicacion: '',
-    municipio: '',
-    departamento: '',
-    precio_compra: '',
-    gastos_escrituracion: '',
-    tipo_compra: 'pagos',
-    enganche: '',
-    numero_cuotas: '12',
-    frecuencia_pago: 'mensual',
-    fecha_inicio_pagos: '',
-    porcentaje_utilidad: '30',
-    area_negociable_m2: '',
-    area_no_negociable_m2: '',
-    area_vialidades_m2: '',
-    area_verde_m2: '',
-    area_tecnica_m2: '',
-  })
+  const [compra, setCompra] = useState<DatosCompra>(COMPRA_VACIA)
+  const [borradores, setBorradores] = useState<BorradorCompra[]>([])
+  const [borradorId, setBorradorId] = useState('')
   const [escritura, setEscritura] = useState({ numero_escritura: '', fecha_escritura: '', area_m2: '' })
   const [archivoEscritura, setArchivoEscritura] = useState<File | null>(null)
+  const [inputArchivoKey, setInputArchivoKey] = useState(0)
+  const [previa, setPrevia] = useState<{ archivo: Blob | null; nombre: string; url?: string } | null>(null)
+  const [pendienteAdjuntar, setPendienteAdjuntar] = useState<{ escrituraId: number; archivo: File } | null>(null)
   const [gasto, setGasto] = useState({ categoria: 'calle', concepto: '', monto: '', fecha: '' })
   const [medidasFinca, setMedidasFinca] = useState<number | ''>('')
   const [medidas, setMedidas] = useState<Array<{ numero: string; area: string; tipo: string }>>([])
@@ -119,6 +170,30 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
     cargarFincas().catch(() => toast.error('No se pudieron cargar las fincas'))
     cargarCompras().catch(() => toast.error('No se pudieron cargar las compras'))
   }, [cargarFincas, cargarCompras])
+
+  useEffect(() => {
+    if (vista !== 'ficha' || modo !== 'crear' || fincaId) return
+    const temporizador = setTimeout(() => {
+      const lista = leerBorradores()
+      const conDatos = borradorTieneDatos(compra)
+      if (!borradorId) {
+        if (!conDatos || lista.length >= MAX_BORRADORES) return
+        const nuevo = { id: `b${Date.now()}`, datos: compra, guardado: new Date().toISOString() }
+        const siguiente = [nuevo, ...lista]
+        escribirBorradores(siguiente)
+        setBorradores(siguiente)
+        setBorradorId(nuevo.id)
+        return
+      }
+      const siguiente = conDatos
+        ? lista.map((b) => (b.id === borradorId ? { ...b, datos: compra, guardado: new Date().toISOString() } : b))
+        : lista.filter((b) => b.id !== borradorId)
+      escribirBorradores(siguiente)
+      setBorradores(siguiente)
+      if (!conDatos) setBorradorId('')
+    }, 400)
+    return () => clearTimeout(temporizador)
+  }, [compra, vista, modo, fincaId, borradorId])
 
   useEffect(() => {
     if (!fincaId) {
@@ -195,6 +270,12 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
         aplicar(res.data)
         setFincaId(res.data.finca.id)
       }
+      if (!fincaId && borradorId) {
+        const siguiente = leerBorradores().filter((b) => b.id !== borradorId)
+        escribirBorradores(siguiente)
+        setBorradores(siguiente)
+        setBorradorId('')
+      }
       if (modo === 'crear' && puedeEditar) setModo('editar')
       await cargarFincas()
       await cargarCompras()
@@ -219,6 +300,17 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
     }
   }
 
+  async function verDocumento(url: string, nombre: string) {
+    setPrevia({ archivo: null, nombre, url })
+    try {
+      const archivo = await api.fetchBlob(url)
+      setPrevia((actual) => (actual?.url === url ? { ...actual, archivo } : actual))
+    } catch (e: any) {
+      setPrevia(null)
+      toast.error(e?.message || 'No se pudo abrir el documento')
+    }
+  }
+
   const resumen = detalle?.resumen
   const comprasVisibles = compras.filter((c) => {
     const texto = busqueda.trim().toLowerCase()
@@ -238,28 +330,23 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
     setVista('ficha')
     setFincaId('')
     setDetalle(null)
-    setCompra({
-      nombre: '',
-      vendedor_nombre: '',
-      vendedor_dpi: '',
-      referencia: '',
-      ubicacion: '',
-      municipio: '',
-      departamento: '',
-      precio_compra: '',
-      gastos_escrituracion: '',
-      tipo_compra: 'pagos',
-      enganche: '',
-      numero_cuotas: '12',
-      frecuencia_pago: 'mensual',
-      fecha_inicio_pagos: '',
-      porcentaje_utilidad: '30',
-      area_negociable_m2: '',
-      area_no_negociable_m2: '',
-      area_vialidades_m2: '',
-      area_verde_m2: '',
-      area_tecnica_m2: '',
-    })
+    setBorradores(leerBorradores())
+    setBorradorId('')
+    setCompra(COMPRA_VACIA)
+  }
+
+  function elegirBorrador(id: string) {
+    const elegido = borradores.find((b) => b.id === id)
+    setBorradorId(elegido ? elegido.id : '')
+    setCompra(elegido ? elegido.datos : COMPRA_VACIA)
+  }
+
+  function descartarBorrador() {
+    const siguiente = leerBorradores().filter((b) => b.id !== borradorId)
+    escribirBorradores(siguiente)
+    setBorradores(siguiente)
+    setBorradorId('')
+    setCompra(COMPRA_VACIA)
   }
 
   function abrirFicha(id: number, siguiente: 'editar' | 'ver') {
@@ -394,6 +481,25 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
           <Card>
             <CardHeader><CardTitle>{modo === 'crear' ? 'Registrar compra' : 'Datos de compra'}</CardTitle></CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-2">
+              {modo === 'crear' && !fincaId && (
+                <div className="space-y-2 rounded-md border border-dashed px-3 py-2 text-sm md:col-span-2">
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="min-w-[240px] flex-1">
+                      <Label>Borradores ({borradores.length} de {MAX_BORRADORES})</Label>
+                      <select className={campoSelect} value={borradorId} onChange={(e) => elegirBorrador(e.target.value)}>
+                        <option value="">{borradorId ? 'Empezar un borrador nuevo' : 'Borrador nuevo'}</option>
+                        {borradores.map((b) => <option key={b.id} value={b.id}>{etiquetaBorrador(b)}</option>)}
+                      </select>
+                    </div>
+                    {borradorId && <Button size="sm" variant="ghost" onClick={descartarBorrador}>Descartar este borrador</Button>}
+                  </div>
+                  <p className="text-muted-foreground">
+                    {!borradorId && borradores.length >= MAX_BORRADORES
+                      ? `Ya tienes ${MAX_BORRADORES} borradores. Lo que escribas aquí no se guardará como borrador hasta que continúes o descartes uno.`
+                      : 'Lo que escribas se guarda como borrador hasta que registres la compra.'}
+                  </p>
+                </div>
+              )}
               {modo === 'crear' && !fincaId && fincasParaAlta.length > 0 && (
                 <div className="md:col-span-2">
                   <Label>Finca que ya existe</Label>
@@ -476,14 +582,11 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
                   fecha(e.fecha_escritura),
                   String(e.area_m2),
                   e.documento_nombre
-                    ? <Button key={'doc'+e.id} size="sm" variant="outline" onClick={() => bajar(`/fincas/${fincaId}/escrituras/${e.id}/documento`, e.documento_nombre || 'escritura')}>{e.documento_nombre}</Button>
-                    : (formularioEditable ? <input key={'up'+e.id} type="file" className="text-xs" onChange={async (ev) => {
+                    ? <Button key={'doc'+e.id} size="sm" variant="outline" className="max-w-[220px] truncate" title="Ver documento" onClick={() => verDocumento(`/fincas/${fincaId}/escrituras/${e.id}/documento`, e.documento_nombre || 'escritura')}>{e.documento_nombre}</Button>
+                    : (formularioEditable ? <input key={'up'+e.id} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="text-xs" onChange={(ev) => {
                         const file = ev.target.files?.[0]
-                        if (!file || !fincaId) return
-                        try {
-                          const res = await compraFincaService.adjuntarDocumento(fincaId, e.id, file)
-                          if (res.data) aplicar(res.data)
-                        } catch (err: any) { toast.error(err?.message || 'No se pudo adjuntar') }
+                        ev.target.value = ''
+                        if (file) setPendienteAdjuntar({ escrituraId: e.id, archivo: file })
                       }} /> : '—'),
                   formularioEditable ? <Button key={e.id} size="sm" variant="ghost" onClick={async () => {
                     if (!fincaId) return
@@ -500,7 +603,7 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
                   <Campo label="m²" type="number" value={escritura.area_m2} onChange={(v) => setEscritura({ ...escritura, area_m2: v })} />
                   <div>
                     <Label>Documento</Label>
-                    <Input className="mt-1" type="file" onChange={(ev) => setArchivoEscritura(ev.target.files?.[0] || null)} />
+                    <Input key={inputArchivoKey} className="mt-1" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(ev) => setArchivoEscritura(ev.target.files?.[0] || null)} />
                   </div>
                   <div className="flex items-end">
                     <Button disabled={!fincaId} onClick={async () => {
@@ -514,11 +617,48 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
                         if (res.data) aplicar(res.data)
                         setEscritura({ numero_escritura: '', fecha_escritura: '', area_m2: '' })
                         setArchivoEscritura(null)
+                        setInputArchivoKey((k) => k + 1)
                       } catch (e: any) { toast.error(e?.message || 'No se pudo agregar') }
                     }}>Agregar</Button>
                   </div>
                 </div>
               )}
+              {formularioEditable && archivoEscritura && (
+                <div className="space-y-2 rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm">Vista previa: <strong>{archivoEscritura.name}</strong></p>
+                    <Button size="sm" variant="ghost" onClick={() => { setArchivoEscritura(null); setInputArchivoKey((k) => k + 1) }}>Quitar archivo</Button>
+                  </div>
+                  <MarcoDocumento archivo={archivoEscritura} nombre={archivoEscritura.name} alto="h-[420px]" />
+                </div>
+              )}
+              <VistaPreviaDocumento
+                abierto={!!previa}
+                archivo={previa?.archivo || null}
+                nombre={previa?.nombre || ''}
+                onCerrar={() => setPrevia(null)}
+                onDescargar={previa?.url ? () => bajar(previa.url!, previa.nombre) : undefined}
+              />
+              <VistaPreviaDocumento
+                abierto={!!pendienteAdjuntar}
+                archivo={pendienteAdjuntar?.archivo || null}
+                nombre={pendienteAdjuntar ? `Adjuntar ${pendienteAdjuntar.archivo.name}` : ''}
+                onCerrar={() => setPendienteAdjuntar(null)}
+                acciones={pendienteAdjuntar && (
+                  <>
+                    <Button size="sm" variant="ghost" onClick={() => setPendienteAdjuntar(null)}>Cancelar</Button>
+                    <Button size="sm" onClick={async () => {
+                      if (!fincaId) return
+                      try {
+                        const res = await compraFincaService.adjuntarDocumento(fincaId, pendienteAdjuntar.escrituraId, pendienteAdjuntar.archivo)
+                        if (res.data) aplicar(res.data)
+                        setPendienteAdjuntar(null)
+                        toast.success('Documento adjuntado')
+                      } catch (err: any) { toast.error(err?.message || 'No se pudo adjuntar') }
+                    }}>Adjuntar</Button>
+                  </>
+                )}
+              />
             </CardContent>
           </Card>
         </TabsContent>

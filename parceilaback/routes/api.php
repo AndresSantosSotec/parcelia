@@ -118,6 +118,10 @@ Route::prefix('v1')->group(function () {
             Route::post('/fincas/{id}/desactivar', [FincaController::class, 'desactivar'])->middleware('permiso:fincas,desactivar');
             Route::post('/fincas/{fincaId}/parcelas', [FincaController::class, 'storeParcela'])->middleware('permiso:fincas,crear');
             Route::post('/parcelas/{parcelaId}/lotes', [FincaController::class, 'storeLote'])->middleware('permiso:lotes,crear');
+            Route::get('/fincas/{id}/plano', [\App\Http\Controllers\Api\PlanoLotificacionController::class, 'show'])->middleware('permiso:lotes,ver');
+            Route::get('/fincas/{id}/plano/imagen', [\App\Http\Controllers\Api\PlanoLotificacionController::class, 'imagen'])->middleware('permiso:lotes,ver');
+            Route::post('/fincas/{id}/plano/imagen', [\App\Http\Controllers\Api\PlanoLotificacionController::class, 'subirImagen'])->middleware('permiso:fincas,editar');
+            Route::put('/fincas/{id}/plano/geometrias', [\App\Http\Controllers\Api\PlanoLotificacionController::class, 'guardarGeometrias'])->middleware('permiso:fincas,editar');
 
             Route::get('/compras-fincas', [\App\Http\Controllers\Api\CompraFincaController::class, 'index'])->middleware('permiso:compra_fincas,ver');
             Route::post('/compras-fincas', [\App\Http\Controllers\Api\CompraFincaController::class, 'store'])->middleware('permiso:compra_fincas,crear');

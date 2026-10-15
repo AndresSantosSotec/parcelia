@@ -29,14 +29,15 @@ class FrenchAmortizationStrategy implements InterestCalculationStrategyInterface
             ];
         }
 
-        $tasaMensual = ($tasaAnual / 100) / 12;
-        
+        $paso = $this->pasoMeses($opciones);
+        $tasaPeriodo = ($tasaAnual / 100) * ($paso / 12);
+
         // Si la tasa es 0% (Promoción o financiamiento directo sin interés)
-        if ($tasaMensual == 0) {
+        if ($tasaPeriodo == 0) {
             $cuotaFija = round($montoFinanciado / $plazoMeses, 2);
         } else {
             // Fórmula Francesa: R = P * [ i / (1 - (1 + i)^(-n)) ]
-            $cuotaFija = round($montoFinanciado * ($tasaMensual / (1 - pow(1 + $tasaMensual, -$plazoMeses))), 2);
+            $cuotaFija = round($montoFinanciado * ($tasaPeriodo / (1 - pow(1 + $tasaPeriodo, -$plazoMeses))), 2);
         }
 
         $cuotas = [];
@@ -46,7 +47,7 @@ class FrenchAmortizationStrategy implements InterestCalculationStrategyInterface
 
         for ($i = 1; $i <= $plazoMeses; $i++) {
             $saldoInicial = $saldoCapital;
-            $interesCuota = $tasaMensual == 0 ? 0.0 : round($saldoCapital * $tasaMensual, 2);
+            $interesCuota = $tasaPeriodo == 0 ? 0.0 : round($saldoCapital * $tasaPeriodo, 2);
             $capitalCuota = round($cuotaFija - $interesCuota, 2);
 
             if ($i === $plazoMeses) {
@@ -56,7 +57,7 @@ class FrenchAmortizationStrategy implements InterestCalculationStrategyInterface
             $saldoCapital = max(0.0, round($saldoCapital - $capitalCuota, 2));
             $totalInteresAcumulado += $interesCuota;
             $cuotas[] = $this->filaCuota($i, $fechaVencimiento->format('Y-m-d'), $saldoInicial, $capitalCuota, $interesCuota, $saldoCapital);
-            $fechaVencimiento->addMonth();
+            $fechaVencimiento->addMonths($paso);
         }
 
         return $this->resumen('frances_sobre_saldos', $montoFinanciado, $tasaAnual, $plazoMeses, $cuotaFija, $totalInteresAcumulado, $cuotas);

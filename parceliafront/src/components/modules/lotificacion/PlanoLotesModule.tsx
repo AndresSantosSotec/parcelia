@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { MapTrifold, PencilSimple, UploadSimple, FloppyDisk, ArrowCounterClockwise, Trash, Polygon, GridFour, Check, X, MagnifyingGlass } from '@phosphor-icons/react'
+import { MapTrifold, PencilSimple, UploadSimple, FloppyDisk, ArrowCounterClockwise, Trash, Polygon, GridFour, Check, X, MagnifyingGlass, Hand, ArrowsOutCardinal, Plus } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
   fincaService,
@@ -16,7 +17,7 @@ import {
 } from '@/lib/api'
 import { usePermissions } from '@/hooks/use-permissions'
 import { useNavigateModule } from '@/hooks/use-navigate-module'
-import { VisorPlano } from './VisorPlano'
+import { VisorPlano, type FiguraSuelta, type ModoPlano } from './VisorPlano'
 import { PanelLote, type CondicionesSimulacion } from './PanelLote'
 import { ESTADOS_LOTE, estadoLote, CLAVE_VENTA_DESDE_PLANO, CLAVE_VER_NEGOCIACION } from './estadosLote'
 
@@ -62,13 +63,18 @@ export function PlanoLotesModule({ sessionUser }: PlanoLotesModuleProps) {
   const [tasas, setTasas] = useState<TasaInmobiliaria[]>([])
 
   const [seleccionadoId, setSeleccionadoId] = useState<number | null>(null)
+  const [fichaAbierta, setFichaAbierta] = useState(false)
   const [filtroEstado, setFiltroEstado] = useState<string | null>(null)
   const [busqueda, setBusqueda] = useState('')
 
   const [editando, setEditando] = useState(false)
   const [cambios, setCambios] = useState<Record<number, PuntoPlano[] | null>>({})
   const [dibujandoId, setDibujandoId] = useState<number | null>(null)
+  const [dibujoLibre, setDibujoLibre] = useState(false)
   const [puntosDibujo, setPuntosDibujo] = useState<PuntoPlano[]>([])
+  const [sueltas, setSueltas] = useState<FiguraSuelta[]>([])
+  const [sueltaActivaId, setSueltaActivaId] = useState<string | null>(null)
+  const [modo, setModo] = useState<ModoPlano>('vista')
   const [guardando, setGuardando] = useState(false)
   const inputImagen = useRef<HTMLInputElement>(null)
 
@@ -104,9 +110,15 @@ export function PlanoLotesModule({ sessionUser }: PlanoLotesModuleProps) {
     if (!fincaId) return
     localStorage.setItem(CLAVE_FINCA, String(fincaId))
     setSeleccionadoId(null)
+    setFichaAbierta(false)
     setCambios({})
     setEditando(false)
     setDibujandoId(null)
+    setDibujoLibre(false)
+    setPuntosDibujo([])
+    setSueltas([])
+    setSueltaActivaId(null)
+    setModo('vista')
     cargarPlano(fincaId)
   }, [fincaId])
 
@@ -170,21 +182,77 @@ export function PlanoLotesModule({ sessionUser }: PlanoLotesModuleProps) {
     navigate('negociaciones')
   }
 
+  const modoEfectivo: ModoPlano = editando && !dibujandoId && !dibujoLibre ? modo : 'vista'
+
+  const elegirLote = (id: number) => {
+    setSeleccionadoId(id)
+    setSueltaActivaId(null)
+    if (modoEfectivo === 'vista') setFichaAbierta(true)
+  }
+
   const empezarDibujo = (id: number) => {
+    setDibujoLibre(false)
     setDibujandoId(id)
     setPuntosDibujo([])
     setSeleccionadoId(id)
+    setFichaAbierta(false)
+    setModo('vista')
+  }
+
+  const empezarFiguraLibre = () => {
+    setDibujandoId(null)
+    setDibujoLibre(true)
+    setPuntosDibujo([])
+    setFichaAbierta(false)
+    setModo('vista')
   }
 
   const terminarDibujo = () => {
-    if (!dibujandoId) return
     if (puntosDibujo.length < 3) {
       toast.error('Marca al menos 3 esquinas para cerrar la figura')
       return
     }
+    if (dibujoLibre) {
+      const id = crypto.randomUUID()
+      setSueltas((lista) => [...lista, { id, puntos: puntosDibujo }])
+      setSueltaActivaId(id)
+      setDibujoLibre(false)
+      setPuntosDibujo([])
+      setModo('figura')
+      toast.success('Figura agregada. Asígnale un lote en el panel de la derecha.')
+      return
+    }
+    if (!dibujandoId) return
     setCambios((c) => ({ ...c, [dibujandoId]: puntosDibujo }))
     setDibujandoId(null)
     setPuntosDibujo([])
+    setModo('figura')
+  }
+
+  const asignarFigura = (figuraId: string, loteId: number) => {
+    const figura = sueltas.find((f) => f.id === figuraId)
+    const lote = lotes.find((l) => l.id === loteId)
+    if (!figura || !lote) return
+    const tiene = !!lote.puntos && lote.puntos.length >= 3
+    if (tiene && !window.confirm(`El lote ${lote.numero_lote} ya tiene una figura. ¿Reemplazarla?`)) return
+    setCambios((c) => ({ ...c, [loteId]: figura.puntos }))
+    setSueltas((lista) => lista.filter((f) => f.id !== figuraId))
+    setSueltaActivaId(null)
+    setSeleccionadoId(loteId)
+    toast.success(`Figura asignada al lote ${lote.numero_lote}`)
+  }
+
+  const moverFiguras = (cambio: { lotes: { id: number; puntos: PuntoPlano[] }[]; sueltas: { id: string; puntos: PuntoPlano[] }[] }) => {
+    if (cambio.lotes.length) {
+      setCambios((c) => {
+        const siguiente = { ...c }
+        cambio.lotes.forEach((l) => { siguiente[l.id] = l.puntos })
+        return siguiente
+      })
+    }
+    if (cambio.sueltas.length) {
+      setSueltas((lista) => lista.map((f) => cambio.sueltas.find((s) => s.id === f.id) ?? f))
+    }
   }
 
   const quitarFigura = (id: number) => {
@@ -200,7 +268,8 @@ export function PlanoLotesModule({ sessionUser }: PlanoLotesModuleProps) {
   const acomodar = () => {
     if (!datos || !sinFigura.length) return
     setCambios((c) => ({ ...c, ...cuadricula(sinFigura, datos.plano.ancho, datos.plano.alto) }))
-    toast.success(`${sinFigura.length} lote(s) acomodados en cuadrícula. Revisa y guarda.`)
+    setModo('grupo')
+    toast.success(`${sinFigura.length} lote(s) en cuadrícula. Arrastra el plano para moverlos juntos, o cambia a «Mover figura».`)
   }
 
   const guardar = async () => {
@@ -224,10 +293,15 @@ export function PlanoLotesModule({ sessionUser }: PlanoLotesModuleProps) {
   }
 
   const salirEdicion = () => {
-    if (pendientes && !window.confirm(`Hay ${pendientes} cambio(s) sin guardar. ¿Descartarlos?`)) return
+    const pendientesSalida = pendientes + sueltas.length
+    if (pendientesSalida && !window.confirm(`Hay ${pendientesSalida} cambio(s) sin guardar. ¿Descartarlos?`)) return
     setCambios({})
     setDibujandoId(null)
+    setDibujoLibre(false)
     setPuntosDibujo([])
+    setSueltas([])
+    setSueltaActivaId(null)
+    setModo('vista')
     setEditando(false)
   }
 
@@ -260,7 +334,7 @@ export function PlanoLotesModule({ sessionUser }: PlanoLotesModuleProps) {
           <select
             value={fincaId ?? ''}
             onChange={(e) => {
-              if (pendientes && !window.confirm('Hay cambios del plano sin guardar. ¿Cambiar de finca y descartarlos?')) return
+              if ((pendientes || sueltas.length) && !window.confirm('Hay cambios del plano sin guardar. ¿Cambiar de finca y descartarlos?')) return
               setFincaId(Number(e.target.value) || null)
             }}
             className="bg-background border rounded-lg h-9 px-3 text-sm min-w-[220px]"
@@ -303,13 +377,10 @@ export function PlanoLotesModule({ sessionUser }: PlanoLotesModuleProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4">
-        <Card className="border-border/80 shadow-sm overflow-hidden">
+      <div className={`flex flex-col gap-4 ${editando ? 'md:flex-row md:items-start' : ''}`}>
+        <Card className="border-border/80 shadow-sm overflow-hidden min-w-0 flex-1">
           <CardContent className="p-2 sm:p-3">
-            <div
-              className="w-full min-h-[260px] max-h-[72vh]"
-              style={{ aspectRatio: datos ? `${datos.plano.ancho} / ${datos.plano.alto}` : '10 / 7' }}
-            >
+            <div className="w-full h-[calc(100vh-240px)] min-h-[480px]">
               {datos ? (
                 <VisorPlano
                   ancho={datos.plano.ancho}
@@ -318,8 +389,13 @@ export function PlanoLotesModule({ sessionUser }: PlanoLotesModuleProps) {
                   lotes={lotes}
                   seleccionadoId={seleccionadoId}
                   atenuados={atenuados}
-                  dibujo={dibujandoId ? puntosDibujo : null}
-                  onSeleccionar={setSeleccionadoId}
+                  dibujo={dibujandoId || dibujoLibre ? puntosDibujo : null}
+                  modo={editando && !dibujandoId && !dibujoLibre ? modo : 'vista'}
+                  figurasSueltas={sueltas}
+                  sueltaActivaId={sueltaActivaId}
+                  onSeleccionar={elegirLote}
+                  onSeleccionarSuelta={setSueltaActivaId}
+                  onMover={editando ? moverFiguras : undefined}
                   onAgregarPunto={(p) => setPuntosDibujo((ps) => [...ps, p])}
                 />
               ) : (
@@ -328,18 +404,19 @@ export function PlanoLotesModule({ sessionUser }: PlanoLotesModuleProps) {
                 </div>
               )}
             </div>
-            {datos && !editando && sinFigura.length > 0 && (
+            {datos && !editando && (
               <p className="text-xs text-muted-foreground mt-2 px-1">
-                {sinFigura.length} lote(s) aún no están dibujados en el plano; aparecen en la lista inferior.
-                {puedeEditar && ' Usa «Editar plano» para ubicarlos.'}
+                Pulsa un lote en el plano o en la lista para abrir su ficha técnica.
+                {sinFigura.length > 0 && ` ${sinFigura.length} lote(s) aún no están dibujados y solo aparecen en la lista.`}
+                {puedeEditar && sinFigura.length > 0 && ' Usa «Editar plano» para ubicarlos.'}
               </p>
             )}
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-sm">
+        {editando && datos && (
+        <Card className="border-border/80 shadow-sm w-full md:w-[22rem] md:sticky md:top-3 shrink-0 md:max-h-[calc(100vh-6rem)] md:overflow-y-auto">
           <CardContent className="p-4">
-            {editando && datos ? (
               <div className="space-y-4">
                 <div>
                   <p className="text-sm font-semibold">Edición del plano</p>
@@ -354,22 +431,72 @@ export function PlanoLotesModule({ sessionUser }: PlanoLotesModuleProps) {
                 </Button>
                 {pendientes > 0 && <p className="text-[11px] text-muted-foreground -mt-2">Guarda los cambios antes de cambiar la imagen.</p>}
 
-                {dibujandoId ? (
+                <div className="grid grid-cols-3 gap-1">
+                  {([
+                    ['vista', 'Vista', Hand],
+                    ['figura', 'Figura', ArrowsOutCardinal],
+                    ['grupo', 'Cuadrícula', GridFour],
+                  ] as const).map(([clave, etiqueta, Icono]) => (
+                    <Button key={clave} type="button" size="sm" variant={modo === clave ? 'default' : 'outline'} className="gap-1 px-2" disabled={!!dibujandoId || dibujoLibre} onClick={() => setModo(clave)}>
+                      <Icono size={14} /> {etiqueta}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground -mt-2">
+                  En Vista, un clic abre la ficha del lote y arrastrar desplaza el plano. Figura mueve una sola. Cuadrícula mueve juntas todas las que están encima.
+                </p>
+
+                {dibujandoId || dibujoLibre ? (
                   <div className="rounded-xl border border-sky-500/40 bg-sky-500/10 p-3 space-y-2">
-                    <p className="text-sm font-medium">Dibujando lote {lotes.find((l) => l.id === dibujandoId)?.numero_lote}</p>
-                    <p className="text-xs text-muted-foreground">Haz clic en cada esquina del lote sobre el plano ({puntosDibujo.length} marcadas). Arrastra para moverte.</p>
+                    <p className="text-sm font-medium">{dibujoLibre ? 'Nueva figura' : `Dibujando lote ${lotes.find((l) => l.id === dibujandoId)?.numero_lote}`}</p>
+                    <p className="text-xs text-muted-foreground">Clic en cada esquina ({puntosDibujo.length}). Puedes agregar varias y después asignarlas.</p>
                     <div className="flex flex-wrap gap-2">
                       <Button size="sm" className="gap-1" onClick={terminarDibujo}><Check size={14} /> Terminar figura</Button>
                       <Button size="sm" variant="outline" className="gap-1" disabled={!puntosDibujo.length} onClick={() => setPuntosDibujo((p) => p.slice(0, -1))}>
                         <ArrowCounterClockwise size={14} /> Deshacer punto
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => { setDibujandoId(null); setPuntosDibujo([]) }}>Cancelar</Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setDibujandoId(null); setDibujoLibre(false); setPuntosDibujo([]) }}>Cancelar</Button>
                     </div>
                   </div>
                 ) : (
-                  <Button variant="outline" size="sm" className="w-full gap-2" disabled={!sinFigura.length} onClick={acomodar}>
-                    <GridFour size={16} /> Acomodar {sinFigura.length} lote(s) sin figura en cuadrícula
-                  </Button>
+                  <div className="space-y-2">
+                    <Button variant="outline" size="sm" className="w-full gap-2" onClick={empezarFiguraLibre}>
+                      <Plus size={16} /> Agregar figura
+                    </Button>
+                    <Button variant="outline" size="sm" className="w-full gap-2" disabled={!sinFigura.length} onClick={acomodar}>
+                      <GridFour size={16} /> Acomodar {sinFigura.length} lote(s) sin figura
+                    </Button>
+                  </div>
+                )}
+
+                {sueltas.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Figuras sin asignar ({sueltas.length})</p>
+                    {sueltas.map((f, indice) => (
+                      <div key={f.id} className={`rounded-lg border p-2 space-y-1 ${f.id === sueltaActivaId ? 'border-amber-500' : 'border-border/70'}`}>
+                        <div className="flex items-center justify-between text-sm">
+                          <button type="button" className="font-medium" onClick={() => setSueltaActivaId(f.id)}>Figura {indice + 1}</button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" title="Quitar figura" onClick={() => setSueltas((lista) => lista.filter((x) => x.id !== f.id))}>
+                            <Trash size={14} />
+                          </Button>
+                        </div>
+                        <select
+                          className="bg-background border rounded-lg h-8 px-2 text-xs w-full"
+                          defaultValue=""
+                          onChange={(e) => {
+                            const loteId = Number(e.target.value)
+                            e.target.value = ''
+                            if (loteId) asignarFigura(f.id, loteId)
+                          }}
+                        >
+                          <option value="">Asignar a un lote</option>
+                          {lotes.map((l) => (
+                            <option key={l.id} value={l.id}>{l.numero_lote}{l.parcela?.nombre ? ` · ${l.parcela.nombre}` : ''}{l.puntos && l.puntos.length >= 3 ? ' (reemplaza)' : ''}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
                 )}
 
                 <div className="max-h-[38vh] overflow-y-auto space-y-1 pr-1">
@@ -378,7 +505,7 @@ export function PlanoLotesModule({ sessionUser }: PlanoLotesModuleProps) {
                     return (
                       <div key={l.id} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-sm ${l.id === seleccionadoId ? 'border-primary' : 'border-border/60'}`}>
                         <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ backgroundColor: estadoLote(l.estado).color }} />
-                        <button type="button" className="min-w-0 flex-1 text-left truncate" onClick={() => setSeleccionadoId(l.id)}>
+                        <button type="button" className="min-w-0 flex-1 text-left truncate" onClick={() => elegirLote(l.id)}>
                           {l.numero_lote} <span className="text-xs text-muted-foreground">{l.parcela?.nombre}</span>
                         </button>
                         {l.id in cambios && <span className="text-[10px] text-amber-500">sin guardar</span>}
@@ -397,30 +524,32 @@ export function PlanoLotesModule({ sessionUser }: PlanoLotesModuleProps) {
                   <Button className="flex-1 gap-2" disabled={!pendientes || guardando} onClick={guardar}>
                     <FloppyDisk size={16} /> {guardando ? 'Guardando…' : `Guardar cambios (${pendientes})`}
                   </Button>
-                  <Button variant="ghost" disabled={!pendientes || guardando} onClick={() => setCambios({})}>Descartar</Button>
+                  <Button variant="ghost" disabled={(!pendientes && !sueltas.length) || guardando} onClick={() => { setCambios({}); setSueltas([]); setSueltaActivaId(null) }}>Descartar</Button>
                 </div>
               </div>
-            ) : seleccionado ? (
-              <PanelLote
-                key={seleccionado.id}
-                lote={seleccionado}
-                tasas={tasas}
-                puedeSimular={puedeSimular}
-                puedeVender={puedeVender}
-                puedeVerVentas={puedeSimular}
-                onCerrar={() => setSeleccionadoId(null)}
-                onIniciarVenta={iniciarVenta}
-                onVerNegociacion={verNegociacion}
-              />
-            ) : (
-              <div className="h-full min-h-[200px] flex flex-col items-center justify-center text-center gap-2 text-muted-foreground">
-                <MapTrifold size={40} weight="duotone" className="text-primary/70" />
-                <p className="text-sm">Selecciona un lote en el plano o en la lista para ver su ficha.</p>
-              </div>
-            )}
           </CardContent>
         </Card>
+        )}
       </div>
+
+      <Dialog open={fichaAbierta && !!seleccionado} onOpenChange={(abierto) => { if (!abierto) setFichaAbierta(false) }}>
+        <DialogContent className="sm:max-w-xl [&>button]:hidden">
+          <DialogTitle className="sr-only">Ficha técnica del lote</DialogTitle>
+          {seleccionado && (
+            <PanelLote
+              key={seleccionado.id}
+              lote={seleccionado}
+              tasas={tasas}
+              puedeSimular={puedeSimular}
+              puedeVender={puedeVender}
+              puedeVerVentas={puedeSimular}
+              onCerrar={() => setFichaAbierta(false)}
+              onIniciarVenta={iniciarVenta}
+              onVerNegociacion={verNegociacion}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {datos && (
         <Card className="border-border/80 shadow-sm">
@@ -434,7 +563,7 @@ export function PlanoLotesModule({ sessionUser }: PlanoLotesModuleProps) {
                   <button
                     key={l.id}
                     type="button"
-                    onClick={() => setSeleccionadoId(l.id)}
+                    onClick={() => elegirLote(l.id)}
                     title={`${l.codigo_unico} · ${etiqueta}${tiene ? '' : ' · sin figura en el plano'}`}
                     className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors ${l.id === seleccionadoId ? 'border-primary bg-primary/10' : 'border-border/80 hover:bg-muted/50'} ${tiene ? '' : 'border-dashed'}`}
                   >

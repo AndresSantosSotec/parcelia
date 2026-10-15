@@ -203,7 +203,6 @@ export const ACCION_LABELS: Record<string, string> = {
   contrato: 'Contrato',
   pagar: 'Registrar pagos',
   reglas: 'Parametrizar reglas',
-  reportes: 'Ver Reportes',
 }
 
 // Nombres legibles de módulos
@@ -261,7 +260,7 @@ interface UsePermissionsResult {
   permisos: Permiso[]
 }
 
-export function usePermissions(user: UserWithPermissions | null | undefined): UsePermissionsResult {
+export function usePermissions(user: { rol?: string | null; permisos?: unknown } | null | undefined): UsePermissionsResult {
   const permisos = useMemo(() => normalizePermisosInput(user?.permisos ?? []), [user?.permisos])
   const rol = (user?.rol || '').toLowerCase()
   const isSuperAdmin = rol === 'superadmin'

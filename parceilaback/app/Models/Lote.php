@@ -24,6 +24,10 @@ class Lote extends Model
         'area_m2',
         'frente_metros',
         'fondo_metros',
+        'lado_norte',
+        'lado_sur',
+        'lado_este',
+        'lado_oeste',
         'colindancias',
         'tipo_terreno',
         'precio_m2',
@@ -48,6 +52,10 @@ class Lote extends Model
         'area_m2' => 'decimal:2',
         'frente_metros' => 'decimal:2',
         'fondo_metros' => 'decimal:2',
+        'lado_norte' => 'decimal:2',
+        'lado_sur' => 'decimal:2',
+        'lado_este' => 'decimal:2',
+        'lado_oeste' => 'decimal:2',
         'precio_m2' => 'decimal:2',
         'precio_base' => 'decimal:2',
         'plusvalia_servicios' => 'decimal:2',
@@ -130,6 +138,11 @@ class Lote extends Model
     public function ocupacion()
     {
         return $this->belongsTo(Negociacion::class, 'negociacion_activa_id');
+    }
+
+    public function comisiones()
+    {
+        return $this->hasMany(ComisionVenta::class, 'lote_id');
     }
 
     public function negociaciones()

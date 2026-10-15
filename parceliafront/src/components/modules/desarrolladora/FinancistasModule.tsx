@@ -46,7 +46,7 @@ function hoy() {
   return new Date().toISOString().slice(0, 10)
 }
 
-function armarPlan(datos: { monto: string; tasa_anual: string; plazo: string; frecuencia: string; fecha_inicio: string; capital_al_vencimiento: boolean }) {
+function armarPlan(datos: { monto: string; tasa_anual: string; plazo: string; frecuencia: string; fecha_inicio: string; capital_al_vencimiento: boolean; esquema?: string }) {
   const monto = num(datos.monto)
   const tasa = num(datos.tasa_anual)
   const plazo = Number(datos.plazo) || 0
@@ -63,21 +63,30 @@ function armarPlan(datos: { monto: string; tasa_anual: string; plazo: string; fr
     capital,
     interes: intereses[indice] || 0,
   }))
-  const cuota = n > 0 ? redondear((datos.capital_al_vencimiento ? interes : monto + interes) / n) : 0
+  let cuota = n > 0 ? redondear((datos.capital_al_vencimiento ? interes : monto + interes) / n) : 0
+  if (datos.esquema === 'particular_anual' && n === 1) cuota = redondear(monto + interes)
   return { interes, n, cuota, vencimiento: plazo > 0 ? sumarMeses(inicio, plazo) : '', cuotas }
+}
+
+const ESQUEMA: Record<string, string> = {
+  particular_anual: 'Particular, un pago al año',
+  cooperativa_mensual: 'Cooperativa, cuotas mensuales',
+  libre: 'Otro esquema',
 }
 
 const formVacio = {
   finca_id: '',
-  tipo: 'banco',
+  esquema: 'particular_anual',
+  tipo: 'particular',
   nombre: '',
+  dpi: '',
   destino: 'compra',
   monto: '',
   tasa_anual: '',
-  plazo: '',
-  frecuencia: 'mensual',
+  plazo: '12',
+  frecuencia: 'anual',
   fecha_inicio: '',
-  capital_al_vencimiento: false,
+  capital_al_vencimiento: true,
 }
 
 export function FinancistasModule({ userSession }: { userSession?: { userData?: { rol?: string; permisos?: unknown } | null } }) {
@@ -102,6 +111,12 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
   const [pagoCalc, setPagoCalc] = useState({ capital: 0, interes: 0, mora: 0, nota: '' })
   const [descuento, setDescuento] = useState('')
   const [archivo, setArchivo] = useState<File | null>(null)
+  const [recibo, setRecibo] = useState('')
+  const [metodo, setMetodo] = useState('efectivo')
+  const [concepto, setConcepto] = useState('')
+  const [busquedaPago, setBusquedaPago] = useState('')
+  const [planFilas, setPlanFilas] = useState<Array<{ numero: number; fecha: string; capital: number; interes: number; total: number; estado: string }>>([])
+  const [verPlan, setVerPlan] = useState(false)
   const [guardando, setGuardando] = useState(false)
 
   const cargar = useCallback(async () => {
@@ -144,19 +159,45 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
     setForm(formVacio)
   }
 
-  function abrirPago(item: FinancistaItem) {
+  function abrirPago(item: FinancistaItem | null) {
     setPagoItem(item)
     setPagoFecha(hoy())
     setDescuento('')
     setArchivo(null)
+    setRecibo('')
+    setMetodo('efectivo')
+    setConcepto(item ? `PAGO DE FINANCIAMIENTO A NOMBRE DE ${item.nombre.toUpperCase()}` : '')
     setPagoCalc({ capital: 0, interes: 0, mora: 0, nota: '' })
+    setPlanFilas([])
+    setVerPlan(false)
+    setBusquedaPago('')
     setVista('pago')
   }
+
+  function aplicarEsquema(esquema: string) {
+    if (esquema === 'particular_anual') {
+      setForm({ ...form, esquema, tipo: 'particular', frecuencia: 'anual', capital_al_vencimiento: true, plazo: form.plazo || '12' })
+      return
+    }
+    if (esquema === 'cooperativa_mensual') {
+      setForm({ ...form, esquema, tipo: 'cooperativa', frecuencia: 'mensual', capital_al_vencimiento: false, plazo: form.plazo || '12' })
+      return
+    }
+    setForm({ ...form, esquema: 'libre' })
+  }
+
+  const textoPago = busquedaPago.trim().toLowerCase()
+  const candidatosPago = items.filter((f) => {
+    if (f.estado === 'liquidado') return false
+    if (!textoPago) return true
+    return [f.nombre, f.dpi, f.finca?.nombre, f.finca?.codigo].some((valor) => String(valor || '').toLowerCase().includes(textoPago))
+  })
+  const totalPagar = redondear(pagoCalc.capital + pagoCalc.interes + pagoCalc.mora - num(descuento))
 
   const alertas = items.filter((f) => f.alerta_vencimiento)
   const financiamientosVisibles = items.filter((f) => {
     const texto = busqueda.trim().toLowerCase()
-    const coincideTexto = !texto || [f.nombre, f.finca?.nombre, f.finca?.codigo, f.tipo].some((valor) => String(valor || '').toLowerCase().includes(texto))
+    const coincideTexto = !texto || [f.nombre, f.dpi, f.finca?.nombre, f.finca?.codigo, f.tipo, f.esquema].some((valor) => String(valor || '').toLowerCase().includes(texto))
     const coincideTipo = !filtroTipo || f.tipo === filtroTipo
     const coincideAviso = filtroAviso === '' || (filtroAviso === 'por_vencer' ? f.alerta_vencimiento : f.saldo_capital > 0)
     return coincideTexto && coincideTipo && coincideAviso
@@ -170,13 +211,14 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold">Financiamientos</h1>
-          <p className="text-sm text-muted-foreground">Paso 2. Financiamiento de la finca ya comprada. No aumenta el costo del lote.</p>
+          <p className="text-sm text-muted-foreground">El dinero que entra por un financiamiento se queda en este módulo. No se suma a las ventas de lotes. El pago al financista sí sale de esas ventas.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {vista !== 'lista' && <Button size="sm" variant="outline" onClick={volver}>Volver al listado</Button>}
           {vista === 'lista' && puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/financistas/reporte?formato=pdf${filtro ? `&finca_id=${filtro}` : ''}`, 'financiamientos.pdf')}>Listado PDF</Button>}
           {vista === 'lista' && puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/financistas/reporte?formato=xlsx${filtro ? `&finca_id=${filtro}` : ''}`, 'financiamientos.xlsx')}>Listado Excel</Button>}
           {vista === 'lista' && puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/financistas/reporte-vencimientos?formato=pdf', 'vencimientos.pdf')}>Por vencer</Button>}
+          {vista === 'lista' && puedePagar && <Button size="sm" variant="outline" onClick={() => abrirPago(null)}>Registrar pago</Button>}
           {vista === 'lista' && puedeEditar && <Button size="sm" onClick={() => { setEditId(null); setForm({ ...formVacio, fecha_inicio: hoy() }); setVista('form') }}>Nuevo financiamiento</Button>}
           {vista === 'lista' && <Button size="sm" variant="outline" onClick={() => bajar('/financistas/requisitos', 'registro-modulos.pdf')}>Registro PDF</Button>}
         </div>
@@ -197,7 +239,7 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
           <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>Registrados</CardTitle>
             <div className="grid w-full gap-2 sm:grid-cols-4">
-              <Input placeholder="Buscar finca o financiamiento" value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setPagina(1) }} />
+              <Input placeholder="Buscar por nombre, DPI o finca" value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setPagina(1) }} />
               <select className={campoFiltro} value={filtro} onChange={(e) => { setFiltro(e.target.value); setPagina(1) }}>
                 <option value="">Todas las fincas</option>
                 {fincas.map((f) => <option key={f.id} value={f.id}>{f.codigo} — {f.nombre}</option>)}
@@ -235,7 +277,7 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
                   <TableRow key={f.id}>
                     <TableCell>{f.finca?.nombre}</TableCell>
                     <TableCell>{f.nombre}{f.alerta_vencimiento && <Badge className="ml-2" variant="destructive">Por vencer</Badge>}</TableCell>
-                    <TableCell>{f.tipo} · {f.destino} · {f.frecuencia}</TableCell>
+                    <TableCell>{ESQUEMA[f.esquema || ''] || f.tipo} · {f.frecuencia}</TableCell>
                     <TableCell>{q(f.monto)}</TableCell>
                     <TableCell>{q(f.saldo_capital)}</TableCell>
                     <TableCell>{q(f.cuota)}</TableCell>
@@ -253,8 +295,10 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
                             setVista('form')
                             setForm({
                               finca_id: String(f.finca_id),
+                              esquema: f.esquema || (f.tipo === 'particular' ? 'particular_anual' : f.tipo === 'cooperativa' ? 'cooperativa_mensual' : 'libre'),
                               tipo: f.tipo,
                               nombre: f.nombre,
+                              dpi: f.dpi || '',
                               destino: f.destino,
                               monto: String(f.monto),
                               tasa_anual: f.tasa_anual != null ? String(f.tasa_anual) : '',
@@ -324,18 +368,37 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
               </select>
             </div>
             <div>
-              <Label>Nombre del financiamiento</Label>
-              <Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+              <Label>Nombre de quien financia</Label>
+              <Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Carlos Gómez" />
             </div>
             <div>
+              <Label>DPI</Label>
+              <Input value={form.dpi} onChange={(e) => setForm({ ...form, dpi: e.target.value })} placeholder="Para buscarlo al pagar" />
+            </div>
+            <div className="md:col-span-3">
+              <Label>Esquema</Label>
+              <select className={campo} value={form.esquema} onChange={(e) => aplicarEsquema(e.target.value)}>
+                <option value="particular_anual">Particular: un solo pago al cumplir el año</option>
+                <option value="cooperativa_mensual">Cooperativa: amortización mensual</option>
+                <option value="libre">Otro (banco u otra frecuencia)</option>
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {form.esquema === 'particular_anual' && 'Ejemplo: Q100,000 al 10% por un año. Al vencer se paga en una sola cuota el capital más el interés. Ese ingreso no se mezcla con las ventas.'}
+                {form.esquema === 'cooperativa_mensual' && 'Ejemplo: faltan Q500,000 para la finca y la cooperativa los presta. Capital e interés se pagan cada mes.'}
+                {form.esquema === 'libre' && 'Úsalo solo si el contrato no es ni el particular anual ni la cooperativa mensual.'}
+              </p>
+            </div>
+            {form.esquema === 'libre' && (
+            <div>
               <Label>Tipo</Label>
-              <select className={campo} value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value, capital_al_vencimiento: e.target.value === 'particular' })}>
+              <select className={campo} value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
                 <option value="banco">Banco</option>
                 <option value="cooperativa">Cooperativa</option>
                 <option value="particular">Particular</option>
                 <option value="otro">Otro</option>
               </select>
             </div>
+            )}
             <div>
               <Label>Destino</Label>
               <select className={campo} value={form.destino} onChange={(e) => setForm({ ...form, destino: e.target.value })}>
@@ -355,6 +418,7 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
               <Label>Plazo en meses</Label>
               <Input type="number" min={1} value={form.plazo} onChange={(e) => setForm({ ...form, plazo: e.target.value })} />
             </div>
+            {form.esquema === 'libre' && (
             <div>
               <Label>Forma de pago</Label>
               <select className={campo} value={form.frecuencia} onChange={(e) => setForm({ ...form, frecuencia: e.target.value })}>
@@ -364,14 +428,17 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
                 <option value="anual">Anual</option>
               </select>
             </div>
+            )}
             <div>
               <Label>Fecha de inicio</Label>
               <Input type="date" value={form.fecha_inicio} onChange={(e) => setForm({ ...form, fecha_inicio: e.target.value })} />
             </div>
+            {form.esquema === 'libre' && (
             <label className="flex items-center gap-2 text-sm md:col-span-3">
               <input type="checkbox" checked={form.capital_al_vencimiento} onChange={(e) => setForm({ ...form, capital_al_vencimiento: e.target.checked })} />
-              El capital se paga al vencimiento (el interés se sigue pagando en cada cuota)
+              El capital se paga al vencimiento y el interés en cada cuota
             </label>
+            )}
             <div className="md:col-span-3 rounded-md border p-3 text-sm">
               <p>Interés calculado: <strong>{q(plan.interes)}</strong></p>
               <p>{plan.n || 0} cuotas · cuota {q(plan.cuota)} · vence el {plan.vencimiento || '—'}</p>
@@ -412,8 +479,10 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
                 setGuardando(true)
                 const payload = {
                   finca_id: Number(form.finca_id),
+                  esquema: form.esquema,
                   tipo: form.tipo,
                   nombre: form.nombre,
+                  dpi: form.dpi || null,
                   destino: form.destino,
                   monto: num(form.monto),
                   tasa_anual: form.tasa_anual === '' ? null : num(form.tasa_anual),
@@ -437,55 +506,185 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
         </Card>
       )}
 
-      {vista === 'pago' && pagoItem && (
+      {vista === 'pago' && (
         <Card>
-          <CardHeader>
-            <CardTitle>Registrar pago · {pagoItem.finca?.nombre}</CardTitle>
+          <CardHeader className="space-y-3">
+            <CardTitle>Pago al financista</CardTitle>
+            <p className="text-sm text-muted-foreground">Busca a la persona por nombre o DPI. El pago es una salida: se debita de las ventas de lotes y no se mezcla con el dinero que esa persona aportó.</p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input placeholder="Nombre o DPI" value={busquedaPago} onChange={(e) => setBusquedaPago(e.target.value)} />
+              <Button type="button" className="bg-amber-400 text-black hover:bg-amber-500" onClick={() => {
+                const uno = candidatosPago[0]
+                if (!textoPago) {
+                  toast.error('Escribe el nombre o el DPI')
+                  return
+                }
+                if (!uno) {
+                  toast.error('No hay un financiamiento activo con ese nombre o DPI')
+                  return
+                }
+                abrirPago(uno)
+                setBusquedaPago(textoPago)
+              }}>Buscar financiamiento</Button>
+            </div>
+            {textoPago && candidatosPago.length > 1 && (
+              <div className="flex flex-wrap gap-2">
+                {candidatosPago.slice(0, 8).map((f) => (
+                  <Button key={f.id} type="button" size="sm" variant={pagoItem?.id === f.id ? 'default' : 'outline'} onClick={() => abrirPago(f)}>
+                    {f.nombre}{f.dpi ? ` · ${f.dpi}` : ''} · {f.finca?.nombre}
+                  </Button>
+                ))}
+              </div>
+            )}
           </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2">
-            <p className="text-sm md:col-span-2">{pagoItem.nombre}. Saldo {q(pagoItem.saldo_capital)} · interés pendiente {q(pagoItem.interes_pendiente)}.</p>
-            <div>
-              <Label>Fecha del pago</Label>
-              <Input type="date" value={pagoFecha} onChange={(e) => setPagoFecha(e.target.value)} />
+          {pagoItem && (
+          <CardContent className="space-y-4">
+            <div className="rounded-md bg-blue-600 px-3 py-2 text-center text-sm font-semibold text-white">
+              {pagoItem.nombre}{pagoItem.dpi ? ` · DPI ${pagoItem.dpi}` : ''} · {pagoItem.finca?.codigo || 'Finca'} {pagoItem.finca?.nombre}
             </div>
-            <div>
-              <Label>Comprobante (opcional)</Label>
-              <Input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => setArchivo(e.target.files?.[0] || null)} />
+            <div className="grid gap-2 md:grid-cols-3">
+              {[
+                ['Código', `FIN-${pagoItem.id}`],
+                ['Capital', q(pagoItem.monto)],
+                ['Saldo capital', q(pagoItem.saldo_capital)],
+                ['Interés', `${pagoItem.tasa_anual ?? 0}%`],
+                ['Fecha de desembolso', fecha(pagoItem.fecha_inicio) || '—'],
+                ['Saldo interés', q(pagoItem.interes_pendiente)],
+                ['Tipo', ESQUEMA[pagoItem.esquema || ''] || pagoItem.tipo],
+                ['Período', pagoItem.frecuencia || '—'],
+                ['Cuotas', String(pagoItem.numero_cuotas || '—')],
+                ['Vencimiento', fecha(pagoItem.fecha_vencimiento) || '—'],
+              ].map(([etiqueta, valor]) => (
+                <div key={etiqueta} className="flex items-center justify-between rounded-md bg-green-700 px-3 py-2 text-sm text-white">
+                  <span>{etiqueta}</span>
+                  <strong>{valor}</strong>
+                </div>
+              ))}
             </div>
-            <div className="md:col-span-2 rounded-md border p-3 text-sm">
-              <p>{pagoCalc.nota || 'Elige la fecha para calcular la cuota.'}</p>
-              <p className="mt-2">Capital: <strong>{q(pagoCalc.capital)}</strong></p>
-              <p>Interés: <strong>{q(pagoCalc.interes)}</strong></p>
-              <p>Mora: <strong>{q(pagoCalc.mora)}</strong></p>
+
+            <div className="space-y-3 rounded-md border p-3">
+              <p className="text-sm font-medium">Detalle del pago</p>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div>
+                  <Label>No. recibo</Label>
+                  <Input value={recibo} placeholder="Se asigna si lo dejas vacío" onChange={(e) => setRecibo(e.target.value)} />
+                </div>
+                <div>
+                  <Label>Método de pago</Label>
+                  <select className={campo} value={metodo} onChange={(e) => setMetodo(e.target.value)}>
+                    <option value="efectivo">Pago en efectivo</option>
+                    <option value="transferencia">Transferencia</option>
+                    <option value="cheque">Cheque</option>
+                    <option value="deposito">Depósito</option>
+                  </select>
+                </div>
+                <div>
+                  <Label>Fecha de pago</Label>
+                  <Input type="date" value={pagoFecha} onChange={(e) => setPagoFecha(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <Label>Concepto</Label>
+                <Input value={concepto} onChange={(e) => setConcepto(e.target.value)} />
+              </div>
+              <div>
+                <Label>Comprobante (opcional)</Label>
+                <Input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => setArchivo(e.target.files?.[0] || null)} />
+              </div>
             </div>
-            <div>
-              <Label>Descuento de interés</Label>
-              <Input type="number" value={descuento} onChange={(e) => setDescuento(e.target.value)} />
+
+            <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm">
+              <p className="mb-2 font-medium">Pagos pendientes</p>
+              <p className="mb-2 text-muted-foreground">{pagoCalc.nota || 'Elige la fecha para calcular la cuota.'}</p>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+                <div><span className="text-muted-foreground">Capital</span><div>{q(pagoCalc.capital)}</div></div>
+                <div><span className="text-muted-foreground">Interés</span><div>{q(pagoCalc.interes)}</div></div>
+                <div><span className="text-muted-foreground">Mora</span><div>{q(pagoCalc.mora)}</div></div>
+                <div>
+                  <Label>Descuento</Label>
+                  <Input type="number" value={descuento} onChange={(e) => setDescuento(e.target.value)} />
+                </div>
+                <div><span className="text-muted-foreground">Total cuota</span><div className="font-semibold">{q(Math.max(0, totalPagar))}</div></div>
+              </div>
             </div>
-            <div className="flex items-end">
-              <Button disabled={guardando} onClick={async () => {
+
+            <div className="rounded-md bg-blue-600 px-4 py-3 text-white">
+              <p className="text-sm">Total a pagar</p>
+              <p className="text-2xl font-semibold">{q(Math.max(0, totalPagar))}</p>
+            </div>
+
+            {verPlan && (
+              <div className="max-h-64 overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Cuota</TableHead>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Capital</TableHead>
+                      <TableHead>Interés</TableHead>
+                      <TableHead>Total</TableHead>
+                      <TableHead>Estado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {planFilas.map((fila) => (
+                      <TableRow key={fila.numero}>
+                        <TableCell>{fila.numero}</TableCell>
+                        <TableCell>{fila.fecha}</TableCell>
+                        <TableCell>{q(fila.capital)}</TableCell>
+                        <TableCell>{q(fila.interes)}</TableCell>
+                        <TableCell>{q(fila.total)}</TableCell>
+                        <TableCell>{fila.estado}</TableCell>
+                      </TableRow>
+                    ))}
+                    {planFilas.length === 0 && <TableRow><TableCell colSpan={6}>Este financiamiento todavía no tiene plan de cuotas.</TableCell></TableRow>}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <Button disabled={guardando || totalPagar <= 0} onClick={async () => {
                 if (!pagoFecha) return
                 try {
                   setGuardando(true)
-                  await financistaService.pagar(pagoItem.id, {
+                  const res = await financistaService.pagar(pagoItem.id, {
                     fecha: pagoFecha,
                     monto_capital: pagoCalc.capital,
                     monto_interes: pagoCalc.interes,
                     monto_mora: pagoCalc.mora,
                     descuento_interes: num(descuento),
+                    numero_recibo: recibo,
+                    metodo_pago: metodo,
+                    concepto,
                     archivo,
                   })
                   await cargar()
                   volver()
-                  toast.success('Pago registrado')
+                  toast.success(res.message || 'Pago registrado')
                 } catch (e: any) {
                   toast.error(e?.message || 'No se pudo pagar')
                 } finally {
                   setGuardando(false)
                 }
-              }}>Guardar pago</Button>
+              }}>Pagar</Button>
+              <Button type="button" variant="outline" onClick={async () => {
+                try {
+                  const res = await financistaService.estado(pagoItem.id)
+                  setPlanFilas(res.data?.plan || [])
+                  setVerPlan(true)
+                } catch (e: any) {
+                  toast.error(e?.message || 'No se pudo consultar el plan')
+                }
+              }}>Consultar plan de pago</Button>
+              {puedeReportes && (
+                <Button type="button" variant="outline" onClick={() => bajar(`/financistas/${pagoItem.id}/reporte?formato=pdf`, `estado-financista-${pagoItem.id}.pdf`)}>Estado de cuenta</Button>
+              )}
+              <Button type="button" variant="outline" onClick={() => abrirPago(null)}>Cancelar</Button>
+              <Button type="button" variant="ghost" onClick={volver}>Salir</Button>
             </div>
           </CardContent>
+          )}
         </Card>
       )}
     </div>

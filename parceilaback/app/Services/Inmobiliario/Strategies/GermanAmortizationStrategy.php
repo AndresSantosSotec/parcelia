@@ -23,7 +23,8 @@ class GermanAmortizationStrategy implements InterestCalculationStrategyInterface
             return $this->planVacio($montoFinanciado);
         }
 
-        $tasaMensual = ($tasaAnual / 100) / 12;
+        $paso = $this->pasoMeses($opciones);
+        $tasaPeriodo = ($tasaAnual / 100) * ($paso / 12);
         $capitalFijo = round($montoFinanciado / $plazoMeses, 2);
         $saldo = $montoFinanciado;
         $totalInteres = 0.0;
@@ -33,7 +34,7 @@ class GermanAmortizationStrategy implements InterestCalculationStrategyInterface
 
         for ($i = 1; $i <= $plazoMeses; $i++) {
             $saldoInicial = $saldo;
-            $interes = $tasaMensual == 0 ? 0.0 : round($saldo * $tasaMensual, 2);
+            $interes = $tasaPeriodo == 0 ? 0.0 : round($saldo * $tasaPeriodo, 2);
             $capital = ($i === $plazoMeses) ? round($saldo, 2) : $capitalFijo;
             $saldo = max(0.0, round($saldo - $capital, 2));
             $totalInteres += $interes;
@@ -42,7 +43,7 @@ class GermanAmortizationStrategy implements InterestCalculationStrategyInterface
                 $primeraCuota = $fila['cuota_monto_total'];
             }
             $cuotas[] = $fila;
-            $fecha->addMonth();
+            $fecha->addMonths($paso);
         }
 
         return $this->resumen('aleman_capital_fijo', $montoFinanciado, $tasaAnual, $plazoMeses, $primeraCuota, $totalInteres, $cuotas);

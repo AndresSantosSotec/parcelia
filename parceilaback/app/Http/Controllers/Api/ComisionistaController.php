@@ -7,6 +7,7 @@ use App\Models\Comisionista;
 use App\Models\ComisionRegla;
 use App\Models\ComisionVenta;
 use App\Models\Negociacion;
+use App\Services\CajaService;
 use Illuminate\Http\Request;
 
 class ComisionistaController extends Controller
@@ -163,7 +164,7 @@ class ComisionistaController extends Controller
 
     public function comisiones(Request $request)
     {
-        $query = ComisionVenta::with(['comisionista', 'lote:id,codigo_unico,numero_lote', 'negociacion:id,codigo_negociacion,precio_final', 'regla'])
+        $query = ComisionVenta::with(['comisionista', 'lote:id,codigo_unico,numero_lote', 'negociacion:id,codigo_negociacion,precio_original,precio_final,enganche_pactado,enganche_pagado,total_capital_pagado,saldo_capital_pendiente,monto_financiado,estado', 'regla'])
             ->withSum('pagos as pagado', 'monto');
 
         if ($request->filled('comisionista_id')) {
@@ -200,8 +201,11 @@ class ComisionistaController extends Controller
             'referencia' => 'nullable|string|max:255',
         ]);
 
+        $comision->load(['negociacion', 'regla', 'comisionista', 'lote:id,codigo_unico,numero_lote']);
         $pagado = round((float) $comision->pagos()->sum('monto'), 2);
         $pendiente = round((float) $comision->monto_comision - $pagado, 2);
+        $liberacion = $this->liberacion($comision);
+        $disponible = round(max(0, $liberacion['liberado'] - $pagado), 2);
         $monto = round((float) $validated['monto'], 2);
         if ($monto > $pendiente + 0.009) {
             return response()->json([
@@ -209,13 +213,31 @@ class ComisionistaController extends Controller
                 'message' => 'El pago supera la comisión pendiente.',
             ], 422);
         }
+        if ($monto > $disponible + 0.009) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Por ahora solo hay Q '.number_format($disponible, 2).' liberados, según lo que el comprador ya abonó. El resto se paga conforme entren el enganche y las cuotas, y se salda al escriturar.',
+            ], 422);
+        }
 
-        $comision->pagos()->create([
+        $pago = $comision->pagos()->create([
             'fecha' => $validated['fecha'],
             'monto' => $monto,
             'referencia' => $validated['referencia'] ?? null,
             'user_id' => $request->user()?->id,
         ]);
+        $persona = $comision->comisionista?->nombre ?: 'comisionista';
+        $lote = $comision->lote?->codigo_unico ?: 'lote';
+        $movimiento = CajaService::registrarEgreso($monto, "Pago de comisión a {$persona} · {$lote}", [
+            'tipo_operacion' => 'pago_comision',
+            'debita_ventas' => true,
+            'comision_id' => $comision->id,
+            'fecha' => $validated['fecha'],
+        ], $request->user()?->id);
+        if ($movimiento) {
+            $pago->movimiento_caja_id = $movimiento->id;
+            $pago->save();
+        }
 
         $nuevo = round($pagado + $monto, 2);
         $comision->estado = $nuevo + 0.009 >= (float) $comision->monto_comision ? 'pagada' : 'parcial';
@@ -243,11 +265,13 @@ class ComisionistaController extends Controller
 
     private function presentar(ComisionVenta $c): array
     {
-        $c->loadMissing(['comisionista', 'lote:id,codigo_unico,numero_lote', 'negociacion:id,codigo_negociacion,precio_final', 'regla']);
+        $c->loadMissing(['comisionista', 'lote:id,codigo_unico,numero_lote', 'negociacion:id,codigo_negociacion,precio_original,precio_final,enganche_pactado,enganche_pagado,total_capital_pagado,saldo_capital_pendiente,monto_financiado,estado', 'regla']);
         if (! array_key_exists('pagado', $c->getAttributes())) {
             $c->loadSum('pagos as pagado', 'monto');
         }
         $pagado = round((float) $c->pagado, 2);
+        $liberacion = $this->liberacion($c);
+        $pendiente = round(max(0, (float) $c->monto_comision - $pagado), 2);
 
         return [
             'id' => $c->id,
@@ -263,8 +287,44 @@ class ComisionistaController extends Controller
             'monto_venta' => (float) $c->monto_venta,
             'monto_comision' => (float) $c->monto_comision,
             'pagado' => $pagado,
-            'pendiente' => round(max(0, (float) $c->monto_comision - $pagado), 2),
+            'pendiente' => $pendiente,
+            'liberado' => $liberacion['liberado'],
+            'disponible' => round(max(0, $liberacion['liberado'] - $pagado), 2),
+            'cobrado_venta' => $liberacion['cobrado_venta'],
+            'precio_base' => $liberacion['precio_base'],
+            'excedente' => $liberacion['excedente'],
+            'venta_liquidada' => $liberacion['liquidada'],
             'estado' => $c->estado,
+        ];
+    }
+
+    private function liberacion(ComisionVenta $c): array
+    {
+        $negociacion = $c->negociacion;
+        $precio = $negociacion ? (float) $negociacion->precio_final : (float) $c->monto_venta;
+        $base = $negociacion ? (float) $negociacion->precio_original : 0.0;
+        $cobrado = 0.0;
+        $liquidada = false;
+        if ($negociacion) {
+            $cobrado = round((float) $negociacion->enganche_pagado + (float) $negociacion->total_capital_pagado, 2);
+            $liquidada = in_array($negociacion->estado, ['pagada', 'liquidada', 'escriturada', 'finalizada'], true)
+                || ($precio > 0 && $cobrado + 0.009 >= $precio);
+        }
+
+        $comision = round((float) $c->monto_comision, 2);
+        $momento = $c->regla?->momento;
+        if ($momento === 'proporcional' && $precio > 0.009) {
+            $liberado = $liquidada ? $comision : round($comision * min(1, $cobrado / $precio), 2);
+        } else {
+            $liberado = $comision;
+        }
+
+        return [
+            'precio_base' => round($base, 2),
+            'excedente' => round(max(0, $precio - $base), 2),
+            'cobrado_venta' => $cobrado,
+            'liberado' => $liberado,
+            'liquidada' => $liquidada,
         ];
     }
 
@@ -275,9 +335,9 @@ class ComisionistaController extends Controller
         return $request->validate([
             'nombre' => $req.'|string|max:160',
             'tipo' => $req.'|in:porcentaje,monto_fijo',
-            'base' => 'nullable|in:precio_final,precio_venta,enganche',
-            'valor' => $req.'|numeric|min:0.01',
-            'momento' => 'nullable|in:al_contrato,al_enganche,al_liquidar',
+            'base' => 'nullable|in:precio_final,precio_venta,enganche,excedente',
+            'valor' => $req.'|numeric|min:0',
+            'momento' => 'nullable|in:al_contrato,al_enganche,al_liquidar,proporcional',
             'activo' => 'nullable|boolean',
         ]);
     }
@@ -286,6 +346,14 @@ class ComisionistaController extends Controller
     {
         if (! $regla) {
             return 0;
+        }
+        $excedente = max(0, (float) $negociacion->precio_final - (float) $negociacion->precio_original);
+        if ($regla->base === 'excedente') {
+            if ($regla->tipo === 'porcentaje') {
+                return round($excedente * ((float) $regla->valor / 100), 2);
+            }
+
+            return round($excedente, 2);
         }
         if ($regla->tipo === 'monto_fijo') {
             return round((float) $regla->valor, 2);

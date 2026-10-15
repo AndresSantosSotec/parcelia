@@ -296,6 +296,10 @@ class PlanoLotificacionTest extends TestCase
         $this->assertSame('en_negociacion', $lote['estado']);
         $this->assertNotNull($lote['negociacion']);
         $this->assertSame('Ana María López', $lote['negociacion']['comprador']);
+        $this->assertSame('Admin Plano', $lote['negociacion']['asesor']);
+        $this->assertSame(12, (int) $lote['negociacion']['plazo_meses']);
+        $this->assertEquals(12, (float) $lote['negociacion']['tasa_interes_anual']);
+        $this->assertSame([], $lote['negociacion']['comisionistas']);
         $this->assertSame(0, PagoTerreno::count());
         $this->assertSame(1, Negociacion::count());
     }

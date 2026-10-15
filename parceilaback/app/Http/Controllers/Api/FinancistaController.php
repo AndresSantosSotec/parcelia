@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Financista;
 use App\Models\ParametrizacionMoraInmobiliaria;
+use App\Services\CajaService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -33,7 +34,7 @@ class FinancistaController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Financiamiento registrado. No suma al costo del lote.',
+            'message' => 'Financiamiento registrado. El dinero recibido se queda en este módulo y no se suma a los ingresos por venta de lotes.',
             'data' => $this->presentar($item->fresh()),
         ], 201);
     }
@@ -76,6 +77,9 @@ class FinancistaController extends Controller
             'monto_mora' => 'nullable|numeric|min:0',
             'descuento_interes' => 'nullable|numeric|min:0',
             'referencia' => 'nullable|string|max:255',
+            'numero_recibo' => 'nullable|string|max:40',
+            'metodo_pago' => 'nullable|in:efectivo,cheque,transferencia,deposito',
+            'concepto' => 'nullable|string|max:255',
             'archivo' => 'nullable|file|max:10240|mimes:pdf,jpg,jpeg,png,webp',
         ]);
 
@@ -92,17 +96,49 @@ class FinancistaController extends Controller
         }
 
         $archivo = $request->file('archivo');
-        $item->pagos()->create([
+        $correlativo = $item->pagos()->count() + 1;
+        $recibo = trim((string) ($validated['numero_recibo'] ?? ''));
+        if ($recibo === '') {
+            $recibo = 'FIN-'.$item->id.'-'.str_pad((string) $correlativo, 3, '0', STR_PAD_LEFT);
+        }
+        $concepto = trim((string) ($validated['concepto'] ?? ''));
+        if ($concepto === '') {
+            $concepto = 'PAGO DE FINANCIAMIENTO A NOMBRE DE '.mb_strtoupper($item->nombre).' CON NÚMERO DE RECIBO '.$recibo;
+        }
+        $salida = round($capital + $interes + $mora, 2);
+        $pago = $item->pagos()->create([
             'fecha' => $validated['fecha'],
+            'numero_recibo' => $recibo,
+            'metodo_pago' => $validated['metodo_pago'] ?? 'efectivo',
+            'concepto' => $concepto,
             'monto_capital' => $capital,
             'monto_interes' => $interes,
             'monto_mora' => $mora,
             'descuento_interes' => $descuento,
-            'referencia' => $validated['referencia'] ?? null,
+            'referencia' => $validated['referencia'] ?? $recibo,
             'archivo_path' => $archivo ? $archivo->store('financista-pagos', 'public') : null,
             'archivo_nombre' => $archivo ? $archivo->getClientOriginalName() : null,
             'user_id' => $request->user()?->id,
         ]);
+
+        $cajaAplicada = false;
+        if ($salida > 0) {
+            $movimiento = CajaService::registrarEgreso($salida, $concepto, [
+                'tipo_operacion' => 'pago_financista',
+                'debita_ventas' => true,
+                'financista_id' => $item->id,
+                'numero_recibo' => $recibo,
+                'capital' => $capital,
+                'interes' => $interes,
+                'mora' => $mora,
+                'fecha' => $validated['fecha'],
+            ], $request->user()?->id);
+            if ($movimiento) {
+                $pago->movimiento_caja_id = $movimiento->id;
+                $pago->save();
+                $cajaAplicada = true;
+            }
+        }
 
         $fresco = $item->fresh();
         $vista = $this->presentar($fresco);
@@ -112,10 +148,16 @@ class FinancistaController extends Controller
             $vista['estado'] = 'liquidado';
         }
 
+        $mensaje = $cajaAplicada
+            ? 'Pago registrado. Salió de la caja y se debita de las ventas de lotes. El ingreso original del financiamiento sigue aparte.'
+            : 'Pago registrado en el financiamiento. No había caja abierta, así que el débito de caja queda pendiente de registrarse en el siguiente movimiento de caja.';
+
         return response()->json([
             'success' => true,
-            'message' => 'Pago al financista registrado.',
+            'message' => $mensaje,
             'data' => $vista,
+            'numero_recibo' => $recibo,
+            'caja_aplicada' => $cajaAplicada,
         ]);
     }
 
@@ -138,11 +180,15 @@ class FinancistaController extends Controller
     {
         $item = Financista::with(['finca:id,nombre,codigo', 'pagos'])->findOrFail($id);
 
+        $item->loadSum('pagos as capital_pagado', 'monto_capital');
+        $item->loadSum('pagos as interes_pagado', 'monto_interes');
+
         return response()->json([
             'success' => true,
             'data' => [
                 'financista' => $this->presentar($item),
                 'pagos' => $item->pagos()->orderBy('fecha')->orderBy('id')->get(),
+                'plan' => $this->planConSaldos($item),
             ],
         ]);
     }
@@ -152,10 +198,12 @@ class FinancistaController extends Controller
         return $request->validate([
             'finca_id' => 'required|integer|exists:fincas,id',
             'tipo' => 'required|in:banco,cooperativa,particular,otro',
+            'esquema' => 'nullable|in:particular_anual,cooperativa_mensual,libre',
             'nombre' => 'required|string|max:255',
+            'dpi' => 'nullable|string|max:30',
             'destino' => 'required|in:compra,urbanizacion',
             'monto' => 'required|numeric|min:0.01',
-            'tasa_anual' => 'nullable|numeric|min:5|max:100',
+            'tasa_anual' => 'nullable|numeric|min:0|max:100',
             'interes_total' => 'nullable|numeric|min:0',
             'plazo' => 'nullable|integer|min:1|max:600',
             'frecuencia' => 'nullable|in:mensual,bimensual,trimestral,semestral,anual',
@@ -169,6 +217,20 @@ class FinancistaController extends Controller
 
     private function aplicarPlan(array $datos): array
     {
+        $esquema = $datos['esquema'] ?? null;
+        if ($esquema === 'particular_anual') {
+            $datos['tipo'] = 'particular';
+            $datos['frecuencia'] = 'anual';
+            $datos['capital_al_vencimiento'] = true;
+            if ((int) ($datos['plazo'] ?? 0) < 1) {
+                $datos['plazo'] = 12;
+            }
+        } elseif ($esquema === 'cooperativa_mensual') {
+            $datos['tipo'] = 'cooperativa';
+            $datos['frecuencia'] = 'mensual';
+            $datos['capital_al_vencimiento'] = false;
+        }
+
         $meses = (int) ($datos['plazo'] ?? 0);
         $tasa = (float) ($datos['tasa_anual'] ?? 0);
         $monto = (float) ($datos['monto'] ?? 0);
@@ -181,6 +243,9 @@ class FinancistaController extends Controller
         $datos['cuota'] = $n > 0
             ? round(($capitalAlFinal ? (float) $datos['interes_total'] : $monto + (float) $datos['interes_total']) / $n, 2)
             : 0;
+        if (($datos['esquema'] ?? null) === 'particular_anual' && $n === 1) {
+            $datos['cuota'] = round($monto + (float) $datos['interes_total'], 2);
+        }
 
         if (empty($datos['fecha_inicio'])) {
             $datos['fecha_inicio'] = Carbon::today()->toDateString();
@@ -340,6 +405,35 @@ class FinancistaController extends Controller
         return round($capital * ((float) $config->porcentaje_diario / 100) * $dias, 2);
     }
 
+    private function planConSaldos(Financista $f): array
+    {
+        $capitalPagado = round((float) ($f->capital_pagado ?? 0), 2);
+        $interesPagado = round((float) ($f->interes_pagado ?? 0), 2);
+        $filas = [];
+        foreach ($this->cuotasDe($f) as $cuota) {
+            $tomarCapital = min($cuota['capital'], $capitalPagado);
+            $tomarInteres = min($cuota['interes'], $interesPagado);
+            $capitalPagado = round($capitalPagado - $tomarCapital, 2);
+            $interesPagado = round($interesPagado - $tomarInteres, 2);
+            $pendienteCapital = round($cuota['capital'] - $tomarCapital, 2);
+            $pendienteInteres = round($cuota['interes'] - $tomarInteres, 2);
+            $cubierta = $pendienteCapital <= 0.009 && $pendienteInteres <= 0.009;
+            $algo = $tomarCapital > 0.009 || $tomarInteres > 0.009;
+            $filas[] = [
+                'numero' => $cuota['numero'],
+                'fecha' => $cuota['fecha'],
+                'capital' => $cuota['capital'],
+                'interes' => $cuota['interes'],
+                'total' => round($cuota['capital'] + $cuota['interes'], 2),
+                'pendiente_capital' => $pendienteCapital,
+                'pendiente_interes' => $pendienteInteres,
+                'estado' => $cubierta ? 'pagada' : ($algo ? 'parcial' : 'pendiente'),
+            ];
+        }
+
+        return $filas;
+    }
+
     private function presentar(Financista $f): array
     {
         $f->loadMissing('finca:id,nombre,codigo');
@@ -366,7 +460,9 @@ class FinancistaController extends Controller
             'finca_id' => $f->finca_id,
             'finca' => $f->finca,
             'tipo' => $f->tipo,
+            'esquema' => $f->esquema,
             'nombre' => $f->nombre,
+            'dpi' => $f->dpi,
             'destino' => $f->destino,
             'monto' => (float) $f->monto,
             'tasa_anual' => $f->tasa_anual !== null ? (float) $f->tasa_anual : null,

@@ -22,6 +22,7 @@ class StoreNegociacionRequest extends FormRequest
             'gastos_administrativos' => 'nullable|numeric|min:0',
             'enganche_pactado' => 'nullable|numeric|min:0',
             'plazo_meses' => 'required_if:tipo_negociacion,credito|nullable|integer|min:1|max:240',
+            'periodo_pago' => 'nullable|in:mensual,bimestral,trimestral,cuatrimestral,quimestral,semestral,anual',
             'tasa_interes_id' => 'nullable|exists:tasas_interes_inmobiliarias,id',
             'parametrizacion_mora_id' => 'nullable|exists:parametrizacion_mora_inmobiliaria,id',
             'tasa_interes_anual' => 'nullable|numeric|min:0|max:100',

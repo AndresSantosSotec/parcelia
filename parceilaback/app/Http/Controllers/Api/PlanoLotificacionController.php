@@ -24,7 +24,16 @@ class PlanoLotificacionController extends Controller
         $plano = FincaPlano::where('finca_id', $finca->id)->first();
         $verComprador = $user?->hasPermission('negociaciones', 'ver') ?? false;
 
-        $lotes = Lote::with(['parcela:id,nombre_identificador,codigo', 'servicios', 'vendedor:id,name', 'ocupacion.comprador', 'geometria'])
+        $lotes = Lote::with([
+            'parcela:id,nombre_identificador,codigo',
+            'servicios',
+            'vendedor:id,name',
+            'ocupacion.comprador',
+            'ocupacion.asesor:id,name',
+            'ocupacion.comisiones.comisionista:id,nombre',
+            'comisiones.comisionista:id,nombre',
+            'geometria',
+        ])
             ->whereHas('parcela', fn ($q) => $q->where('finca_id', $finca->id))
             ->orderBy('parcela_id')
             ->orderBy('numero_lote')
@@ -238,11 +247,16 @@ class PlanoLotificacionController extends Controller
         }
 
         $neg = $lote->ocupacion;
+        $comisiones = ($neg && $neg->comisiones->isNotEmpty()) ? $neg->comisiones : $lote->comisiones;
 
         return $base + [
             'area_m2' => $lote->area_m2,
             'frente_metros' => $lote->frente_metros,
             'fondo_metros' => $lote->fondo_metros,
+            'lado_norte' => $lote->lado_norte,
+            'lado_sur' => $lote->lado_sur,
+            'lado_este' => $lote->lado_este,
+            'lado_oeste' => $lote->lado_oeste,
             'tipo_terreno' => $lote->tipo_terreno,
             'colindancias' => $lote->colindancias,
             'precio_venta' => $lote->precio_venta,
@@ -261,6 +275,22 @@ class PlanoLotificacionController extends Controller
                 'comprador' => $verComprador && $neg->comprador
                     ? trim($neg->comprador->nombres.' '.$neg->comprador->apellidos)
                     : null,
+                'asesor' => $neg->asesor?->name,
+                'precio_final' => $neg->precio_final,
+                'enganche_pactado' => $neg->enganche_pactado,
+                'plazo_meses' => $neg->plazo_meses,
+                'tasa_interes_anual' => $neg->tasa_interes_anual,
+                'sistema_amortizacion' => $neg->sistema_amortizacion,
+                'cuota_mensual' => $neg->cuota_mensual,
+                'monto_financiado' => $neg->monto_financiado,
+                'cuotas_pagadas' => $neg->cuotas_pagadas,
+                'cuotas_pendientes' => $neg->cuotas_pendientes,
+                'saldo_capital_pendiente' => $neg->saldo_capital_pendiente,
+                'comisionistas' => $comisiones->map(fn ($c) => [
+                    'nombre' => $c->comisionista?->nombre,
+                    'monto' => $c->monto_comision,
+                    'estado' => $c->estado,
+                ])->filter(fn ($c) => filled($c['nombre']))->values(),
             ] : null,
         ];
     }

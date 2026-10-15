@@ -27,8 +27,9 @@ class FlatInterestStrategy implements InterestCalculationStrategyInterface
             ];
         }
 
-        // Interés Total = Principal * (TasaAnual / 100) * (Meses / 12)
-        $anios = $plazoMeses / 12;
+        $paso = max(1, min(12, (int) ($opciones['meses_periodo'] ?? 1)));
+        // Interés Total = Principal * (TasaAnual / 100) * (duración en años)
+        $anios = ($plazoMeses * $paso) / 12;
         $totalInteres = round($montoFinanciado * ($tasaAnual / 100) * $anios, 2);
         $totalPagar = $montoFinanciado + $totalInteres;
 
@@ -63,7 +64,7 @@ class FlatInterestStrategy implements InterestCalculationStrategyInterface
                 'estado' => 'pendiente'
             ];
 
-            $fechaVencimiento->addMonth();
+            $fechaVencimiento->addMonths($paso);
         }
 
         return [

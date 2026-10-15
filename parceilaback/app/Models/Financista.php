@@ -9,7 +9,9 @@ class Financista extends Model
     protected $fillable = [
         'finca_id',
         'tipo',
+        'esquema',
         'nombre',
+        'dpi',
         'destino',
         'monto',
         'tasa_anual',

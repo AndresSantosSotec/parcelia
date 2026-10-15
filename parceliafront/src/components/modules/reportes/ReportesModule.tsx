@@ -20,13 +20,32 @@ export function ReportesModule() {
   const [ventas, setVentas] = useState<any>(null)
   const [cobranza, setCobranza] = useState<any>(null)
   const [ingresosHoy, setIngresosHoy] = useState<any>(null)
+  const [fechaDesde, setFechaDesde] = useState('')
+  const [fechaHasta, setFechaHasta] = useState('')
+
+  const queryVentas = (desde = fechaDesde, hasta = fechaHasta) => {
+    const q = new URLSearchParams()
+    if (desde) q.set('fecha_desde', desde)
+    if (hasta) q.set('fecha_hasta', hasta)
+    const texto = q.toString()
+    return texto ? `/reportes-inmobiliarios/ventas?${texto}` : '/reportes-inmobiliarios/ventas'
+  }
+
+  const cargarVentas = async (desde = fechaDesde, hasta = fechaHasta) => {
+    if (desde && hasta && hasta < desde) {
+      toast.error('La fecha final del intervalo no puede ser anterior a la inicial')
+      return
+    }
+    const resVen = await api.get<any>(queryVentas(desde, hasta)).catch(() => null)
+    if (resVen?.success) setVentas(resVen.data)
+  }
 
   const cargarReportes = async () => {
     setCargando(true)
     try {
       const [resInv, resVen, resCob, resIng] = await Promise.all([
         api.get<any>('/reportes-inmobiliarios/inventario').catch(() => null),
-        api.get<any>('/reportes-inmobiliarios/ventas').catch(() => null),
+        api.get<any>(queryVentas()).catch(() => null),
         api.get<any>('/reportes-inmobiliarios/cobranza').catch(() => null),
         api.get<any>('/reportes-inmobiliarios/ingresos-diarios').catch(() => null),
       ])
@@ -110,10 +129,10 @@ export function ReportesModule() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-black text-foreground">
-              {ventas?.total_contratos ?? 0}
+              Q{Number(ventas?.monto_total_ventas || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {ventas?.ventas_credito ?? 0} a crédito · {ventas?.ventas_contado ?? 0} al contado
+              {(ventas?.total_contratos ?? 0) === 1 ? '1 contrato' : `${ventas?.total_contratos ?? 0} contratos`} · {ventas?.ventas_credito ?? 0} a plazo · {ventas?.ventas_contado ?? 0} al contado
             </p>
           </CardContent>
         </Card>
@@ -251,11 +270,23 @@ export function ReportesModule() {
             <CardHeader className="pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <CardTitle className="text-base">Contratos Cerrados & Financiamientos</CardTitle>
-                <CardDescription className="text-xs">Registro histórico de transacciones realizadas</CardDescription>
+                <CardDescription className="text-xs">
+                  Total del intervalo: Q{Number(ventas?.monto_total_ventas || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {' '}· {(ventas?.total_contratos ?? 0) === 1 ? '1 contrato' : `${ventas?.total_contratos ?? 0} contratos`}
+                </CardDescription>
               </div>
-              <div className="flex gap-2 w-full sm:w-auto">
-                <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => descargar('/reportes-inmobiliarios/ventas', 'pdf', 'ventas-terrenos.pdf')}>PDF</Button>
-                <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => descargar('/reportes-inmobiliarios/ventas', 'xlsx', 'ventas-terrenos.xlsx')}>Excel</Button>
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:items-end">
+                <label className="text-xs text-muted-foreground space-y-1">
+                  <span className="block">Desde</span>
+                  <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} className="bg-background border rounded-lg px-2 py-1.5 text-sm text-foreground" />
+                </label>
+                <label className="text-xs text-muted-foreground space-y-1">
+                  <span className="block">Hasta</span>
+                  <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="bg-background border rounded-lg px-2 py-1.5 text-sm text-foreground" />
+                </label>
+                <Button variant="outline" size="sm" onClick={() => cargarVentas()}>Ver total</Button>
+                <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => descargar(queryVentas(), 'pdf', 'ventas-terrenos.pdf')}>PDF</Button>
+                <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => descargar(queryVentas(), 'xlsx', 'ventas-terrenos.xlsx')}>Excel</Button>
               </div>
             </CardHeader>
             <CardContent>

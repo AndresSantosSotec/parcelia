@@ -26,11 +26,13 @@ const MOMENTO: Record<string, string> = {
   al_contrato: 'Al firmar el contrato',
   al_enganche: 'Al cobrar el enganche',
   al_liquidar: 'Al liquidar la venta',
+  proporcional: 'Conforme el comprador abona, hasta escriturar',
 }
 const BASE: Record<string, string> = {
   precio_final: 'Precio final de la venta',
   precio_venta: 'Precio de lista',
   enganche: 'Enganche',
+  excedente: 'Excedente sobre el precio de lista',
 }
 
 export function ComisionistasModule({ userSession }: { userSession?: { userData?: { rol?: string; permisos?: unknown } | null } }) {
@@ -47,6 +49,7 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
   const [regla, setRegla] = useState({ nombre: '', tipo: 'porcentaje', base: 'precio_final', valor: '', momento: 'al_contrato' })
   const [aplicar, setAplicar] = useState({ comisionista_id: '', negociacion_id: '', regla_id: '', monto: '' })
   const [pago, setPago] = useState({ id: 0, fecha: '', monto: '', referencia: '' })
+  const [buscaComision, setBuscaComision] = useState('')
   const [personaId, setPersonaId] = useState<number | null>(null)
   const [mostrarPersona, setMostrarPersona] = useState(false)
   const [altaRapida, setAltaRapida] = useState(false)
@@ -91,6 +94,11 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
   )
   const calculada = useMemo(() => {
     if (!venta || !reglaSel) return 0
+    const excedente = Math.max(0, Number(venta.precio_final) - Number(venta.precio_original))
+    if (reglaSel.base === 'excedente') {
+      if (reglaSel.tipo === 'porcentaje') return Math.round(excedente * (Number(reglaSel.valor) / 100) * 100) / 100
+      return Math.round(excedente * 100) / 100
+    }
     if (reglaSel.tipo === 'monto_fijo') return Number(reglaSel.valor)
     const base = reglaSel.base === 'precio_venta'
       ? Number(venta.precio_original)
@@ -142,7 +150,7 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold">Comisionistas</h1>
-          <p className="text-sm text-muted-foreground">Paso 3. Comisión de la venta, después de comprar la finca y registrar su financiamiento.</p>
+          <p className="text-sm text-muted-foreground">Si el lote se vende por encima del precio de lista, la comisión es esa diferencia. Se paga en la misma proporción en que el comprador abona, y se termina al escriturar. En cero, deja de aparecer para cobro.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/comisiones/reporte-pendientes?formato=pdf', 'comisiones-pendientes.pdf')}>Pendientes</Button>}
@@ -291,6 +299,12 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                     onChange={(e) => setAplicar({ ...aplicar, monto: e.target.value })}
                   />
                   {aplicar.regla_id && <p className="mt-1 text-xs text-muted-foreground">Calculado con la regla sobre la venta.</p>}
+                  {venta && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Lista {q(venta.precio_original)} · vendido en {q(venta.precio_final)} · excedente {q(Math.max(0, Number(venta.precio_final) - Number(venta.precio_original)))}.
+                      Un lote de 30,000 vendido en 35,000 deja 5,000 de comisión.
+                    </p>
+                  )}
                 </div>
                 <Button onClick={async () => {
                   if (!aplicar.negociacion_id || !aplicar.comisionista_id) {
@@ -317,35 +331,66 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
 
           {puedePagar && (
             <Card>
-              <CardHeader><CardTitle>Pago de una comisión</CardTitle></CardHeader>
-              <CardContent className="grid gap-3 md:grid-cols-4">
-                <div>
-                  <Label>Comisión</Label>
-                  <select className={campo} value={pago.id} onChange={(e) => setPago({ ...pago, id: Number(e.target.value) })}>
-                    <option value={0}>Elegir</option>
-                    {comisiones.filter((c) => c.estado !== 'pagada').map((c) => (
-                      <option key={c.id} value={c.id}>{c.comisionista?.nombre} · {c.negociacion?.codigo_negociacion || c.lote?.codigo_unico} · pendiente {q(c.pendiente)}</option>
-                    ))}
-                  </select>
-                </div>
-                <div><Label>Fecha</Label><Input type="date" value={pago.fecha} onChange={(e) => setPago({ ...pago, fecha: e.target.value })} /></div>
-                <div><Label>Monto</Label><Input type="number" value={pago.monto} onChange={(e) => setPago({ ...pago, monto: e.target.value })} /></div>
-                <div><Label>Referencia</Label><Input value={pago.referencia} onChange={(e) => setPago({ ...pago, referencia: e.target.value })} /></div>
-                <Button onClick={async () => {
-                  if (!pago.id || !pago.monto) return
-                  try {
-                    await comisionistaService.pagar(pago.id, {
-                      fecha: pago.fecha || new Date().toISOString().slice(0, 10),
-                      monto: Number(pago.monto),
-                      referencia: pago.referencia,
+              <CardHeader>
+                <CardTitle>Pago al comisionista</CardTitle>
+                <p className="text-sm text-muted-foreground">Busca a la persona por nombre o DPI y abona lo que ya se liberó. Si el pendiente de ese lote llega a cero, desaparece de esta lista.</p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Input placeholder="Nombre o DPI del comisionista" value={buscaComision} onChange={(e) => setBuscaComision(e.target.value)} />
+                <div className="grid gap-2">
+                  {comisiones
+                    .filter((c) => c.pendiente > 0.009)
+                    .filter((c) => {
+                      const texto = buscaComision.trim().toLowerCase()
+                      if (!texto) return false
+                      return [c.comisionista?.nombre, c.comisionista?.dpi, c.lote?.codigo_unico, c.negociacion?.codigo_negociacion]
+                        .some((valor) => String(valor || '').toLowerCase().includes(texto))
                     })
-                    await cargar()
-                    if (puedeReportes) await bajar(`/comisiones/${pago.id}/recibo-pdf`, `recibo-comision-${pago.id}.pdf`)
-                    toast.success('Pago registrado')
-                  } catch (e: any) {
-                    toast.error(e?.response?.data?.message || e?.message || 'No se pudo pagar')
-                  }
-                }}>Guardar pago y recibo</Button>
+                    .map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={`rounded-md border px-3 py-2 text-left text-sm ${pago.id === c.id ? 'border-blue-600 bg-blue-50' : ''}`}
+                        onClick={() => setPago({
+                          ...pago,
+                          id: c.id,
+                          monto: String(c.disponible ?? c.pendiente),
+                        })}
+                      >
+                        <span className="font-medium">{c.comisionista?.nombre}</span>
+                        {c.comisionista?.dpi ? ` · DPI ${c.comisionista.dpi}` : ''}
+                        {' · '}{c.lote?.codigo_unico || c.negociacion?.codigo_negociacion}
+                        <span className="mt-1 block text-muted-foreground">
+                          Comisión {q(c.monto_comision)} · liberado {q(c.liberado ?? c.monto_comision)} · se puede pagar {q(c.disponible ?? c.pendiente)} · pendiente {q(c.pendiente)}
+                        </span>
+                      </button>
+                    ))}
+                </div>
+                {pago.id > 0 && (
+                  <div className="grid gap-3 md:grid-cols-4">
+                    <div><Label>Fecha</Label><Input type="date" value={pago.fecha} onChange={(e) => setPago({ ...pago, fecha: e.target.value })} /></div>
+                    <div><Label>Monto a pagar ahora</Label><Input type="number" value={pago.monto} onChange={(e) => setPago({ ...pago, monto: e.target.value })} /></div>
+                    <div><Label>Referencia</Label><Input value={pago.referencia} onChange={(e) => setPago({ ...pago, referencia: e.target.value })} /></div>
+                    <div className="flex items-end">
+                      <Button onClick={async () => {
+                        if (!pago.id || !pago.monto) return
+                        try {
+                          await comisionistaService.pagar(pago.id, {
+                            fecha: pago.fecha || new Date().toISOString().slice(0, 10),
+                            monto: Number(pago.monto),
+                            referencia: pago.referencia,
+                          })
+                          await cargar()
+                          if (puedeReportes) await bajar(`/comisiones/${pago.id}/recibo-pdf`, `recibo-comision-${pago.id}.pdf`)
+                          setPago({ id: 0, fecha: '', monto: '', referencia: '' })
+                          toast.success('Pago registrado. Si el saldo quedó en cero, esa comisión ya no aparece para cobro.')
+                        } catch (e: any) {
+                          toast.error(e?.response?.data?.message || e?.message || 'No se pudo pagar')
+                        }
+                      }}>Pagar y recibo</Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -466,9 +511,11 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                     <TableRow key={r.id}>
                       <TableCell>{r.nombre}</TableCell>
                       <TableCell>
-                        {r.tipo === 'monto_fijo'
-                          ? `Monto fijo ${q(r.valor)}`
-                          : `${r.valor}% sobre ${BASE[r.base] || r.base}`}
+                        {r.base === 'excedente' && r.tipo === 'monto_fijo'
+                          ? 'El excedente de la venta'
+                          : r.tipo === 'monto_fijo'
+                            ? `Monto fijo ${q(r.valor)}`
+                            : `${r.valor}% sobre ${BASE[r.base] || r.base}`}
                       </TableCell>
                       <TableCell>{MOMENTO[r.momento] || r.momento}</TableCell>
                       <TableCell>{r.activo ? 'Activa' : 'Inactiva'}</TableCell>
@@ -514,36 +561,46 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                     <option value="monto_fijo">Monto fijo</option>
                   </select>
                 </div>
-                {regla.tipo === 'porcentaje' && (
-                  <div>
-                    <Label>Se calcula sobre</Label>
-                    <select className={campo} value={regla.base} onChange={(e) => setRegla({ ...regla, base: e.target.value })}>
-                      <option value="precio_final">Precio final de la venta</option>
-                      <option value="precio_venta">Precio de lista</option>
-                      <option value="enganche">Enganche</option>
-                    </select>
-                  </div>
-                )}
+                <div>
+                  <Label>Se calcula sobre</Label>
+                  <select className={campo} value={regla.base} onChange={(e) => setRegla({
+                    ...regla,
+                    base: e.target.value,
+                    momento: e.target.value === 'excedente' ? 'proporcional' : regla.momento,
+                  })}>
+                    <option value="precio_final">Precio final de la venta</option>
+                    <option value="precio_venta">Precio de lista</option>
+                    <option value="enganche">Enganche</option>
+                    <option value="excedente">El excedente sobre el precio de lista</option>
+                  </select>
+                  {regla.base === 'excedente' && (
+                    <p className="mt-1 text-xs text-muted-foreground">Lista 30,000 y venta en 35,000: la comisión es 5,000. Se va soltando conforme el comprador abona.</p>
+                  )}
+                </div>
+                {!(regla.base === 'excedente' && regla.tipo === 'monto_fijo') && (
                 <div>
                   <Label>{regla.tipo === 'porcentaje' ? 'Porcentaje' : 'Monto fijo'}</Label>
                   <Input type="number" value={regla.valor} onChange={(e) => setRegla({ ...regla, valor: e.target.value })} />
                 </div>
+                )}
                 <div>
                   <Label>Cuándo se reconoce</Label>
                   <select className={campo} value={regla.momento} onChange={(e) => setRegla({ ...regla, momento: e.target.value })}>
                     <option value="al_contrato">Al firmar el contrato</option>
                     <option value="al_enganche">Al cobrar el enganche</option>
                     <option value="al_liquidar">Al liquidar la venta</option>
+                    <option value="proporcional">Conforme abona el comprador, hasta escriturar</option>
                   </select>
                 </div>
                 <Button onClick={async () => {
-                  if (!regla.nombre || !regla.valor) return
+                  const usaExcedente = regla.base === 'excedente' && regla.tipo === 'monto_fijo'
+                  if (!regla.nombre || (!usaExcedente && !regla.valor)) return
                   try {
                     const payload = {
                       nombre: regla.nombre,
                       tipo: regla.tipo,
                       base: regla.base,
-                      valor: Number(regla.valor),
+                      valor: usaExcedente ? 0 : Number(regla.valor),
                       momento: regla.momento,
                     }
                     if (reglaId) await comisionistaService.actualizarRegla(reglaId, payload)

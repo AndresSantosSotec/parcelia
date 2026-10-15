@@ -14,6 +14,7 @@ import { SelectorUbicacion } from '@/components/shared/SelectorUbicacion'
 import { MapPickerField, type GeoCoords } from '@/components/ui/MapPickerField'
 import { urlFichaTerreno, urlFotoLote } from '@/lib/media'
 import { usePermissions } from '@/hooks/use-permissions'
+import { areaDesdeLados, textoMedidas } from '@/lib/areaLote'
 
 const PASOS_LOTE = [
   { id: 0, titulo: 'Identidad', desc: 'Número y tipo' },
@@ -36,11 +37,15 @@ const formFincaVacio = {
 
 const formLoteVacio = {
   numero_lote: '',
-  area_m2: 200,
-  frente_metros: 10,
-  fondo_metros: 20,
+  area_m2: 0,
+  frente_metros: 0,
+  fondo_metros: 0,
+  lado_norte: 0,
+  lado_sur: 0,
+  lado_este: 0,
+  lado_oeste: 0,
   precio_m2: 450,
-  precio_venta: 90000,
+  precio_venta: 0,
   tipo_terreno: 'Residencial',
   colindancias: '',
   observaciones: '',
@@ -311,6 +316,10 @@ export function FincasModule({ userSession }: FincasModuleProps) {
       area_m2: Number(lote.area_m2) || 0,
       frente_metros: Number(lote.frente_metros) || 0,
       fondo_metros: Number(lote.fondo_metros) || 0,
+      lado_norte: Number(lote.lado_norte) || 0,
+      lado_sur: Number(lote.lado_sur) || 0,
+      lado_este: Number(lote.lado_este) || 0,
+      lado_oeste: Number(lote.lado_oeste) || 0,
       precio_m2: Number(lote.precio_m2) || 0,
       precio_venta: Number(lote.precio_venta) || 0,
       tipo_terreno: lote.tipo_terreno || 'Residencial',
@@ -358,8 +367,12 @@ export function FincasModule({ userSession }: FincasModuleProps) {
     const payload: Partial<Lote> = {
       numero_lote: formLote.numero_lote,
       area_m2: formLote.area_m2,
-      frente_metros: formLote.frente_metros,
-      fondo_metros: formLote.fondo_metros,
+      frente_metros: formLote.frente_metros || undefined,
+      fondo_metros: formLote.fondo_metros || undefined,
+      lado_norte: formLote.lado_norte || null,
+      lado_sur: formLote.lado_sur || null,
+      lado_este: formLote.lado_este || null,
+      lado_oeste: formLote.lado_oeste || null,
       precio_m2: formLote.precio_m2,
       precio_venta: formLote.precio_venta,
       tipo_terreno: formLote.tipo_terreno,
@@ -833,7 +846,7 @@ export function FincasModule({ userSession }: FincasModuleProps) {
                       </p>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {lote.area_m2} m² · {lote.frente_metros || '—'} × {lote.fondo_metros || '—'} m
+                      {lote.area_m2} m² · {textoMedidas(lote)}
                     </p>
                     {isAdmin && (lote.vendedor || lote.vendedor_id) && (
                       <p className="text-xs text-muted-foreground inline-flex items-center gap-1">
@@ -910,7 +923,7 @@ export function FincasModule({ userSession }: FincasModuleProps) {
                       )}
                       <TableCell className="text-right">{lote.area_m2}</TableCell>
                       <TableCell className="text-xs">
-                        {lote.frente_metros || '—'} m × {lote.fondo_metros || '—'} m
+                        {textoMedidas(lote)}
                       </TableCell>
                       <TableCell className="text-xs">
                         {lote.latitud != null && lote.longitud != null ? (
@@ -1200,42 +1213,34 @@ export function FincasModule({ userSession }: FincasModuleProps) {
             {pasoLote === 1 && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Frente (m)</Label>
-                    <Input
-                      type="number"
-                      value={formLote.frente_metros}
-                      onChange={(e) => {
-                        const frente = parseFloat(e.target.value) || 0
-                        const fondo = formLote.fondo_metros
-                        const aprox = frente > 0 && fondo > 0 ? Math.round(frente * fondo * 100) / 100 : formLote.area_m2
-                        setFormLote({
-                          ...formLote,
-                          frente_metros: frente,
-                          area_m2: aprox,
-                          precio_venta: aprox * formLote.precio_m2
-                        })
-                      }}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Fondo (m)</Label>
-                    <Input
-                      type="number"
-                      value={formLote.fondo_metros}
-                      onChange={(e) => {
-                        const fondo = parseFloat(e.target.value) || 0
-                        const frente = formLote.frente_metros
-                        const aprox = frente > 0 && fondo > 0 ? Math.round(frente * fondo * 100) / 100 : formLote.area_m2
-                        setFormLote({
-                          ...formLote,
-                          fondo_metros: fondo,
-                          area_m2: aprox,
-                          precio_venta: aprox * formLote.precio_m2
-                        })
-                      }}
-                    />
-                  </div>
+                  {([
+                    ['lado_norte', 'Norte (m)'],
+                    ['lado_sur', 'Sur (m)'],
+                    ['lado_este', 'Este (m)'],
+                    ['lado_oeste', 'Oeste (m)'],
+                  ] as const).map(([campo, etiqueta]) => (
+                    <div key={campo} className="space-y-2">
+                      <Label>{etiqueta}</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={formLote[campo] || ''}
+                        onChange={(e) => {
+                          const valor = parseFloat(e.target.value) || 0
+                          const lados = { ...formLote, [campo]: valor }
+                          const calc = areaDesdeLados(lados.lado_norte, lados.lado_sur, lados.lado_este, lados.lado_oeste)
+                          setFormLote({
+                            ...lados,
+                            frente_metros: calc?.promedio ?? lados.frente_metros,
+                            fondo_metros: calc?.altura ?? lados.fondo_metros,
+                            area_m2: calc?.area ?? lados.area_m2,
+                            precio_venta: calc ? Math.round(calc.area * lados.precio_m2 * 100) / 100 : lados.precio_venta,
+                          })
+                        }}
+                      />
+                    </div>
+                  ))}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-2">
@@ -1280,7 +1285,7 @@ export function FincasModule({ userSession }: FincasModuleProps) {
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground rounded-lg bg-muted/50 p-2">
-                  Frente × fondo calcula el área. Puedes ajustar el área o el precio total a mano.
+                  En un trapecio el área es el promedio de norte y sur, multiplicado por la altura. Por ejemplo, (200 + 150) / 2 = 175 m, y 175 × 100 m = 17,500 m². Puedes ajustar el área o el precio a mano.
                 </p>
               </div>
             )}

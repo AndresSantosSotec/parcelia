@@ -12,6 +12,7 @@ class ComisionPago extends Model
         'monto',
         'referencia',
         'user_id',
+        'movimiento_caja_id',
     ];
 
     protected $casts = [

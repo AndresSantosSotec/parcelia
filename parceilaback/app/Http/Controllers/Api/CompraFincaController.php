@@ -456,6 +456,8 @@ class CompraFincaController extends Controller
             'lotes.*.numero' => 'required|string|max:50',
             'lotes.*.area_m2' => 'required|numeric|min:0.01',
             'lotes.*.tipo' => 'required|string|max:80',
+            'lotes.*.frente_metros' => 'nullable|numeric|min:0',
+            'lotes.*.fondo_metros' => 'nullable|numeric|min:0',
         ]);
 
         $parcela = $finca->parcelas()->orderBy('id')->first();
@@ -487,6 +489,8 @@ class CompraFincaController extends Controller
                 }
                 $lote->area_m2 = $fila['area_m2'];
                 $lote->tipo_terreno = $fila['tipo'];
+                $lote->frente_metros = $fila['frente_metros'] ?? $lote->frente_metros;
+                $lote->fondo_metros = $fila['fondo_metros'] ?? $lote->fondo_metros;
                 $lote->save();
                 $actualizados++;
                 continue;
@@ -498,6 +502,8 @@ class CompraFincaController extends Controller
                 'numero_lote' => $numero,
                 'codigo_unico' => $codigo,
                 'area_m2' => $fila['area_m2'],
+                'frente_metros' => $fila['frente_metros'] ?? null,
+                'fondo_metros' => $fila['fondo_metros'] ?? null,
                 'tipo_terreno' => $fila['tipo'],
                 'precio_venta' => 0,
                 'precio_base' => 0,
@@ -716,6 +722,8 @@ class CompraFincaController extends Controller
                 'parcela' => $lote->parcela?->nombre_identificador,
                 'tipo_terreno' => $lote->tipo_terreno,
                 'area_m2' => (float) $lote->area_m2,
+                'frente_metros' => $lote->frente_metros !== null ? (float) $lote->frente_metros : null,
+                'fondo_metros' => $lote->fondo_metros !== null ? (float) $lote->fondo_metros : null,
                 'costo_asignado' => $costo,
                 'precio_sugerido' => $sugerido,
                 'precio_venta' => $venta,

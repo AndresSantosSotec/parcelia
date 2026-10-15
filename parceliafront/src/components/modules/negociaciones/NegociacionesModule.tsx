@@ -1,13 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Plus, Handshake, Calculator, Receipt, User, Package, Calendar, CurrencyDollar, CheckCircle, Clock, ArrowRight, Eye, ShieldCheck, Wallet, Printer, FileText, XCircle, DownloadSimple, WarningCircle } from '@phosphor-icons/react'
+import { Plus, Handshake, Calculator, Receipt, User, Package, Calendar, CurrencyDollar, CheckCircle, Clock, ArrowRight, Eye, ShieldCheck, Wallet, Printer, FileText, XCircle, DownloadSimple, WarningCircle, MagnifyingGlass } from '@phosphor-icons/react'
 import { toast } from 'sonner'
-import { negociacionService, loteService, clienteService, pagoTerrenoService, moraInmobiliariaService, Negociacion, Lote, SimuladorResponse, ParametrizacionMoraInmo } from '@/lib/api'
+import { api, negociacionService, loteService, clienteService, pagoTerrenoService, moraInmobiliariaService, Negociacion, Lote, SimuladorResponse, ParametrizacionMoraInmo } from '@/lib/api'
 import type { Cliente } from '@/lib/types'
 import { cajaService } from '@/lib/services/caja.service'
 import { useNavigateModule } from '@/hooks/use-navigate-module'
@@ -31,6 +31,39 @@ function formatFechaCorta(valor?: string | null) {
   const d = new Date(valor)
   if (Number.isNaN(d.getTime())) return String(valor).slice(0, 10)
   return d.toLocaleDateString('es-GT')
+}
+
+const PERIODOS_PAGO = [
+  { value: 'mensual', label: 'Mensual', meses: 1 },
+  { value: 'bimestral', label: 'Bimestral', meses: 2 },
+  { value: 'trimestral', label: 'Trimestral', meses: 3 },
+  { value: 'cuatrimestral', label: 'Cuatrimestral', meses: 4 },
+  { value: 'quimestral', label: 'Quimestral', meses: 5 },
+  { value: 'semestral', label: 'Semestral', meses: 6 },
+  { value: 'anual', label: 'Anual', meses: 12 },
+] as const
+
+function mesesDePeriodo(valor?: string) {
+  return PERIODOS_PAGO.find((p) => p.value === valor)?.meses ?? 1
+}
+
+function etiquetaPeriodo(valor?: string) {
+  return PERIODOS_PAGO.find((p) => p.value === valor)?.label ?? 'Mensual'
+}
+
+function numeroCuotasPeriodo(plazo: number, periodo?: string) {
+  return Math.max(1, Math.ceil(Math.max(1, plazo) / mesesDePeriodo(periodo)))
+}
+
+function etiquetaTipo(tipo?: string) {
+  if (tipo === 'credito') return 'A plazo / Financiamiento'
+  if (tipo === 'contado') return 'Contado'
+  if (tipo === 'reserva') return 'Reserva'
+  return tipo || ''
+}
+
+function quetzales(valor: number) {
+  return `Q${Number(valor || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 function etiquetaSistema(sistema?: string | null) {
@@ -87,15 +120,16 @@ export function NegociacionesModule() {
   const [kardexMovimientos, setKardexMovimientos] = useState<any[]>([])
 
   // Formulario Nueva Negociación
-  const [formVenta, setFormVenta] = useState({
+  const formVentaInicial = {
     cliente_id: '',
     lote_id: '',
-    tipo_negociacion: 'credito',
+    tipo_negociacion: 'credito' as 'contado' | 'credito' | 'reserva',
     precio_original: 0,
     descuento: 0,
-    gastos_escrituracion: 3500,
+    gastos_escrituracion: 0,
     enganche_pactado: 10000,
     plazo_meses: 24,
+    periodo_pago: 'mensual' as (typeof PERIODOS_PAGO)[number]['value'],
     tasa_interes_anual: 6.0,
     sistema_amortizacion: 'frances',
     politica_abono_extra: 'reducir_plazo',
@@ -103,7 +137,14 @@ export function NegociacionesModule() {
     observaciones: '',
     gas_ids: [] as number[],
     parametrizacion_mora_id: '',
-  })
+  }
+  const [formVenta, setFormVenta] = useState(formVentaInicial)
+  const [fincaVentaId, setFincaVentaId] = useState('')
+  const [busquedaLote, setBusquedaLote] = useState('')
+  const [ventasDesde, setVentasDesde] = useState('')
+  const [ventasHasta, setVentasHasta] = useState('')
+  const [totalVentas, setTotalVentas] = useState<{ contratos: number; monto: number } | null>(null)
+  const [totalIntervalo, setTotalIntervalo] = useState<{ contratos: number; monto: number } | null>(null)
 
   // Simulación en Vivo
   const [simulacion, setSimulacion] = useState<SimuladorResponse | null>(null)
@@ -144,6 +185,13 @@ export function NegociacionesModule() {
           parametrizacion_mora_id: activas[0] ? String(activas[0].id) : '',
         })
       }
+      const resTotales = await api.get<any>('/reportes-inmobiliarios/ventas?per_page=1').catch(() => null)
+      if (resTotales?.success && resTotales.data) {
+        setTotalVentas({
+          contratos: Number(resTotales.data.total_contratos || 0),
+          monto: Number(resTotales.data.monto_total_ventas || 0),
+        })
+      }
     } catch (e) {
       console.error(e)
     } finally {
@@ -180,10 +228,13 @@ export function NegociacionesModule() {
         toast.error('El lote ya no está disponible para una nueva venta')
         return
       }
+      setFincaVentaId(lote.parcela?.finca?.id ? String(lote.parcela.finca.id) : '')
+      setBusquedaLote('')
       setFormVenta((prev) => ({
         ...prev,
         lote_id: String(lote.id),
         precio_original: Number(lote.precio_venta),
+        gastos_escrituracion: 0,
         tipo_negociacion: datos.tipo_negociacion ?? prev.tipo_negociacion,
         enganche_pactado: Number(datos.enganche_pactado ?? prev.enganche_pactado),
         plazo_meses: Number(datos.plazo_meses ?? prev.plazo_meses),
@@ -197,7 +248,65 @@ export function NegociacionesModule() {
   }, [datosListos, cargando, lotesDisponibles, negociaciones])
 
   // Ejecutar simulación cuando cambian los valores del formulario
+  const fincasConLotes = useMemo(() => {
+    const mapa = new Map<number, string>()
+    lotesDisponibles.forEach((lote) => {
+      const finca = lote.parcela?.finca
+      if (finca?.id) mapa.set(finca.id, finca.nombre)
+    })
+    return [...mapa.entries()]
+      .map(([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  }, [lotesDisponibles])
+
+  const lotesDeFinca = useMemo(() => {
+    if (!fincaVentaId) return []
+    const q = busquedaLote.trim().toLowerCase()
+    return lotesDisponibles.filter((lote) => {
+      if (String(lote.parcela?.finca?.id) !== fincaVentaId) return false
+      if (!q) return true
+      return lote.numero_lote.toLowerCase().includes(q)
+    })
+  }, [lotesDisponibles, fincaVentaId, busquedaLote])
+
+  const abrirNuevaNegociacion = () => {
+    setFormVenta((prev) => ({
+      ...formVentaInicial,
+      fecha_negociacion: new Date().toISOString().split('T')[0],
+      parametrizacion_mora_id: prev.parametrizacion_mora_id,
+    }))
+    setFincaVentaId('')
+    setBusquedaLote('')
+    setSimulacion(null)
+    setModalNuevaVenta(true)
+  }
+
+  const consultarTotalIntervalo = async () => {
+    if (ventasDesde && ventasHasta && ventasHasta < ventasDesde) {
+      toast.error('La fecha final del intervalo no puede ser anterior a la inicial')
+      return
+    }
+    const q = new URLSearchParams({ per_page: '1' })
+    if (ventasDesde) q.set('fecha_desde', ventasDesde)
+    if (ventasHasta) q.set('fecha_hasta', ventasHasta)
+    try {
+      const res = await api.get<any>(`/reportes-inmobiliarios/ventas?${q.toString()}`)
+      if (res.success && res.data) {
+        setTotalIntervalo({
+          contratos: Number(res.data.total_contratos || 0),
+          monto: Number(res.data.monto_total_ventas || 0),
+        })
+      }
+    } catch {
+      toast.error('No se pudo calcular el total de ventas del intervalo')
+    }
+  }
+
   useEffect(() => {
+    if (formVenta.tipo_negociacion === 'contado') {
+      setSimulacion(null)
+      return
+    }
     if (formVenta.precio_original > 0) {
       negociacionService.simular({
         precio_lote: formVenta.precio_original,
@@ -205,13 +314,14 @@ export function NegociacionesModule() {
         gastos_escrituracion: formVenta.gastos_escrituracion,
         enganche: formVenta.enganche_pactado,
         plazo_meses: formVenta.plazo_meses,
+        periodo_pago: formVenta.periodo_pago,
         tasa_interes_anual: formVenta.tasa_interes_anual,
         metodo: formVenta.sistema_amortizacion as 'frances' | 'aleman' | 'americano' | 'plano',
       }).then(res => {
         if (res.success && res.data) setSimulacion(res.data)
       }).catch(console.error)
     }
-  }, [formVenta.precio_original, formVenta.descuento, formVenta.gastos_escrituracion, formVenta.enganche_pactado, formVenta.plazo_meses, formVenta.tasa_interes_anual, formVenta.sistema_amortizacion])
+  }, [formVenta.tipo_negociacion, formVenta.precio_original, formVenta.descuento, formVenta.gastos_escrituracion, formVenta.enganche_pactado, formVenta.plazo_meses, formVenta.periodo_pago, formVenta.tasa_interes_anual, formVenta.sistema_amortizacion])
 
   const handleSeleccionarLote = (loteId: string) => {
     const lote = lotesDisponibles.find(l => l.id.toString() === loteId)
@@ -458,10 +568,64 @@ export function NegociacionesModule() {
           </p>
         </div>
         <div className="page-toolbar-actions">
-          <Button onClick={() => setModalNuevaVenta(true)} className="gap-2 shadow-sm">
+          <Button onClick={abrirNuevaNegociacion} className="gap-2 shadow-sm">
             <Plus size={18} weight="bold" /> Nueva Negociación / Venta
           </Button>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card className="border-border/80 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-muted-foreground">Total de ventas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-black text-foreground">{quetzales(totalVentas?.monto || 0)}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {(totalVentas?.contratos ?? 0) === 1 ? '1 contrato' : `${totalVentas?.contratos ?? 0} contratos`}, sin filtrar por fecha
+            </p>
+          </CardContent>
+        </Card>
+        <Card className="border-border/80 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-muted-foreground">Total de ventas por intervalo</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <label className="flex-1 text-xs text-muted-foreground space-y-1">
+                <span className="block">Desde</span>
+                <input
+                  type="date"
+                  value={ventasDesde}
+                  onChange={(e) => setVentasDesde(e.target.value)}
+                  className="w-full bg-background border rounded-lg px-2.5 py-2 text-sm text-foreground"
+                />
+              </label>
+              <label className="flex-1 text-xs text-muted-foreground space-y-1">
+                <span className="block">Hasta</span>
+                <input
+                  type="date"
+                  value={ventasHasta}
+                  onChange={(e) => setVentasHasta(e.target.value)}
+                  className="w-full bg-background border rounded-lg px-2.5 py-2 text-sm text-foreground"
+                />
+              </label>
+              <Button type="button" variant="outline" className="sm:self-end" onClick={consultarTotalIntervalo}>
+                Ver total
+              </Button>
+            </div>
+            <div>
+              <p className="text-2xl font-black text-foreground">
+                {totalIntervalo ? quetzales(totalIntervalo.monto) : '—'}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {totalIntervalo
+                  ? `${totalIntervalo.contratos === 1 ? '1 contrato' : `${totalIntervalo.contratos} contratos`} en el intervalo`
+                  : 'Elige las fechas y pulsa Ver total'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Listado de Negociaciones */}
@@ -559,7 +723,10 @@ export function NegociacionesModule() {
                       <td className="py-3.5 px-4 font-mono font-bold text-xs text-primary">
                         {neg.codigo_negociacion}
                         <span className="block text-[0.6875rem] text-muted-foreground font-normal">
-                          {neg.tipo_negociacion.toUpperCase()} · {neg.plazo_meses} meses
+                          {etiquetaTipo(neg.tipo_negociacion)} · {neg.plazo_meses} meses
+                          {neg.tipo_negociacion === 'credito' && neg.periodo_pago && neg.periodo_pago !== 'mensual'
+                            ? ` · ${etiquetaPeriodo(neg.periodo_pago).toLowerCase()}`
+                            : ''}
                           {neg.tipo_negociacion === 'credito' ? ` · ${etiquetaSistema(neg.sistema_amortizacion)}` : ''}
                         </span>
                         {resumenMoraContrato(neg) && (
@@ -672,18 +839,51 @@ export function NegociacionesModule() {
               </div>
 
               <div className="space-y-2">
-                <Label>Lote Disponible a Asignar *</Label>
+                <Label>Finca o proyecto *</Label>
+                <select
+                  required
+                  value={fincaVentaId}
+                  onChange={(e) => {
+                    setFincaVentaId(e.target.value)
+                    setBusquedaLote('')
+                    setFormVenta({ ...formVenta, lote_id: '', precio_original: 0 })
+                  }}
+                  className="w-full bg-background border rounded-lg p-2.5 text-sm"
+                >
+                  <option value="">Selecciona la finca o proyecto...</option>
+                  {fincasConLotes.map((finca) => (
+                    <option key={finca.id} value={finca.id}>{finca.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Buscar lote</Label>
+                <div className="relative">
+                  <MagnifyingGlass size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={busquedaLote}
+                    onChange={(e) => setBusquedaLote(e.target.value)}
+                    placeholder="Identificador del lote"
+                    className="pl-8"
+                    disabled={!fincaVentaId}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Lote disponible *</Label>
                 <select
                   required
                   value={formVenta.lote_id}
                   onChange={(e) => handleSeleccionarLote(e.target.value)}
-                  className="w-full bg-background border rounded-lg p-2.5 text-sm font-semibold"
+                  disabled={!fincaVentaId}
+                  className="w-full bg-background border rounded-lg p-2.5 text-sm font-semibold disabled:opacity-60"
                 >
-                  <option value="">Selecciona un lote disponible...</option>
-                  {lotesDisponibles.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.codigo_unico} ({l.area_m2}m²) — Q{Number(l.precio_venta).toLocaleString()}
-                    </option>
+                  <option value="">{fincaVentaId ? 'Selecciona el lote...' : 'Primero elige la finca o proyecto'}</option>
+                  {lotesDeFinca.map((l) => (
+                    <option key={l.id} value={l.id}>{l.numero_lote}</option>
                   ))}
                 </select>
               </div>
@@ -702,7 +902,7 @@ export function NegociacionesModule() {
                   onChange={(e) => setFormVenta({ ...formVenta, tipo_negociacion: e.target.value as 'contado' | 'credito' | 'reserva' })}
                   className="w-full bg-background border rounded-lg p-2.5 text-sm"
                 >
-                  <option value="credito">Crédito / financiamiento</option>
+                  <option value="credito">A plazo / Financiamiento</option>
                   <option value="contado">Contado</option>
                   <option value="reserva">Reserva</option>
                 </select>
@@ -735,6 +935,7 @@ export function NegociacionesModule() {
                 </div>
               </div>
 
+              {formVenta.tipo_negociacion !== 'contado' && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-primary">Enganche Pactado (Q)</Label>
@@ -768,7 +969,7 @@ export function NegociacionesModule() {
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Tasa Interés Anual (%)</Label>
-                  <Input
+                    <Input
                     type="number"
                     step="0.5"
                     value={formVenta.tasa_interes_anual}
@@ -776,6 +977,25 @@ export function NegociacionesModule() {
                   />
                 </div>
               </div>
+              )}
+
+              {formVenta.tipo_negociacion === 'credito' && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold">Periodo de pago *</Label>
+                  <select
+                    value={formVenta.periodo_pago}
+                    onChange={(e) => setFormVenta({ ...formVenta, periodo_pago: e.target.value as typeof formVenta.periodo_pago })}
+                    className="w-full bg-background border rounded-lg p-2.5 text-sm"
+                  >
+                    {PERIODOS_PAGO.map((periodo) => (
+                      <option key={periodo.value} value={periodo.value}>{periodo.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-[0.6875rem] text-muted-foreground">
+                    {formVenta.plazo_meses} meses · pagos {etiquetaPeriodo(formVenta.periodo_pago).toLowerCase()}es · {numeroCuotasPeriodo(formVenta.plazo_meses, formVenta.periodo_pago)} {numeroCuotasPeriodo(formVenta.plazo_meses, formVenta.periodo_pago) === 1 ? 'cuota' : 'cuotas'}
+                  </p>
+                </div>
+              )}
 
               {formVenta.tipo_negociacion === 'credito' && (
                 <div className="space-y-1.5">
@@ -820,10 +1040,10 @@ export function NegociacionesModule() {
                       <option value="plano">Interés plano — cuota simple</option>
                     </select>
                     <p className="text-[0.6875rem] text-muted-foreground">
-                      {formVenta.sistema_amortizacion === 'aleman' && 'Cada mes se paga el mismo capital; la cuota baja conforme baja el interés.'}
-                      {formVenta.sistema_amortizacion === 'americano' && 'Se pagan intereses cada mes y el capital se liquida en la última cuota.'}
+                      {formVenta.sistema_amortizacion === 'aleman' && 'En cada periodo se paga el mismo capital; la cuota baja conforme baja el interés.'}
+                      {formVenta.sistema_amortizacion === 'americano' && 'Se pagan intereses en cada periodo y el capital se liquida en el último pago.'}
                       {formVenta.sistema_amortizacion === 'plano' && 'Interés simple prorrateado; la cuota no se recalcula sobre saldos.'}
-                      {(formVenta.sistema_amortizacion === 'frances' || !formVenta.sistema_amortizacion) && 'Cuota mensual igual durante todo el plazo (sistema más usado en terrenos).'}
+                      {(formVenta.sistema_amortizacion === 'frances' || !formVenta.sistema_amortizacion) && 'Cuota igual en cada pago durante todo el plazo (sistema más usado en terrenos).'}
                     </p>
                   </div>
                   <div className="space-y-1.5">
@@ -853,7 +1073,16 @@ export function NegociacionesModule() {
             </div>
 
             {/* Resumen del Simulador en Vivo */}
-            {simulacion && (
+            {formVenta.tipo_negociacion === 'contado' && formVenta.precio_original > 0 && (
+              <div className="p-4 rounded-xl bg-primary/5 border border-primary/20">
+                <span className="text-[0.6875rem] text-muted-foreground block">Precio final de contado</span>
+                <span className="font-bold text-lg text-foreground">
+                  Q{Math.max(0, Number(formVenta.precio_original) - Number(formVenta.descuento) + Number(formVenta.gastos_escrituracion)).toLocaleString('es-GT', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+
+            {formVenta.tipo_negociacion !== 'contado' && simulacion && (
               <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 space-y-2">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                   <div>
@@ -865,7 +1094,10 @@ export function NegociacionesModule() {
                     <span className="font-bold text-sm text-foreground">Q{simulacion.monto_financiado.toLocaleString()}</span>
                   </div>
                   <div>
-                    <span className="text-[0.6875rem] text-muted-foreground block">Cuota Mensual</span>
+                    <span className="text-[0.6875rem] text-muted-foreground block">
+                      Cuota {etiquetaPeriodo(formVenta.periodo_pago).toLowerCase()}
+                      {simulacion.numero_cuotas ? ` · ${simulacion.numero_cuotas}` : ''}
+                    </span>
                     <span className="font-extrabold text-base text-primary">Q{simulacion.cuota_mensual.toLocaleString()}</span>
                   </div>
                   <div>

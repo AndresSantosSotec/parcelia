@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreLoteRequest;
+use App\Support\AreaLote;
 use App\Models\Finca;
 use App\Models\Parcela;
 use App\Models\Lote;
@@ -173,7 +174,7 @@ class FincaController extends Controller
     {
         $parcela = Parcela::with('finca')->findOrFail($parcelaId);
 
-        $validated = $request->validated();
+        $validated = AreaLote::aplicar($request->validated());
 
         if (empty($validated['area_m2']) && !empty($validated['frente_metros']) && !empty($validated['fondo_metros'])) {
             $validated['area_m2'] = round((float) $validated['frente_metros'] * (float) $validated['fondo_metros'], 2);

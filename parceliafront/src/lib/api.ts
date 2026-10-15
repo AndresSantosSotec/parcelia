@@ -1458,6 +1458,10 @@ export interface Lote {
   area_m2: number
   frente_metros?: number
   fondo_metros?: number
+  lado_norte?: number | string | null
+  lado_sur?: number | string | null
+  lado_este?: number | string | null
+  lado_oeste?: number | string | null
   colindancias?: string
   tipo_terreno: string
   precio_m2: number
@@ -1584,6 +1588,10 @@ export interface LotePlano {
   area_m2?: number | string
   frente_metros?: number | string | null
   fondo_metros?: number | string | null
+  lado_norte?: number | string | null
+  lado_sur?: number | string | null
+  lado_este?: number | string | null
+  lado_oeste?: number | string | null
   tipo_terreno?: string | null
   colindancias?: string | null
   precio_venta?: number | string | null
@@ -1591,7 +1599,25 @@ export interface LotePlano {
   observaciones?: string | null
   vendedor?: string | null
   servicios?: Array<{ nombre: string; estado: string }>
-  negociacion?: { id: number; codigo: string; tipo: string; estado: string; comprador: string | null } | null
+  negociacion?: {
+    id: number
+    codigo: string
+    tipo: string
+    estado: string
+    comprador: string | null
+    asesor?: string | null
+    precio_final?: number | string | null
+    enganche_pactado?: number | string | null
+    plazo_meses?: number | null
+    tasa_interes_anual?: number | string | null
+    sistema_amortizacion?: string | null
+    cuota_mensual?: number | string | null
+    monto_financiado?: number | string | null
+    cuotas_pagadas?: number | null
+    cuotas_pendientes?: number | null
+    saldo_capital_pendiente?: number | string | null
+    comisionistas?: Array<{ nombre: string | null; monto: number | string | null; estado: string | null }>
+  } | null
 }
 
 export interface PlanoFinca {
@@ -1624,6 +1650,7 @@ export interface SimuladorRequest {
   enganche?: number
   gastos_escrituracion?: number
   plazo_meses: number
+  periodo_pago?: 'mensual' | 'bimestral' | 'trimestral' | 'cuatrimestral' | 'quimestral' | 'semestral' | 'anual'
   tasa_interes_anual?: number
   fecha_primer_pago?: string
   metodo?: 'frances' | 'aleman' | 'americano' | 'plano'
@@ -1638,6 +1665,8 @@ export interface SimuladorResponse {
   monto_financiado: number
   tasa_interes_anual: number
   plazo_meses: number
+  periodo_pago?: string
+  numero_cuotas?: number
   cuota_mensual: number
   total_intereses_proyectados: number
   total_a_pagar: number
@@ -1683,6 +1712,7 @@ export interface Negociacion {
   sistema_amortizacion?: 'frances' | 'aleman' | 'americano' | 'plano' | string
   politica_abono_extra?: 'reducir_plazo' | 'reducir_cuota' | string
   plazo_meses: number
+  periodo_pago?: string
   cuota_mensual: number
   total_intereses_proyectados: number
   total_a_pagar: number
@@ -1884,6 +1914,8 @@ export interface CompraFincaPayload {
     parcela?: string | null
     tipo_terreno?: string
     area_m2: number
+    frente_metros?: number | null
+    fondo_metros?: number | null
     costo_asignado: number
     precio_sugerido: number
     precio_venta: number
@@ -1944,7 +1976,7 @@ export const compraFincaService = {
     api.delete<CompraFincaPayload>(`/fincas/${id}/gastos-urbanizacion/${gastoId}`),
   pagarCuota: (id: number, cuotaId: number, data: { monto: number; fecha?: string; origen: 'caja' | 'boveda' }) =>
     api.post<CompraFincaPayload & { pago_id: number }>(`/fincas/${id}/cuotas-compra/${cuotaId}/pagar`, data),
-  sincronizarLotes: (id: number, lotes: Array<{ numero: string; area_m2: number; tipo: string }>) =>
+  sincronizarLotes: (id: number, lotes: Array<{ numero: string; area_m2: number; tipo: string; frente_metros?: number | null; fondo_metros?: number | null }>) =>
     api.post<CompraFincaPayload>(`/fincas/${id}/lotes-medidas`, { lotes }),
   rehacerPendiente: (id: number, data: { cuotas: number; fecha_inicio?: string }) =>
     api.post<CompraFincaPayload>(`/fincas/${id}/rehacer-plan-pendiente`, data),
@@ -1956,7 +1988,9 @@ export interface FinancistaItem {
   finca_id: number
   finca?: { id: number; nombre: string; codigo?: string }
   tipo: string
+  esquema?: string | null
   nombre: string
+  dpi?: string | null
   destino: string
   monto: number
   tasa_anual?: number | null
@@ -1984,18 +2018,25 @@ export const financistaService = {
   crear: (data: Record<string, unknown>) => api.post<FinancistaItem>('/financistas', data),
   actualizar: (id: number, data: Record<string, unknown>) => api.put<FinancistaItem>(`/financistas/${id}`, data),
   eliminar: (id: number) => api.delete<FinancistaItem>(`/financistas/${id}`),
-  pagar: (id: number, data: { fecha: string; monto_capital: number; monto_interes: number; monto_mora: number; descuento_interes: number; archivo?: File | null }) => {
+  pagar: (id: number, data: { fecha: string; monto_capital: number; monto_interes: number; monto_mora: number; descuento_interes: number; archivo?: File | null; numero_recibo?: string; metodo_pago?: string; concepto?: string }) => {
     const body = new FormData()
     body.append('fecha', data.fecha)
     body.append('monto_capital', String(data.monto_capital))
     body.append('monto_interes', String(data.monto_interes))
     body.append('monto_mora', String(data.monto_mora))
     body.append('descuento_interes', String(data.descuento_interes))
+    if (data.numero_recibo) body.append('numero_recibo', data.numero_recibo)
+    if (data.metodo_pago) body.append('metodo_pago', data.metodo_pago)
+    if (data.concepto) body.append('concepto', data.concepto)
     if (data.archivo) body.append('archivo', data.archivo)
     return api.post<FinancistaItem>(`/financistas/${id}/pagos`, body)
   },
   previewPago: (id: number, fecha: string) => api.get<{ capital: number; interes: number; mora: number; nota: string }>(`/financistas/${id}/preview-pago?fecha=${fecha}`),
-  estado: (id: number) => api.get<{ financista: FinancistaItem; pagos: Array<Record<string, unknown>> }>(`/financistas/${id}/estado`),
+  estado: (id: number) => api.get<{
+    financista: FinancistaItem
+    pagos: Array<Record<string, unknown>>
+    plan: Array<{ numero: number; fecha: string; capital: number; interes: number; total: number; estado: string }>
+  }>(`/financistas/${id}/estado`),
 }
 
 export interface ComisionistaItem {
@@ -2022,6 +2063,12 @@ export interface ComisionItem {
   monto_comision: number
   pagado: number
   pendiente: number
+  liberado?: number
+  disponible?: number
+  cobrado_venta?: number
+  precio_base?: number
+  excedente?: number
+  venta_liquidada?: boolean
   estado: string
 }
 
@@ -2029,9 +2076,9 @@ export interface ComisionRegla {
   id: number
   nombre: string
   tipo: 'porcentaje' | 'monto_fijo'
-  base: 'precio_final' | 'precio_venta' | 'enganche'
+  base: 'precio_final' | 'precio_venta' | 'enganche' | 'excedente'
   valor: number | string
-  momento: 'al_contrato' | 'al_enganche' | 'al_liquidar'
+  momento: 'al_contrato' | 'al_enganche' | 'al_liquidar' | 'proporcional'
   activo: boolean
 }
 

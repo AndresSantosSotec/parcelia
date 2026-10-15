@@ -23,8 +23,9 @@ class AmericanAmortizationStrategy implements InterestCalculationStrategyInterfa
             return $this->planVacio($montoFinanciado);
         }
 
-        $tasaMensual = ($tasaAnual / 100) / 12;
-        $interesPeriodo = $tasaMensual == 0 ? 0.0 : round($montoFinanciado * $tasaMensual, 2);
+        $paso = $this->pasoMeses($opciones);
+        $tasaPeriodo = ($tasaAnual / 100) * ($paso / 12);
+        $interesPeriodo = $tasaPeriodo == 0 ? 0.0 : round($montoFinanciado * $tasaPeriodo, 2);
         $cuotas = [];
         $fecha = Carbon::parse($fechaInicio);
         $totalInteres = 0.0;
@@ -43,7 +44,7 @@ class AmericanAmortizationStrategy implements InterestCalculationStrategyInterfa
                 $saldoRestante,
                 $esUltima ? 'ordinaria' : 'ordinaria'
             );
-            $fecha->addMonth();
+            $fecha->addMonths($paso);
         }
 
         return $this->resumen(

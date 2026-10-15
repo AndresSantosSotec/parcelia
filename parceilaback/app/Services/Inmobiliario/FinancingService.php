@@ -14,6 +14,35 @@ use Illuminate\Support\Facades\DB;
 
 class FinancingService
 {
+    public const PERIODOS = [
+        'mensual' => 1,
+        'bimestral' => 2,
+        'trimestral' => 3,
+        'cuatrimestral' => 4,
+        'quimestral' => 5,
+        'semestral' => 6,
+        'anual' => 12,
+    ];
+
+    public static function normalizarPeriodo(?string $periodo): string
+    {
+        $clave = strtolower(trim((string) $periodo));
+
+        return array_key_exists($clave, self::PERIODOS) ? $clave : 'mensual';
+    }
+
+    public static function mesesDePeriodo(?string $periodo): int
+    {
+        return self::PERIODOS[self::normalizarPeriodo($periodo)];
+    }
+
+    public static function numeroCuotas(int $plazoMeses, ?string $periodo): int
+    {
+        $paso = self::mesesDePeriodo($periodo);
+
+        return max(1, (int) ceil(max(1, $plazoMeses) / $paso));
+    }
+
     public function getStrategy(string $metodo = 'frances'): InterestCalculationStrategyInterface
     {
         return match (strtolower($metodo)) {
@@ -33,15 +62,25 @@ class FinancingService
         float $tasaAnual = 6.0,
         int $plazoMeses = 12,
         string $metodo = 'frances',
-        ?string $fechaPrimerPago = null
+        ?string $fechaPrimerPago = null,
+        string $periodoPago = 'mensual'
     ): array {
         $precioFinal = max(0.0, round($precioLote - $descuento + $gastosEscrituracion + $gastosAdministrativos, 2));
         $montoFinanciado = max(0.0, round($precioFinal - $enganche, 2));
-        $fechaInicio = $fechaPrimerPago ?? Carbon::now()->addMonth()->format('Y-m-d');
+        $periodo = self::normalizarPeriodo($periodoPago);
+        $paso = self::mesesDePeriodo($periodo);
+        $cuotas = self::numeroCuotas($plazoMeses, $periodo);
+        $fechaInicio = $fechaPrimerPago ?? Carbon::now()->addMonths($paso)->format('Y-m-d');
 
-        $resultado = $this->getStrategy($metodo)->calcularPlan($montoFinanciado, $tasaAnual, $plazoMeses, $fechaInicio);
+        $resultado = $this->getStrategy($metodo)->calcularPlan(
+            $montoFinanciado,
+            $tasaAnual,
+            $cuotas,
+            $fechaInicio,
+            ['meses_periodo' => $paso, 'periodo_pago' => $periodo]
+        );
 
-        return array_merge([
+        return array_merge($resultado, [
             'precio_original' => round($precioLote, 2),
             'descuento' => round($descuento, 2),
             'gastos_escrituracion' => round($gastosEscrituracion, 2),
@@ -50,7 +89,11 @@ class FinancingService
             'enganche' => round($enganche, 2),
             'porcentaje_enganche' => $precioFinal > 0 ? round(($enganche / $precioFinal) * 100, 2) : 0,
             'sistema_amortizacion' => strtolower($metodo),
-        ], $resultado);
+            'plazo_meses' => $plazoMeses,
+            'periodo_pago' => $periodo,
+            'meses_periodo' => $paso,
+            'numero_cuotas' => count($resultado['cuotas'] ?? []),
+        ]);
     }
 
     public function generarPlanParaNegociacion(Negociacion $negociacion, ?string $metodo = null): array
@@ -61,15 +104,19 @@ class FinancingService
                 ->delete();
 
             $metodo = $metodo ?? $negociacion->sistema_amortizacion ?? 'frances';
+            $periodo = self::normalizarPeriodo($negociacion->periodo_pago ?? 'mensual');
+            $paso = self::mesesDePeriodo($periodo);
+            $cuotas = self::numeroCuotas((int) $negociacion->plazo_meses, $periodo);
             $fechaInicio = $negociacion->fecha_primer_pago
                 ? Carbon::parse($negociacion->fecha_primer_pago)->format('Y-m-d')
-                : Carbon::now()->addMonth()->format('Y-m-d');
+                : Carbon::now()->addMonths($paso)->format('Y-m-d');
 
             $simulacion = $this->getStrategy($metodo)->calcularPlan(
                 (float) $negociacion->monto_financiado,
                 (float) $negociacion->tasa_interes_anual,
-                (int) $negociacion->plazo_meses,
-                $fechaInicio
+                $cuotas,
+                $fechaInicio,
+                ['meses_periodo' => $paso, 'periodo_pago' => $periodo]
             );
 
             foreach ($simulacion['cuotas'] as $c) {
@@ -106,7 +153,7 @@ class FinancingService
             });
             $negociacion->total_intereses_proyectados = $simulacion['total_intereses'];
             $negociacion->total_a_pagar = (float) $negociacion->enganche_pactado + (float) $simulacion['total_a_pagar'] + $totalGastos;
-            $negociacion->cuotas_pendientes = $negociacion->plazo_meses;
+            $negociacion->cuotas_pendientes = count($simulacion['cuotas']);
             $negociacion->cuotas_pagadas = 0;
             $negociacion->save();
 

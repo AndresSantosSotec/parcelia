@@ -140,7 +140,8 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
   const [pendienteAdjuntar, setPendienteAdjuntar] = useState<{ escrituraId: number; archivo: File } | null>(null)
   const [gasto, setGasto] = useState({ categoria: 'calle', concepto: '', monto: '', fecha: '' })
   const [medidasFinca, setMedidasFinca] = useState<number | ''>('')
-  const [medidas, setMedidas] = useState<Array<{ numero: string; area: string; tipo: string }>>([])
+  const [medidas, setMedidas] = useState<Array<{ numero: string; area: string; tipo: string; frente: string; fondo: string }>>([])
+  const [iguales, setIguales] = useState({ cantidad: '', area: '', frente: '', fondo: '', tipo: 'Residencial', reemplazar: false })
   const [pago, setPago] = useState({ cuotaId: 0, fecha: '', monto: '', origen: 'caja' })
   const [replan, setReplan] = useState({ cuotas: '', fecha: '' })
   const cargarFincas = useCallback(async () => {
@@ -234,6 +235,8 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
         numero: l.numero_lote,
         area: String(l.area_m2),
         tipo: l.tipo_terreno || 'Residencial',
+        frente: l.frente_metros != null ? String(l.frente_metros) : '',
+        fondo: l.fondo_metros != null ? String(l.fondo_metros) : '',
       })))
     }
   }
@@ -730,10 +733,80 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
             <CardHeader><CardTitle>Parcelar en lotes</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               {!fincaId && <p className="text-sm text-muted-foreground">Guarda la compra primero. Con eso se crea la finca y aquí puedes dividirla en lotes.</p>}
-              <p className="text-sm text-muted-foreground">Cada fila crea o actualiza un lote. Al guardarlos quedan en Fincas y lotes, listos para la venta. El precio de venta no se cambia aquí.</p>
+              <p className="text-sm text-muted-foreground">Si todos los lotes miden igual, indica la cantidad y las medidas: se arman las filas solas. Si alguno es distinto, corrige esa fila o agrégala a mano.</p>
+              {formularioEditable && (
+                <div className="grid gap-2 rounded-md border p-3 md:grid-cols-6">
+                  <div>
+                    <Label>Cantidad</Label>
+                    <Input type="number" min={1} value={iguales.cantidad} placeholder="15" onChange={(e) => setIguales({ ...iguales, cantidad: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>Frente (m)</Label>
+                    <Input type="number" value={iguales.frente} onChange={(e) => {
+                      const frente = e.target.value
+                      const area = Number(frente) > 0 && Number(iguales.fondo) > 0
+                        ? String(Math.round(Number(frente) * Number(iguales.fondo) * 100) / 100)
+                        : iguales.area
+                      setIguales({ ...iguales, frente, area })
+                    }} />
+                  </div>
+                  <div>
+                    <Label>Fondo (m)</Label>
+                    <Input type="number" value={iguales.fondo} onChange={(e) => {
+                      const fondo = e.target.value
+                      const area = Number(iguales.frente) > 0 && Number(fondo) > 0
+                        ? String(Math.round(Number(iguales.frente) * Number(fondo) * 100) / 100)
+                        : iguales.area
+                      setIguales({ ...iguales, fondo, area })
+                    }} />
+                  </div>
+                  <div>
+                    <Label>Área (m²)</Label>
+                    <Input type="number" value={iguales.area} onChange={(e) => setIguales({ ...iguales, area: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label>Tipo</Label>
+                    <select className={campoSelect} value={iguales.tipo} onChange={(e) => setIguales({ ...iguales, tipo: e.target.value })}>
+                      {TIPOS_LOTE.map((t) => <option key={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <Button type="button" variant="outline" onClick={() => {
+                      const n = Number(iguales.cantidad)
+                      const frente = Number(iguales.frente) || 0
+                      const fondo = Number(iguales.fondo) || 0
+                      const area = frente > 0 && fondo > 0 ? Math.round(frente * fondo * 100) / 100 : Number(iguales.area)
+                      if (!n || n < 1) {
+                        toast.error('Indica cuántos lotes tienen las mismas medidas')
+                        return
+                      }
+                      if (!area || area <= 0) {
+                        toast.error('Indica el área, o el frente y el fondo')
+                        return
+                      }
+                      const base = iguales.reemplazar ? [] : medidas
+                      const filas = Array.from({ length: Math.min(n, 500) }, (_, i) => ({
+                        numero: String(base.length + i + 1),
+                        area: String(area),
+                        tipo: iguales.tipo,
+                        frente: frente ? String(frente) : '',
+                        fondo: fondo ? String(fondo) : '',
+                      }))
+                      setMedidas([...base, ...filas])
+                      toast.success(`Se armaron ${filas.length} lotes con las mismas medidas`)
+                    }}>Mismas medidas</Button>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm md:col-span-6">
+                    <input type="checkbox" checked={iguales.reemplazar} onChange={(e) => setIguales({ ...iguales, reemplazar: e.target.checked })} />
+                    Reemplazar las filas que ya están, en lugar de agregarlas al final
+                  </label>
+                </div>
+              )}
               {medidas.map((fila, i) => (
-                <div key={i} className="grid gap-2 md:grid-cols-4">
+                <div key={i} className="grid gap-2 md:grid-cols-6">
                   <Input value={fila.numero} placeholder="Número" onChange={(e) => setMedidas(medidas.map((m, j) => j === i ? { ...m, numero: e.target.value } : m))} />
+                  <Input type="number" value={fila.frente} placeholder="Frente" onChange={(e) => setMedidas(medidas.map((m, j) => j === i ? { ...m, frente: e.target.value } : m))} />
+                  <Input type="number" value={fila.fondo} placeholder="Fondo" onChange={(e) => setMedidas(medidas.map((m, j) => j === i ? { ...m, fondo: e.target.value } : m))} />
                   <Input type="number" value={fila.area} placeholder="m²" onChange={(e) => setMedidas(medidas.map((m, j) => j === i ? { ...m, area: e.target.value } : m))} />
                   <select className={campoSelect} value={fila.tipo} onChange={(e) => setMedidas(medidas.map((m, j) => j === i ? { ...m, tipo: e.target.value } : m))}>
                     {TIPOS_LOTE.map((t) => <option key={t}>{t}</option>)}
@@ -743,7 +816,7 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
               ))}
               {formularioEditable && (
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={() => setMedidas([...medidas, { numero: String(medidas.length + 1), area: '', tipo: 'Residencial' }])}>Agregar lote</Button>
+                  <Button variant="outline" onClick={() => setMedidas([...medidas, { numero: String(medidas.length + 1), area: '', tipo: 'Residencial', frente: '', fondo: '' }])}>Agregar lote</Button>
                   <Button disabled={!fincaId} onClick={async () => {
                     if (!fincaId) return
                     try {
@@ -751,6 +824,8 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
                         numero: m.numero,
                         area_m2: num(m.area),
                         tipo: m.tipo,
+                        frente_metros: num(m.frente) || null,
+                        fondo_metros: num(m.fondo) || null,
                       })))
                       if (res.data) {
                         aplicar(res.data)
@@ -759,6 +834,8 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
                           numero: l.numero_lote,
                           area: String(l.area_m2),
                           tipo: l.tipo_terreno || 'Residencial',
+                          frente: l.frente_metros != null ? String(l.frente_metros) : '',
+                          fondo: l.fondo_metros != null ? String(l.fondo_metros) : '',
                         })))
                       }
                       toast.success(res.message || 'Lotes actualizados')

@@ -122,16 +122,16 @@ export function ChatbotHelper({ rol }: ChatbotHelperProps) {
         timestamp: new Date(),
       }])
       return
-    }
+      }
 
     setTimeout(() => {
       const answer = buscarRespuestaLocal(mensajeCorregido, rolNorm, empresa)
-      if (answer) {
-        setIntentosFallidos(0)
+        if (answer) {
+          setIntentosFallidos(0)
         setMessages((prev) => [...prev, {
-          id: (Date.now() + 1).toString(),
-          type: 'bot',
-          content: answer,
+            id: (Date.now() + 1).toString(),
+            type: 'bot',
+            content: answer,
           timestamp: new Date(),
         }])
         return
@@ -140,12 +140,12 @@ export function ChatbotHelper({ rol }: ChatbotHelperProps) {
       const nuevoIntentos = intentosFallidos + 1
       setIntentosFallidos(nuevoIntentos >= 3 ? 0 : nuevoIntentos)
       setMessages((prev) => [...prev, {
-        id: (Date.now() + 1).toString(),
-        type: 'bot',
+            id: (Date.now() + 1).toString(),
+            type: 'bot',
         content: mensajeSinRespuesta(mensajeUsuario, nuevoIntentos, rolNorm),
         timestamp: new Date(),
       }])
-    }, 300)
+      }, 300)
   }
 
   useEffect(() => {

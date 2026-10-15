@@ -40,6 +40,7 @@ class Negociacion extends Model
         'mora_monto_fijo_diario_snapshot',
         'mora_dias_gracia_snapshot',
         'plazo_meses',
+        'periodo_pago',
         'cuota_mensual',
         'total_intereses_proyectados',
         'total_a_pagar',
@@ -100,6 +101,11 @@ class Negociacion extends Model
     public function asesor()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function comisiones()
+    {
+        return $this->hasMany(ComisionVenta::class, 'negociacion_id');
     }
 
     public function user()

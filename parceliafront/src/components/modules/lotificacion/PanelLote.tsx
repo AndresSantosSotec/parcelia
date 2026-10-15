@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { negociacionService, type LotePlano, type TasaInmobiliaria } from '@/lib/api'
 import { estadoLote, ESTADOS_NEGOCIACION, quetzales } from './estadosLote'
+import { textoMedidas } from '@/lib/areaLote'
 
 export interface CondicionesSimulacion {
   enganche: number
@@ -26,6 +27,24 @@ interface PanelLoteProps {
   onVerNegociacion: (id: number) => void
 }
 
+const METODOS: Record<string, string> = {
+  frances: 'Francés (cuota fija)',
+  aleman: 'Alemán (capital fijo)',
+  americano: 'Americano',
+  plano: 'Interés plano',
+}
+
+const ESTADOS_COMISION: Record<string, string> = {
+  pendiente: 'Pendiente',
+  parcial: 'Parcial',
+  pagada: 'Pagada',
+  liquidada: 'Liquidada',
+}
+
+function metodoValido(valor: string | null | undefined): CondicionesSimulacion['metodo'] | null {
+  return valor && valor in METODOS ? valor as CondicionesSimulacion['metodo'] : null
+}
+
 function Dato({ etiqueta, valor }: { etiqueta: string; valor: React.ReactNode }) {
   return (
     <div className="min-w-0">
@@ -40,13 +59,22 @@ export function PanelLote({ lote, tasas, puedeSimular, puedeVender, puedeVerVent
   const precio = Number(lote.precio_venta ?? 0)
   const sinPrecio = precio <= 0
   const libre = lote.estado === 'disponible' && !lote.negociacion && !sinPrecio
+  const neg = lote.negociacion
+  const vendido = !!neg || ['reservado', 'en_negociacion', 'vendido', 'pagado'].includes(lote.estado)
+  const comisionistas = neg?.comisionistas ?? []
 
-  const [cond, setCond] = useState<CondicionesSimulacion>({
-    enganche: Math.round(precio * 0.15),
-    plazo_meses: 24,
-    tasa_interes_id: tasas[0] ? String(tasas[0].id) : '',
-    tasa_interes_anual: tasas[0] ? Number(tasas[0].porcentaje_anual) : 12,
-    metodo: 'frances',
+  const [cond, setCond] = useState<CondicionesSimulacion>(() => {
+    const tasaPactada = neg?.tasa_interes_anual != null ? Number(neg.tasa_interes_anual) : null
+    const tasaCatalogo = tasaPactada != null
+      ? tasas.find((t) => Number(t.porcentaje_anual) === tasaPactada)
+      : tasas[0]
+    return {
+      enganche: neg?.enganche_pactado != null ? Number(neg.enganche_pactado) : Math.round(precio * 0.15),
+      plazo_meses: neg?.plazo_meses && Number(neg.plazo_meses) > 0 ? Number(neg.plazo_meses) : 24,
+      tasa_interes_id: tasaCatalogo ? String(tasaCatalogo.id) : '',
+      tasa_interes_anual: tasaCatalogo ? Number(tasaCatalogo.porcentaje_anual) : (tasaPactada ?? 12),
+      metodo: metodoValido(neg?.sistema_amortizacion) ?? 'frances',
+    }
   })
   const [sim, setSim] = useState<any>(null)
   const [error, setError] = useState('')
@@ -54,18 +82,26 @@ export function PanelLote({ lote, tasas, puedeSimular, puedeVender, puedeVerVent
   const [tablaCompleta, setTablaCompleta] = useState(false)
 
   useEffect(() => {
+    const tasaPactada = neg?.tasa_interes_anual != null ? Number(neg.tasa_interes_anual) : null
+    const tasaCatalogo = tasaPactada != null
+      ? tasas.find((t) => Number(t.porcentaje_anual) === tasaPactada) ?? tasas[0]
+      : tasas[0]
     setCond((c) => ({
       ...c,
-      enganche: Math.round(precio * 0.15),
-      tasa_interes_id: c.tasa_interes_id || (tasas[0] ? String(tasas[0].id) : ''),
-      tasa_interes_anual: c.tasa_interes_id ? c.tasa_interes_anual : (tasas[0] ? Number(tasas[0].porcentaje_anual) : c.tasa_interes_anual),
+      enganche: neg?.enganche_pactado != null ? Number(neg.enganche_pactado) : Math.round(precio * 0.15),
+      plazo_meses: neg?.plazo_meses && Number(neg.plazo_meses) > 0 ? Number(neg.plazo_meses) : c.plazo_meses,
+      metodo: metodoValido(neg?.sistema_amortizacion) ?? c.metodo,
+      tasa_interes_id: c.tasa_interes_id || (tasaCatalogo ? String(tasaCatalogo.id) : ''),
+      tasa_interes_anual: c.tasa_interes_id
+        ? c.tasa_interes_anual
+        : (tasaCatalogo ? Number(tasaCatalogo.porcentaje_anual) : (tasaPactada ?? c.tasa_interes_anual)),
     }))
     setSim(null)
     setTablaCompleta(false)
   }, [lote.id, tasas])
 
   useEffect(() => {
-    if (!libre || !puedeSimular || !lote.visible || precio <= 0) return
+    if (!puedeSimular || !lote.visible || precio <= 0) return
     const t = setTimeout(async () => {
       setCalculando(true)
       setError('')
@@ -88,7 +124,7 @@ export function PanelLote({ lote, tasas, puedeSimular, puedeVender, puedeVerVent
       }
     }, 350)
     return () => clearTimeout(t)
-  }, [lote.id, libre, puedeSimular, lote.visible, precio, cond])
+  }, [lote.id, puedeSimular, lote.visible, precio, cond])
 
   const cuotas: any[] = sim?.cuotas ?? []
   const filas = tablaCompleta ? cuotas : cuotas.slice(0, 6)
@@ -121,7 +157,7 @@ export function PanelLote({ lote, tasas, puedeSimular, puedeVender, puedeVerVent
         <>
           <div className="grid grid-cols-2 gap-3 rounded-xl border border-border/80 bg-card/60 p-4">
             <Dato etiqueta="Área" valor={`${Number(lote.area_m2 ?? 0).toLocaleString('es-GT')} m²`} />
-            <Dato etiqueta="Medidas" valor={lote.frente_metros && lote.fondo_metros ? `${Number(lote.frente_metros)} × ${Number(lote.fondo_metros)} m` : '—'} />
+            <Dato etiqueta="Medidas" valor={textoMedidas(lote)} />
             <Dato etiqueta="Precio de venta" valor={<span className="text-primary">{quetzales(precio)}</span>} />
             <Dato etiqueta="Precio por m²" valor={lote.precio_m2 ? quetzales(lote.precio_m2) : '—'} />
             <Dato etiqueta="Tipo de terreno" valor={lote.tipo_terreno || '—'} />
@@ -140,26 +176,54 @@ export function PanelLote({ lote, tasas, puedeSimular, puedeVender, puedeVerVent
             )}
           </div>
 
-          {lote.negociacion && (
+          <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: `${estado.color}66`, backgroundColor: `${estado.color}14` }}>
+            {vendido
+              ? `Este lote está marcado como ${estado.etiqueta.toLowerCase()}.`
+              : 'Este lote está disponible y todavía no tiene venta.'}
+          </div>
+
+          {neg && (
             <div className="rounded-xl border border-border/80 bg-muted/40 p-4 space-y-2">
-              <p className="text-sm font-semibold flex items-center gap-2"><Handshake size={16} className="text-primary" /> Operación vigente</p>
+              <p className="text-sm font-semibold flex items-center gap-2"><Handshake size={16} className="text-primary" /> Venta del lote</p>
               <div className="grid grid-cols-2 gap-3">
-                <Dato etiqueta="Código" valor={lote.negociacion.codigo} />
-                <Dato etiqueta="Estado" valor={ESTADOS_NEGOCIACION[lote.negociacion.estado] ?? lote.negociacion.estado} />
-                <Dato etiqueta="Tipo" valor={lote.negociacion.tipo} />
-                {lote.negociacion.comprador && <Dato etiqueta="Comprador" valor={lote.negociacion.comprador} />}
+                <Dato etiqueta="Código" valor={neg.codigo} />
+                <Dato etiqueta="Estado de la venta" valor={ESTADOS_NEGOCIACION[neg.estado] ?? neg.estado} />
+                <Dato etiqueta="Tipo" valor={neg.tipo === 'credito' ? 'A plazo / Financiamiento' : neg.tipo === 'contado' ? 'Contado' : neg.tipo === 'reserva' ? 'Reserva' : neg.tipo} />
+                <Dato etiqueta="Comprador" valor={neg.comprador || 'Sin registrar'} />
+                <Dato etiqueta="Lo vendió" valor={neg.asesor || lote.vendedor || 'Sin registrar'} />
+                <Dato etiqueta="Vendedor asignado" valor={lote.vendedor || 'Sin asignar'} />
+                <div className="col-span-2">
+                  <Dato
+                    etiqueta="Comisionista"
+                    valor={comisionistas.length
+                      ? comisionistas.map((c) => `${c.nombre}${c.estado ? ` · ${ESTADOS_COMISION[c.estado] ?? c.estado}` : ''}${c.monto != null ? ` · ${quetzales(c.monto)}` : ''}`).join('; ')
+                      : 'Sin comisionista en esta venta'}
+                  />
+                </div>
+                <Dato etiqueta="Precio pactado" valor={quetzales(neg.precio_final)} />
+                <Dato etiqueta="Enganche pactado" valor={quetzales(neg.enganche_pactado)} />
+                <Dato etiqueta="Plazo" valor={neg.plazo_meses ? `${neg.plazo_meses} cuotas` : '—'} />
+                <Dato etiqueta="Tasa pactada" valor={neg.tasa_interes_anual != null ? `${Number(neg.tasa_interes_anual)}% anual` : '—'} />
+                <Dato etiqueta="Amortización" valor={METODOS[neg.sistema_amortizacion ?? ''] ?? neg.sistema_amortizacion ?? '—'} />
+                <Dato etiqueta="Cuota pactada" valor={Number(neg.cuota_mensual) > 0 ? quetzales(neg.cuota_mensual) : 'Se confirma al cobrar el enganche'} />
+                <Dato etiqueta="Cuotas pagadas" valor={neg.cuotas_pagadas ?? 0} />
+                <Dato etiqueta="Cuotas pendientes" valor={neg.cuotas_pendientes ?? '—'} />
+                <Dato etiqueta="Saldo de capital" valor={quetzales(neg.saldo_capital_pendiente)} />
               </div>
               {puedeVerVentas && (
-                <Button size="sm" variant="outline" className="w-full gap-2" onClick={() => onVerNegociacion(lote.negociacion!.id)}>
+                <Button size="sm" variant="outline" className="w-full gap-2" onClick={() => onVerNegociacion(neg.id)}>
                   <Receipt size={16} /> Ver estado de cuenta en Ventas
                 </Button>
               )}
             </div>
           )}
 
-          {libre && puedeSimular && (
+          {puedeSimular && precio > 0 && (
             <div className="rounded-xl border border-border/80 bg-muted/40 p-4 space-y-3">
-              <p className="text-sm font-semibold flex items-center gap-2"><Calculator size={16} className="text-primary" /> Proyección de financiamiento</p>
+              <p className="text-sm font-semibold flex items-center gap-2"><Calculator size={16} className="text-primary" /> {libre ? 'Proyección de financiamiento' : 'Simulación de referencia'}</p>
+              {!libre && (
+                <p className="text-xs text-muted-foreground">Calcula cuánto saldría el precio de lista en cuotas. No abre una venta nueva sobre este lote.</p>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Enganche (Q)</Label>
@@ -202,6 +266,9 @@ export function PanelLote({ lote, tasas, puedeSimular, puedeVender, puedeVerVent
               {error && <p className="text-xs text-destructive">{error}</p>}
               {sim && (
                 <div className={`space-y-3 ${calculando ? 'opacity-60' : ''}`}>
+                  <p className="text-sm">
+                    Con tasa {Number(tasaAplicada)}% el lote saldría en <span className="font-semibold">{cond.plazo_meses} cuotas</span> de <span className="font-semibold text-primary">{quetzales(sim.cuota_mensual)}</span>.
+                  </p>
                   <div className="grid grid-cols-2 gap-3">
                     <Dato etiqueta="Cuota mensual" valor={<span className="text-primary text-base">{quetzales(sim.cuota_mensual)}</span>} />
                     <Dato etiqueta="Monto financiado" valor={quetzales(sim.monto_financiado)} />

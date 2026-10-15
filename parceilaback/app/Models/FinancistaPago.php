@@ -9,6 +9,9 @@ class FinancistaPago extends Model
     protected $fillable = [
         'financista_id',
         'fecha',
+        'numero_recibo',
+        'metodo_pago',
+        'concepto',
         'monto_capital',
         'monto_interes',
         'monto_mora',
@@ -17,6 +20,7 @@ class FinancistaPago extends Model
         'archivo_path',
         'archivo_nombre',
         'user_id',
+        'movimiento_caja_id',
     ];
 
     protected $casts = [

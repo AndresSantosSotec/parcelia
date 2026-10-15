@@ -50,4 +50,11 @@ trait BuildsAmortizationRows
             'cuotas' => [],
         ];
     }
+
+    protected function pasoMeses(array $opciones): int
+    {
+        $paso = (int) ($opciones['meses_periodo'] ?? 1);
+
+        return max(1, min(12, $paso));
+    }
 }

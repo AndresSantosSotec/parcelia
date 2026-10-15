@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Lote;
+use App\Support\AreaLote;
 use App\Models\LoteImagen;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -107,6 +108,10 @@ class LoteController extends Controller
             'area_m2' => 'nullable|numeric|min:0.01',
             'frente_metros' => 'nullable|numeric|min:0.01',
             'fondo_metros' => 'nullable|numeric|min:0.01',
+            'lado_norte' => 'nullable|numeric|min:0.01',
+            'lado_sur' => 'nullable|numeric|min:0.01',
+            'lado_este' => 'nullable|numeric|min:0.01',
+            'lado_oeste' => 'nullable|numeric|min:0.01',
             'colindancias' => 'nullable|string',
             'precio_venta' => 'nullable|numeric|min:0.01',
             'precio_m2' => 'nullable|numeric|min:0',
@@ -134,7 +139,7 @@ class LoteController extends Controller
         }
 
         $estadoService = app(\App\Services\Inmobiliario\LoteEstadoService::class);
-        $camposInventario = ['numero_lote', 'area_m2', 'frente_metros', 'fondo_metros', 'precio_venta', 'precio_m2', 'tipo_terreno', 'colindancias'];
+        $camposInventario = ['numero_lote', 'area_m2', 'frente_metros', 'fondo_metros', 'lado_norte', 'lado_sur', 'lado_este', 'lado_oeste', 'precio_venta', 'precio_m2', 'tipo_terreno', 'colindancias'];
         $tocaInventario = collect($camposInventario)->contains(fn ($campo) => array_key_exists($campo, $validated));
         $puedeAjustar = $request->user()?->hasPermission('negociaciones', 'ajustar_condiciones');
 
@@ -144,7 +149,9 @@ class LoteController extends Controller
                 ->all();
         }
 
-        if (!empty($validated['frente_metros']) && !empty($validated['fondo_metros']) && empty($request->input('area_m2'))) {
+        $validated = AreaLote::aplicar($validated);
+
+        if (!empty($validated['frente_metros']) && !empty($validated['fondo_metros']) && empty($request->input('area_m2')) && empty($validated['lado_norte'])) {
             $validated['area_m2'] = round((float) $validated['frente_metros'] * (float) $validated['fondo_metros'], 2);
         }
 

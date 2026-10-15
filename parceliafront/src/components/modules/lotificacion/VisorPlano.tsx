@@ -6,6 +6,13 @@ import { estadoLote } from './estadosLote'
 
 interface Caja { x: number; y: number; w: number; h: number }
 
+export type ModoPlano = 'vista' | 'figura' | 'grupo'
+
+export interface FiguraSuelta {
+  id: string
+  puntos: PuntoPlano[]
+}
+
 interface VisorPlanoProps {
   ancho: number
   alto: number
@@ -14,8 +21,13 @@ interface VisorPlanoProps {
   seleccionadoId: number | null
   atenuados: Set<number>
   dibujo: PuntoPlano[] | null
+  modo?: ModoPlano
+  figurasSueltas?: FiguraSuelta[]
+  sueltaActivaId?: string | null
   onSeleccionar: (id: number) => void
   onAgregarPunto: (p: PuntoPlano) => void
+  onSeleccionarSuelta?: (id: string) => void
+  onMover?: (cambio: { lotes: { id: number; puntos: PuntoPlano[] }[]; sueltas: { id: string; puntos: PuntoPlano[] }[] }) => void
 }
 
 const UMBRAL_ARRASTRE = 5
@@ -32,7 +44,42 @@ function ladoMenor(puntos: PuntoPlano[]): number {
   return Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))
 }
 
-export function VisorPlano({ ancho, alto, imagenUrl, lotes, seleccionadoId, atenuados, dibujo, onSeleccionar, onAgregarPunto }: VisorPlanoProps) {
+function redondear(n: number) {
+  return Math.round(n * 100) / 100
+}
+
+function trasladar(grupos: PuntoPlano[][], dx: number, dy: number, ancho: number, alto: number): PuntoPlano[][] {
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  grupos.forEach((pts) => pts.forEach(([x, y]) => {
+    minX = Math.min(minX, x)
+    maxX = Math.max(maxX, x)
+    minY = Math.min(minY, y)
+    maxY = Math.max(maxY, y)
+  }))
+  const dx2 = Math.min(ancho - maxX, Math.max(-minX, dx))
+  const dy2 = Math.min(alto - maxY, Math.max(-minY, dy))
+  return grupos.map((pts) => pts.map(([x, y]) => [redondear(x + dx2), redondear(y + dy2)] as PuntoPlano))
+}
+
+export function VisorPlano({
+  ancho,
+  alto,
+  imagenUrl,
+  lotes,
+  seleccionadoId,
+  atenuados,
+  dibujo,
+  modo = 'vista',
+  figurasSueltas = [],
+  sueltaActivaId = null,
+  onSeleccionar,
+  onAgregarPunto,
+  onSeleccionarSuelta,
+  onMover,
+}: VisorPlanoProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [caja, setCaja] = useState<Caja>({ x: 0, y: 0, w: ancho, h: alto })
   const punteros = useRef(new Map<number, { x: number; y: number }>())
@@ -43,7 +90,13 @@ export function VisorPlano({ ancho, alto, imagenUrl, lotes, seleccionadoId, aten
     escala: number
     movido: boolean
     loteId: number | null
+    sueltaId: string | null
     distancia?: number
+    traslado?: {
+      ancla: PuntoPlano
+      lotes: { id: number; puntos: PuntoPlano[] }[]
+      sueltas: { id: string; puntos: PuntoPlano[] }[]
+    } | null
   } | null>(null)
 
   useEffect(() => {
@@ -94,14 +147,37 @@ export function VisorPlano({ ancho, alto, imagenUrl, lotes, seleccionadoId, aten
     svgRef.current?.setPointerCapture(e.pointerId)
     const escala = svgRef.current?.getScreenCTM()?.a ?? 1
     const destino = (e.target as Element).closest('[data-lote]')
+    const suelta = (e.target as Element).closest('[data-extra]')
+    const loteId = destino ? Number(destino.getAttribute('data-lote')) : null
+    const sueltaId = suelta?.getAttribute('data-extra') ?? null
+    const ancla = aPlano(e.clientX, e.clientY)
+    let traslado: NonNullable<typeof gesto.current>['traslado'] = null
+    if (!dibujo && ancla && (modo === 'grupo' || modo === 'figura')) {
+      const conFigura = lotes.filter((l) => l.puntos && l.puntos.length >= 3)
+      if (modo === 'grupo' && (conFigura.length > 0 || figurasSueltas.length > 0)) {
+        traslado = {
+          ancla,
+          lotes: conFigura.map((l) => ({ id: l.id, puntos: l.puntos! })),
+          sueltas: figurasSueltas.map((f) => ({ id: f.id, puntos: f.puntos })),
+        }
+      } else if (modo === 'figura' && loteId) {
+        const lote = conFigura.find((l) => l.id === loteId)
+        if (lote) traslado = { ancla, lotes: [{ id: lote.id, puntos: lote.puntos! }], sueltas: [] }
+      } else if (modo === 'figura' && sueltaId) {
+        const figura = figurasSueltas.find((f) => f.id === sueltaId)
+        if (figura) traslado = { ancla, lotes: [], sueltas: [{ id: figura.id, puntos: figura.puntos }] }
+      }
+    }
     gesto.current = {
       inicioX: e.clientX,
       inicioY: e.clientY,
       caja,
       escala,
       movido: punteros.current.size > 1,
-      loteId: destino ? Number(destino.getAttribute('data-lote')) : null,
+      loteId,
+      sueltaId,
       distancia: punteros.current.size === 2 ? distanciaPunteros() : undefined,
+      traslado,
     }
   }
 
@@ -124,6 +200,20 @@ export function VisorPlano({ ancho, alto, imagenUrl, lotes, seleccionadoId, aten
     const dy = e.clientY - g.inicioY
     if (!g.movido && Math.hypot(dx, dy) < UMBRAL_ARRASTRE) return
     g.movido = true
+
+    if (g.traslado && onMover) {
+      const actual = aPlano(e.clientX, e.clientY)
+      if (!actual) return
+      const grupos = [...g.traslado.lotes.map((l) => l.puntos), ...g.traslado.sueltas.map((s) => s.puntos)]
+      const movidos = trasladar(grupos, actual[0] - g.traslado.ancla[0], actual[1] - g.traslado.ancla[1], ancho, alto)
+      const nLotes = g.traslado.lotes.length
+      onMover({
+        lotes: g.traslado.lotes.map((l, i) => ({ id: l.id, puntos: movidos[i] })),
+        sueltas: g.traslado.sueltas.map((s, i) => ({ id: s.id, puntos: movidos[nLotes + i] })),
+      })
+      return
+    }
+
     setCaja({ ...g.caja, x: g.caja.x - dx / g.escala, y: g.caja.y - dy / g.escala })
   }
 
@@ -134,16 +224,23 @@ export function VisorPlano({ ancho, alto, imagenUrl, lotes, seleccionadoId, aten
     gesto.current = null
     if (!g || g.movido) return
 
+    if (g.traslado) {
+      if (!g.movido && g.loteId) onSeleccionar(g.loteId)
+      else if (!g.movido && g.sueltaId) onSeleccionarSuelta?.(g.sueltaId)
+      return
+    }
+
     if (dibujo) {
       const p = aPlano(e.clientX, e.clientY)
       if (!p) return
       onAgregarPunto([
-        Math.round(Math.min(ancho, Math.max(0, p[0])) * 100) / 100,
-        Math.round(Math.min(alto, Math.max(0, p[1])) * 100) / 100,
+        redondear(Math.min(ancho, Math.max(0, p[0]))),
+        redondear(Math.min(alto, Math.max(0, p[1]))),
       ])
       return
     }
     if (g.loteId) onSeleccionar(g.loteId)
+    else if (g.sueltaId) onSeleccionarSuelta?.(g.sueltaId)
   }
 
   const tamTexto = Math.max(ancho, alto) / 70
@@ -157,7 +254,7 @@ export function VisorPlano({ ancho, alto, imagenUrl, lotes, seleccionadoId, aten
         ref={svgRef}
         viewBox={`${caja.x} ${caja.y} ${caja.w} ${caja.h}`}
         preserveAspectRatio="xMidYMid meet"
-        className={`w-full h-full touch-none select-none ${dibujo ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`}
+        className={`w-full h-full touch-none select-none ${dibujo ? 'cursor-crosshair' : modo === 'vista' ? 'cursor-grab active:cursor-grabbing' : 'cursor-move'}`}
         onPointerDown={alPresionar}
         onPointerMove={alMover}
         onPointerUp={alSoltar}
@@ -207,6 +304,27 @@ export function VisorPlano({ ancho, alto, imagenUrl, lotes, seleccionadoId, aten
                 pointerEvents="none"
               >
                 {l.numero_lote}
+              </text>
+            </g>
+          )
+        })}
+
+        {figurasSueltas.map((f, indice) => {
+          const activa = f.id === sueltaActivaId
+          const [cx, cy] = centroide(f.puntos)
+          return (
+            <g key={f.id} data-extra={f.id} className="cursor-move">
+              <title>{`Figura ${indice + 1} sin asignar`}</title>
+              <polygon
+                points={f.puntos.map((p) => p.join(',')).join(' ')}
+                fill="#f59e0b"
+                fillOpacity={activa ? 0.55 : 0.35}
+                stroke="#f59e0b"
+                strokeWidth={grosor * 2}
+                strokeDasharray={`${grosor * 6} ${grosor * 4}`}
+              />
+              <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontSize={tamTexto} fontWeight={700} fill="#fff" pointerEvents="none">
+                {indice + 1}
               </text>
             </g>
           )

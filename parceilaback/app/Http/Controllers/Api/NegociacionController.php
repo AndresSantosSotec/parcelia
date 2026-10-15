@@ -102,6 +102,7 @@ class NegociacionController extends Controller
             'gastos_escrituracion' => 'nullable|numeric|min:0',
             'gastos_administrativos' => 'nullable|numeric|min:0',
             'plazo_meses' => 'required|integer|min:1|max:240',
+            'periodo_pago' => 'nullable|in:mensual,bimestral,trimestral,cuatrimestral,quimestral,semestral,anual',
             'tasa_interes_anual' => 'nullable|numeric|min:0|max:100',
             'metodo' => 'nullable|string|in:frances,aleman,americano,plano,flat,simple',
             'fecha_primer_pago' => 'nullable|date',
@@ -143,7 +144,8 @@ class NegociacionController extends Controller
             $tasa,
             (int) $validated['plazo_meses'],
             $validated['metodo'] ?? 'frances',
-            $validated['fecha_primer_pago'] ?? null
+            $validated['fecha_primer_pago'] ?? null,
+            $validated['periodo_pago'] ?? 'mensual'
         );
 
         if ($lote) {
@@ -183,6 +185,7 @@ class NegociacionController extends Controller
             'gastos_escrituracion' => 'nullable|numeric|min:0',
             'gastos_administrativos' => 'nullable|numeric|min:0',
             'plazo_meses' => 'required|integer|min:1|max:240',
+            'periodo_pago' => 'nullable|in:mensual,bimestral,trimestral,cuatrimestral,quimestral,semestral,anual',
             'tasa_interes_anual' => 'nullable|numeric|min:0|max:100',
             'metodo' => 'nullable|string|in:frances,aleman,americano,plano,flat,simple',
             'fecha_primer_pago' => 'nullable|date',
@@ -200,7 +203,8 @@ class NegociacionController extends Controller
             (float) ($validated['tasa_interes_anual'] ?? 0),
             (int) $validated['plazo_meses'],
             $validated['metodo'] ?? 'frances',
-            $validated['fecha_primer_pago'] ?? null
+            $validated['fecha_primer_pago'] ?? null,
+            $validated['periodo_pago'] ?? 'mensual'
         );
 
         $lote = ! empty($validated['lote_id'])
@@ -316,6 +320,13 @@ class NegociacionController extends Controller
 
                 $montoFinanciado = max(0, round($precioFinal - $enganchePactado, 2));
                 $plazoMeses = ($tipo === 'credito') ? (int) $validated['plazo_meses'] : 1;
+                $periodoPago = ($tipo === 'credito')
+                    ? FinancingService::normalizarPeriodo($validated['periodo_pago'] ?? 'mensual')
+                    : 'mensual';
+                $pasoPago = FinancingService::mesesDePeriodo($periodoPago);
+                $numeroCuotas = ($tipo === 'credito')
+                    ? FinancingService::numeroCuotas($plazoMeses, $periodoPago)
+                    : 0;
                 $tasaCatalogo = null;
                 if (!empty($validated['tasa_interes_id'])) {
                     $tasaCatalogo = \App\Models\TasaInteres::where('id', $validated['tasa_interes_id'])
@@ -340,7 +351,7 @@ class NegociacionController extends Controller
                 $fechaNegociacion = Carbon::parse($validated['fecha_negociacion']);
                 $fechaPrimerPago = isset($validated['fecha_primer_pago'])
                     ? Carbon::parse($validated['fecha_primer_pago'])
-                    : $fechaNegociacion->copy()->addMonth();
+                    : $fechaNegociacion->copy()->addMonths($pasoPago);
 
                 $anio = date('Y');
                 $ultimo = Negociacion::where('codigo_negociacion', 'like', "NEG-{$anio}-%")->lockForUpdate()->orderByDesc('id')->value('codigo_negociacion');
@@ -375,12 +386,15 @@ class NegociacionController extends Controller
                     'mora_monto_fijo_diario_snapshot' => $moraConfig?->monto_fijo_diario,
                     'mora_dias_gracia_snapshot' => $moraConfig?->dias_gracia,
                     'plazo_meses' => $plazoMeses,
+                    'periodo_pago' => $periodoPago,
                     'cuota_mensual' => 0,
                     'saldo_capital_pendiente' => $tipo === 'credito' ? $montoFinanciado : $precioFinal,
-                    'cuotas_pendientes' => $tipo === 'credito' ? $plazoMeses : 0,
+                    'cuotas_pendientes' => $numeroCuotas,
                     'fecha_negociacion' => $fechaNegociacion,
                     'fecha_primer_pago' => $fechaPrimerPago,
-                    'fecha_vencimiento_contrato' => $fechaPrimerPago->copy()->addMonths($plazoMeses),
+                    'fecha_vencimiento_contrato' => $pasoPago === 1
+                        ? $fechaPrimerPago->copy()->addMonths(max($plazoMeses, 1))
+                        : $fechaPrimerPago->copy()->addMonths(max(0, $numeroCuotas - 1) * $pasoPago),
                     'estado' => ($tipo === 'reserva') ? 'reservada' : 'activa',
                     'observaciones' => $validated['observaciones'] ?? null,
                     'origen_fondos' => $validated['origen_fondos'] ?? null,

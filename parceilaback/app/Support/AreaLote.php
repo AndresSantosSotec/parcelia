@@ -5,13 +5,11 @@ namespace App\Support;
 class AreaLote
 {
     /**
-     * Área de un lote de cuatro lados.
-     * Norte y sur se toman como las bases del trapecio.
-     * Si un lateral es perpendicular, el otro coincide con la hipotenusa
-     * y el área es el promedio de las bases por esa altura.
-     * En el plano de ejemplo: (200 + 150) / 2 = 175, y 175 × 100 = 17 500 m².
+     * Misma estimación que la hoja "Conversión de Medidas".
+     * Largo = (norte + sur) / 2. Ancho = (oriente + poniente) / 2. Área = largo × ancho.
+     * Una cuerda equivale a 400 m².
      *
-     * @return array{area: float, altura: float, promedio: float}|null
+     * @return array{area: float, altura: float, promedio: float, cuerdas: float}|null
      */
     public static function desdeLados(?float $norte, ?float $sur, ?float $este, ?float $oeste): ?array
     {
@@ -21,28 +19,15 @@ class AreaLote
             }
         }
 
-        $diff = abs($norte - $sur);
-        foreach ([[$oeste, $este], [$este, $oeste]] as [$altura, $inclinado]) {
-            $esperado = sqrt(($altura ** 2) + ($diff ** 2));
-            $tolerancia = max(0.5, $inclinado * 0.03);
-            if (abs($esperado - $inclinado) <= $tolerancia) {
-                $promedio = ($norte + $sur) / 2;
-
-                return [
-                    'area' => round($promedio * $altura, 2),
-                    'altura' => round($altura, 2),
-                    'promedio' => round($promedio, 2),
-                ];
-            }
-        }
-
-        $promedio = ($norte + $sur) / 2;
-        $altura = ($este + $oeste) / 2;
+        $largo = ($norte + $sur) / 2;
+        $ancho = ($este + $oeste) / 2;
+        $area = $largo * $ancho;
 
         return [
-            'area' => round($promedio * $altura, 2),
-            'altura' => round($altura, 2),
-            'promedio' => round($promedio, 2),
+            'area' => round($area, 2),
+            'promedio' => round($largo, 2),
+            'altura' => round($ancho, 2),
+            'cuerdas' => round($area / 400, 2),
         ];
     }
 

@@ -1,11 +1,31 @@
+export const FACTORES_MEDIDA = {
+  metro: 1,
+  vara: 0.84,
+  cuarto: 0.25,
+  pie: 0.3048,
+  yarda: 0.9144,
+} as const
+
+export const CUERDA_M2 = 400
+
+export type UnidadMedida = keyof typeof FACTORES_MEDIDA
+
 export interface AreaLote {
   area: number
-  altura: number
   promedio: number
+  altura: number
+  cuerdas: number
 }
 
 function redondear(valor: number) {
   return Math.round(valor * 100) / 100
+}
+
+export function metrosDePartes(partes: Partial<Record<UnidadMedida, number | string>>) {
+  const metros = (Object.keys(FACTORES_MEDIDA) as UnidadMedida[]).reduce((suma, unidad) => {
+    return suma + (Number(partes[unidad]) || 0) * FACTORES_MEDIDA[unidad]
+  }, 0)
+  return redondear(metros)
 }
 
 export function textoMedidas(lote: {
@@ -28,18 +48,14 @@ export function textoMedidas(lote: {
 export function areaDesdeLados(norte: number, sur: number, este: number, oeste: number): AreaLote | null {
   if (!(norte > 0 && sur > 0 && este > 0 && oeste > 0)) return null
 
-  const diff = Math.abs(norte - sur)
-  const pares: Array<[number, number]> = [[oeste, este], [este, oeste]]
-  for (const [altura, inclinado] of pares) {
-    const esperado = Math.sqrt(altura * altura + diff * diff)
-    const tolerancia = Math.max(0.5, inclinado * 0.03)
-    if (Math.abs(esperado - inclinado) <= tolerancia) {
-      const promedio = (norte + sur) / 2
-      return { area: redondear(promedio * altura), altura: redondear(altura), promedio: redondear(promedio) }
-    }
-  }
+  const largo = (norte + sur) / 2
+  const ancho = (este + oeste) / 2
+  const area = largo * ancho
 
-  const promedio = (norte + sur) / 2
-  const altura = (este + oeste) / 2
-  return { area: redondear(promedio * altura), altura: redondear(altura), promedio: redondear(promedio) }
+  return {
+    area: redondear(area),
+    promedio: redondear(largo),
+    altura: redondear(ancho),
+    cuerdas: redondear(area / CUERDA_M2),
+  }
 }

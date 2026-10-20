@@ -31,11 +31,19 @@ class FinancistaController extends Controller
     {
         $validated = $this->aplicarPlan($this->validar($request));
         $item = Financista::create($validated);
+        $ingreso = CajaService::registrarIngreso((float) $item->monto, 'Inversión recibida de '.$item->nombre, [
+            'tipo_operacion' => 'ingreso_financista',
+            'financista_id' => $item->id,
+            'debita_ventas' => false,
+        ], $request->user()?->id);
 
         return response()->json([
             'success' => true,
-            'message' => 'Financiamiento registrado. El dinero recibido se queda en este módulo y no se suma a los ingresos por venta de lotes.',
+            'message' => $ingreso
+                ? 'Financiamiento registrado. El dinero recibido se sumó a la caja del día.'
+                : 'Financiamiento registrado. No había caja abierta, así que el ingreso a caja queda pendiente.',
             'data' => $this->presentar($item->fresh()),
+            'caja_aplicada' => (bool) $ingreso,
         ], 201);
     }
 
@@ -125,7 +133,7 @@ class FinancistaController extends Controller
         if ($salida > 0) {
             $movimiento = CajaService::registrarEgreso($salida, $concepto, [
                 'tipo_operacion' => 'pago_financista',
-                'debita_ventas' => true,
+                'debita_ventas' => false,
                 'financista_id' => $item->id,
                 'numero_recibo' => $recibo,
                 'capital' => $capital,
@@ -149,7 +157,7 @@ class FinancistaController extends Controller
         }
 
         $mensaje = $cajaAplicada
-            ? 'Pago registrado. Salió de la caja y se debita de las ventas de lotes. El ingreso original del financiamiento sigue aparte.'
+            ? 'Pago registrado. Salió del disponible de la caja del día y no modifica el precio de venta de los lotes.'
             : 'Pago registrado en el financiamiento. No había caja abierta, así que el débito de caja queda pendiente de registrarse en el siguiente movimiento de caja.';
 
         return response()->json([

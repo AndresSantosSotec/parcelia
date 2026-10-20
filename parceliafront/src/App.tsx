@@ -20,8 +20,8 @@ function App() {
       : undefined
 
     const [session, setSession] = useKV<UserSession | null>('user-session', null)
-    const [isAuthenticated, setIsAuthenticated] = useState(false)
-    const [isLoading, setIsLoading] = useState(true)
+    const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(session && (api.hasValidToken() || session.username)))
+    const [isLoading, setIsLoading] = useState(false)
     const logoutInProgressRef = useRef(false)
 
     // Manejar cierre de sesión
@@ -122,14 +122,7 @@ function App() {
         }
     }, [setSession])
 
-    // Mostrar loading mientras se verifica la sesión
-    if (isLoading && !publicToken) {
-        return (
-            <div className="flex items-center justify-center min-h-screen">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-        )
-    }
+    if (isLoading && !publicToken) return null
 
     return (
         <>

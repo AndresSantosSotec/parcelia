@@ -10,9 +10,21 @@ import "./index.css"
 import "./styles/responsive-enhanced.css"
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => undefined)
-  })
+  if (import.meta.env.PROD) {
+    window.addEventListener('load', () => {
+      let recargando = false
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (recargando) return
+        recargando = true
+        window.location.reload()
+      })
+      navigator.serviceWorker.register('/sw.js').catch(() => undefined)
+    })
+  } else {
+    navigator.serviceWorker.getRegistrations()
+      .then((registros) => Promise.all(registros.map((registro) => registro.unregister())))
+      .catch(() => undefined)
+  }
 }
 
 createRoot(document.getElementById('root')!).render(

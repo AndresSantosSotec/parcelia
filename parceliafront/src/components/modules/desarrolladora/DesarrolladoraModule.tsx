@@ -25,17 +25,6 @@ const q = (n: number | string | null | undefined) =>
 
 const fecha = (v?: string | null) => (v ? String(v).slice(0, 10) : '')
 
-const CATEGORIAS: Record<string, string> = {
-  calle: 'Calles / vialidades',
-  agua: 'Agua potable',
-  energia: 'Energía eléctrica',
-  otros: 'Otros',
-  tecnico: 'Técnico / diseño',
-  legal: 'Legal / trámites',
-  infraestructura: 'Infraestructura / obra',
-  administrativo: 'Admin / comercialización',
-}
-
 const TIPOS_LOTE = ['Comercial', 'Residencial', 'Mixto']
 
 const campoSelect = 'mt-1 flex h-9 w-full rounded-md border border-input bg-popover px-3 text-sm text-popover-foreground'
@@ -138,7 +127,6 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
   const [inputArchivoKey, setInputArchivoKey] = useState(0)
   const [previa, setPrevia] = useState<{ archivo: Blob | null; nombre: string; url?: string } | null>(null)
   const [pendienteAdjuntar, setPendienteAdjuntar] = useState<{ escrituraId: number; archivo: File } | null>(null)
-  const [gasto, setGasto] = useState({ categoria: 'calle', concepto: '', monto: '', fecha: '' })
   const [medidasFinca, setMedidasFinca] = useState<number | ''>('')
   const [medidas, setMedidas] = useState<Array<{ numero: string; area: string; tipo: string; frente: string; fondo: string }>>([])
   const [iguales, setIguales] = useState({ cantidad: '', area: '', frente: '', fondo: '', tipo: 'Residencial', reemplazar: false })
@@ -388,7 +376,6 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
             {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/listado?formato=pdf', 'reporte-fincas.pdf')}>Listado PDF</Button>}
             {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/listado?formato=xlsx', 'reporte-fincas.xlsx')}>Listado Excel</Button>}
             {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/cuotas-pendientes?formato=pdf', 'cuotas-pendientes.pdf')}>Cuotas pendientes</Button>}
-            {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/urbanizacion?formato=pdf', 'urbanizacion.pdf')}>Urbanización</Button>}
             {puedeCrear && <Button size="sm" onClick={abrirCrear}>Nueva compra</Button>}
             <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/requisitos', 'registro-modulos.pdf')}>Registro PDF</Button>
           </div>
@@ -463,7 +450,7 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
 
       {resumen && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Resumen titulo="Inversión" valor={q(resumen.inversion)} nota="Compra + escrituración + urbanización" />
+          <Resumen titulo="Inversión" valor={q(resumen.inversion)} nota="Compra + escrituración. La urbanización no entra al costo del lote." />
           <Resumen titulo="Costo por m²" valor={q(resumen.costo_m2)} nota={`${resumen.area_negociable_m2} m² negociables`} />
           <Resumen titulo="Precio sugerido / m²" valor={q(resumen.precio_sugerido_m2)} nota={`Utilidad ${resumen.porcentaje_utilidad}%`} />
           <Resumen titulo="Utilidad proyectada" valor={q(resumen.utilidad_proyectada)} nota="Suma de lotes al precio sugerido" />
@@ -474,7 +461,6 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
         <TabsList className="h-auto w-full flex-wrap justify-start">
           <TabsTrigger value="compra">Compra</TabsTrigger>
           <TabsTrigger value="escrituras">Escrituras</TabsTrigger>
-          <TabsTrigger value="urbanizacion">Urbanización</TabsTrigger>
           <TabsTrigger value="medidas">Parcelar</TabsTrigger>
           <TabsTrigger value="costeo">Costeo</TabsTrigger>
           <TabsTrigger value="plan">Plan de pagos</TabsTrigger>
@@ -666,74 +652,19 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
           </Card>
         </TabsContent>
 
-        <TabsContent value="urbanizacion">
-          <Card>
-            <CardHeader><CardTitle>Gastos reales de urbanización</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-3">
-                <Campo label="m² lotificados (venta)" type="number" value={compra.area_negociable_m2} onChange={(v) => setCompra({ ...compra, area_negociable_m2: v })} disabled={!formularioEditable} />
-                <Campo label="Circulación y vialidades m²" type="number" value={compra.area_vialidades_m2} onChange={(v) => setCompra({ ...compra, area_vialidades_m2: v })} disabled={!formularioEditable} />
-                <Campo label="Área verde m²" type="number" value={compra.area_verde_m2} onChange={(v) => setCompra({ ...compra, area_verde_m2: v })} disabled={!formularioEditable} />
-                <Campo label="Área técnica m²" type="number" value={compra.area_tecnica_m2} onChange={(v) => setCompra({ ...compra, area_tecnica_m2: v })} disabled={!formularioEditable} />
-                <p className="text-sm md:col-span-2">
-                  Escrituras {resumen?.area_escrituras ?? 0} m² · lotificado {num(compra.area_negociable_m2)} m² · sin lotificar {num(compra.area_vialidades_m2) + num(compra.area_verde_m2) + num(compra.area_tecnica_m2)} m².
-                  El costo usa solo el área lotificada. Inversión {q(resumen?.inversion)} = precio {q(resumen?.precio_compra)} + escrituración {q(resumen?.gastos_escrituracion)} + urbanización {q(resumen?.urbanizacion)}.
-                </p>
-              </div>
-              {formularioEditable && <Button disabled={!fincaId} onClick={() => guardar(false)}>Guardar áreas</Button>}
-              <TablaSimple
-                headers={['Categoría', 'Concepto', 'Fecha', 'Monto', '']}
-                rows={(detalle?.finca.gastos_urbanizacion || []).map((g) => [
-                  CATEGORIAS[g.categoria] || g.categoria,
-                  g.concepto,
-                  fecha(g.fecha),
-                  q(g.monto),
-                  formularioEditable ? <Button key={g.id} size="sm" variant="ghost" onClick={async () => {
-                    if (!fincaId) return
-                    const res = await compraFincaService.eliminarGasto(fincaId, g.id)
-                    if (res.data) aplicar(res.data)
-                  }}>Quitar</Button> : '',
-                ])}
-              />
-              {formularioEditable && (
-                <div className="grid gap-3 md:grid-cols-5">
-                  <div>
-                    <Label>Categoría</Label>
-                    <select className={campoSelect} value={gasto.categoria} onChange={(e) => setGasto({ ...gasto, categoria: e.target.value })}>
-                      {Object.entries(CATEGORIAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                    </select>
-                  </div>
-                  <Campo label="Concepto" value={gasto.concepto} onChange={(v) => setGasto({ ...gasto, concepto: v })} />
-                  <Campo label="Monto" type="number" value={gasto.monto} onChange={(v) => setGasto({ ...gasto, monto: v })} />
-                  <Campo label="Fecha" type="date" value={gasto.fecha} onChange={(v) => setGasto({ ...gasto, fecha: v })} />
-                  <div className="flex items-end">
-                    <Button disabled={!fincaId} onClick={async () => {
-                      if (!fincaId) return
-                      try {
-                        const res = await compraFincaService.agregarGasto(fincaId, {
-                          categoria: gasto.categoria,
-                          concepto: gasto.concepto,
-                          monto: num(gasto.monto),
-                          fecha: gasto.fecha || undefined,
-                        })
-                        if (res.data) aplicar(res.data)
-                        setGasto({ ...gasto, concepto: '', monto: '' })
-                      } catch (e: any) { toast.error(e?.message || 'No se pudo agregar') }
-                    }}>Agregar</Button>
-                  </div>
-                </div>
-              )}
-              <p className="text-sm">Total urbanización: <strong>{q(resumen?.urbanizacion)}</strong>. Se reparte solo entre los metros negociables.</p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="medidas">
           <Card>
             <CardHeader><CardTitle>Parcelar en lotes</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               {!fincaId && <p className="text-sm text-muted-foreground">Guarda la compra primero. Con eso se crea la finca y aquí puedes dividirla en lotes.</p>}
-              <p className="text-sm text-muted-foreground">Si todos los lotes miden igual, indica la cantidad y las medidas: se arman las filas solas. Si alguno es distinto, corrige esa fila o agrégala a mano.</p>
+              <p className="text-sm text-muted-foreground">Si todos los lotes miden igual, indica la cantidad y las medidas: se arman las filas solas. Si alguno es distinto, corrige esa fila o agrégala a mano. Las obras de urbanización se registran como egreso de caja y no cambian el costo de los lotes ya vendidos.</p>
+              <div className="grid gap-3 md:grid-cols-3">
+                <Campo label="m² lotificados (venta)" type="number" value={compra.area_negociable_m2} onChange={(v) => setCompra({ ...compra, area_negociable_m2: v })} disabled={!formularioEditable} />
+                <Campo label="Circulación y vialidades m²" type="number" value={compra.area_vialidades_m2} onChange={(v) => setCompra({ ...compra, area_vialidades_m2: v })} disabled={!formularioEditable} />
+                <Campo label="Área verde m²" type="number" value={compra.area_verde_m2} onChange={(v) => setCompra({ ...compra, area_verde_m2: v })} disabled={!formularioEditable} />
+                <Campo label="Área técnica m²" type="number" value={compra.area_tecnica_m2} onChange={(v) => setCompra({ ...compra, area_tecnica_m2: v })} disabled={!formularioEditable} />
+              </div>
+              {formularioEditable && <Button disabled={!fincaId} onClick={() => guardar(false)}>Guardar áreas</Button>}
               {formularioEditable && (
                 <div className="grid gap-2 rounded-md border p-3 md:grid-cols-6">
                   <div>

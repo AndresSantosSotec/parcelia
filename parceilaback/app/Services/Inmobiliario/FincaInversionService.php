@@ -107,7 +107,7 @@ class FincaInversionService
         $precio = round((float) $finca->precio_compra, 2);
         $escrituracion = round((float) $finca->gastos_escrituracion, 2);
         $urbanizacion = round((float) $finca->gastosUrbanizacion->sum('monto'), 2);
-        $inversion = round($precio + $escrituracion + $urbanizacion, 2);
+        $inversion = round($precio + $escrituracion, 2);
         $costoM2 = $negociable > 0 ? round($inversion / $negociable, 4) : 0;
         $pct = (float) ($finca->porcentaje_utilidad ?? 0);
         $precioSugeridoM2 = round($costoM2 * (1 + $pct / 100), 4);
@@ -118,6 +118,9 @@ class FincaInversionService
         $costoLotes = 0.0;
         $sugeridoLotes = 0.0;
         foreach ($lotes as $lote) {
+            if ($lote->estado !== 'disponible') {
+                continue;
+            }
             $costo = round((float) $lote->area_m2 * $costoM2, 2);
             $sugerido = round($costo * (1 + $pct / 100), 2);
             $lote->costo_asignado = $costo;

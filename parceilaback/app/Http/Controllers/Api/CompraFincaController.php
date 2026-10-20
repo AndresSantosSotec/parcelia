@@ -370,24 +370,10 @@ class CompraFincaController extends Controller
         if ($respuesta = $this->autorizarMutacion($request, $finca)) {
             return $respuesta;
         }
-        $validated = $request->validate([
-            'categoria' => 'required|in:calle,agua,energia,otros,tecnico,legal,infraestructura,administrativo',
-            'concepto' => 'required|string|max:255',
-            'monto' => 'required|numeric|min:0.01',
-            'fecha' => 'nullable|date',
-        ]);
-
-        $finca->gastosUrbanizacion()->create($validated);
-        $resumen = $this->inversion->recalcular($finca->fresh());
-
         return response()->json([
-            'success' => true,
-            'data' => [
-                'finca' => $finca->fresh(['escrituras', 'cuotasCompra', 'gastosUrbanizacion', 'pagosCompra']),
-                'resumen' => $resumen,
-                'lotes' => $this->lotes($finca),
-            ],
-        ], 201);
+            'success' => false,
+            'message' => 'La urbanización ya no se carga al costo de los lotes. Ese desembolso se registra como egreso de la caja del día.',
+        ], 422);
     }
 
     public function destroyGasto(Request $request, $id, $gastoId)
@@ -569,7 +555,7 @@ class CompraFincaController extends Controller
 
         $actualizados = 0;
         foreach ($finca->lotes()->get() as $lote) {
-            if ((float) $lote->precio_sugerido <= 0) {
+            if ($lote->estado !== 'disponible' || (float) $lote->precio_sugerido <= 0) {
                 continue;
             }
             $lote->precio_venta = $lote->precio_sugerido;

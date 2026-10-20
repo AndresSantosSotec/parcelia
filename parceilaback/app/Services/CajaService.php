@@ -235,4 +235,51 @@ class CajaService
             'cantidad_movimientos' => $movimientos->count(),
         ];
     }
+
+    /**
+     * Ajusta el egreso ligado a un pago. Si la caja de ese movimiento sigue abierta,
+     * corrige el mismo registro. Si ya cerró, compensa la diferencia en la caja del día.
+     */
+    public static function conciliarEgreso(
+        ?int $movimientoId,
+        float $antesEnCaja,
+        float $despues,
+        string $concepto,
+        array $detalles,
+        ?int $userId = null
+    ): ?int {
+        $despues = round(max(0, $despues), 2);
+        $antesEnCaja = round(max(0, $antesEnCaja), 2);
+        $movimiento = $movimientoId ? MovimientoCaja::find($movimientoId) : null;
+        $cajaAbierta = $movimiento
+            && CajaAperturaCierre::where('id', $movimiento->caja_id)->where('estado', 'abierta')->exists();
+
+        if ($movimiento && $movimiento->estado === 'aplicado' && $cajaAbierta && $movimiento->tipo === 'egreso_desembolso') {
+            if ($despues <= 0.009) {
+                $movimiento->update(['estado' => 'anulado']);
+
+                return null;
+            }
+            $movimiento->update([
+                'monto' => $despues,
+                'concepto' => $concepto,
+            ]);
+
+            return $movimiento->id;
+        }
+
+        $delta = round($despues - $antesEnCaja, 2);
+        if ($delta > 0.009) {
+            $nuevo = self::registrarEgreso($delta, $concepto, $detalles, $userId);
+
+            return $movimientoId ?: $nuevo?->id;
+        }
+        if ($delta < -0.009) {
+            self::registrarIngreso(abs($delta), 'Reverso: '.$concepto, $detalles, $userId);
+
+            return $despues <= 0.009 ? null : $movimientoId;
+        }
+
+        return $movimientoId;
+    }
 }

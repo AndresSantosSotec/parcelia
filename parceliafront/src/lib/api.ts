@@ -197,6 +197,7 @@ class ApiClient {
         headers,
         credentials: 'include',
         cache: 'no-store',
+        signal: options.signal ?? (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(20000) : undefined),
       })
 
       const contentType = response.headers.get('content-type')
@@ -251,6 +252,9 @@ class ApiClient {
 
       return data
     } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        throw new Error('El servidor tardó demasiado. Revisa la conexión e inténtalo de nuevo.')
+      }
       if (error?.status || error?.errors) {
         throw error
       }

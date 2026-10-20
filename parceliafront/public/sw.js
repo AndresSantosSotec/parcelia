@@ -1,4 +1,5 @@
-const CACHE = 'terracloud-shell-v1'
+const CACHE = 'terracloud-shell-v2'
+const SHELL = '/index.html'
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -23,29 +24,34 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
   if (url.pathname.startsWith('/api') || url.pathname.startsWith('/storage')) return
+  if (url.pathname.startsWith('/src/') || url.pathname.startsWith('/@')) return
 
   if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone()
-          caches.open(CACHE).then((cache) => cache.put('/index.html', copy)).catch(() => undefined)
-          return response
-        })
-        .catch(() => caches.match('/index.html').then((cached) => cached || fetch(request)))
-    )
+    event.respondWith(abrirAplicacion(request))
     return
   }
 
-  event.respondWith(
-    fetch(request)
-      .then((response) => {
-        if (response.ok && (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/'))) {
-          const copy = response.clone()
-          caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => undefined)
-        }
-        return response
-      })
-      .catch(() => caches.match(request).then((cached) => cached || Promise.reject()))
-  )
+  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/')) {
+    event.respondWith(desdeCache(request))
+  }
 })
+
+async function abrirAplicacion(request) {
+  const cache = await caches.open(CACHE)
+  try {
+    const response = await fetch(request)
+    if (response.ok) cache.put(SHELL, response.clone()).catch(() => undefined)
+    return response
+  } catch {
+    return (await cache.match(SHELL)) || (await cache.match('/')) || fetch(request)
+  }
+}
+
+async function desdeCache(request) {
+  const cache = await caches.open(CACHE)
+  const cached = await cache.match(request)
+  if (cached) return cached
+  const response = await fetch(request)
+  if (response.ok) cache.put(request, response.clone()).catch(() => undefined)
+  return response
+}

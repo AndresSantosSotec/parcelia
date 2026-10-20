@@ -902,7 +902,7 @@ export function NegociacionesModule() {
                   onChange={(e) => setFormVenta({ ...formVenta, tipo_negociacion: e.target.value as 'contado' | 'credito' | 'reserva' })}
                   className="w-full bg-background border rounded-lg p-2.5 text-sm"
                 >
-                  <option value="credito">A plazo / Financiamiento</option>
+                  <option value="credito">A Plazo / Financiamiento</option>
                   <option value="contado">Contado</option>
                   <option value="reserva">Reserva</option>
                 </select>

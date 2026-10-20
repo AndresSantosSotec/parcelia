@@ -164,7 +164,7 @@ class ComisionistaController extends Controller
 
     public function comisiones(Request $request)
     {
-        $query = ComisionVenta::with(['comisionista', 'lote:id,codigo_unico,numero_lote', 'negociacion:id,codigo_negociacion,precio_original,precio_final,enganche_pactado,enganche_pagado,total_capital_pagado,saldo_capital_pendiente,monto_financiado,estado', 'regla'])
+        $query = ComisionVenta::with(['comisionista', 'lote:id,codigo_unico,numero_lote', 'negociacion:id,codigo_negociacion,precio_original,precio_final,enganche_pactado,enganche_pagado,total_capital_pagado,saldo_capital_pendiente,monto_financiado,estado', 'regla', 'pagos'])
             ->withSum('pagos as pagado', 'monto');
 
         if ($request->filled('comisionista_id')) {
@@ -230,7 +230,7 @@ class ComisionistaController extends Controller
         $lote = $comision->lote?->codigo_unico ?: 'lote';
         $movimiento = CajaService::registrarEgreso($monto, "Pago de comisión a {$persona} · {$lote}", [
             'tipo_operacion' => 'pago_comision',
-            'debita_ventas' => true,
+            'debita_ventas' => false,
             'comision_id' => $comision->id,
             'fecha' => $validated['fecha'],
         ], $request->user()?->id);
@@ -245,7 +245,78 @@ class ComisionistaController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Pago de comisión registrado.',
+            'message' => 'Pago de comisión registrado. Salió de la caja del día y no modifica el precio de venta del lote.',
+            'data' => $this->presentar($comision->fresh()),
+        ]);
+    }
+
+    public function updatePago(Request $request, $id, $pagoId)
+    {
+        $comision = ComisionVenta::with(['negociacion', 'regla', 'comisionista', 'lote:id,codigo_unico,numero_lote'])->findOrFail($id);
+        $pago = $comision->pagos()->findOrFail($pagoId);
+        $validated = $request->validate([
+            'fecha' => 'required|date',
+            'monto' => 'required|numeric|min:0.01',
+            'referencia' => 'nullable|string|max:255',
+        ]);
+
+        $monto = round((float) $validated['monto'], 2);
+        $otros = round((float) $comision->pagos()->where('id', '!=', $pago->id)->sum('monto'), 2);
+        $liberacion = $this->liberacion($comision);
+        $tope = round(min((float) $comision->monto_comision, $liberacion['liberado']) - $otros, 2);
+        if ($monto > $tope + 0.009) {
+            return response()->json([
+                'success' => false,
+                'message' => 'El monto editado supera lo que se puede pagar de esta comisión. El tope es Q '.number_format(max(0, $tope), 2).'.',
+            ], 422);
+        }
+
+        $persona = $comision->comisionista?->nombre ?: 'comisionista';
+        $lote = $comision->lote?->numero_lote ?: ($comision->lote?->codigo_unico ?: 'lote');
+        $concepto = "Pago de comisión a {$persona} · {$lote}";
+        $antes = $pago->movimiento_caja_id ? round((float) $pago->monto, 2) : 0;
+        $movimientoId = CajaService::conciliarEgreso($pago->movimiento_caja_id, $antes, $monto, $concepto, [
+            'tipo_operacion' => 'pago_comision',
+            'debita_ventas' => false,
+            'comision_id' => $comision->id,
+            'pago_id' => $pago->id,
+            'fecha' => $validated['fecha'],
+        ], $request->user()?->id);
+
+        $pago->update([
+            'fecha' => $validated['fecha'],
+            'monto' => $monto,
+            'referencia' => $validated['referencia'] ?? null,
+            'movimiento_caja_id' => $movimientoId,
+        ]);
+        $this->refrescarEstadoComision($comision);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pago actualizado. La caja quedó con el monto nuevo y el precio de venta del lote no cambia.',
+            'data' => $this->presentar($comision->fresh()),
+        ]);
+    }
+
+    public function destroyPago(Request $request, $id, $pagoId)
+    {
+        $comision = ComisionVenta::with(['comisionista', 'lote:id,codigo_unico,numero_lote'])->findOrFail($id);
+        $pago = $comision->pagos()->findOrFail($pagoId);
+        $persona = $comision->comisionista?->nombre ?: 'comisionista';
+        $lote = $comision->lote?->numero_lote ?: ($comision->lote?->codigo_unico ?: 'lote');
+        $antes = $pago->movimiento_caja_id ? round((float) $pago->monto, 2) : 0;
+        CajaService::conciliarEgreso($pago->movimiento_caja_id, $antes, 0, "Reverso de pago de comisión a {$persona} · {$lote}", [
+            'tipo_operacion' => 'reverso_pago_comision',
+            'debita_ventas' => false,
+            'comision_id' => $comision->id,
+            'pago_id' => $pago->id,
+        ], $request->user()?->id);
+        $pago->delete();
+        $this->refrescarEstadoComision($comision);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pago eliminado. El dinero volvió al disponible de caja y el precio de venta del lote no cambia.',
             'data' => $this->presentar($comision->fresh()),
         ]);
     }
@@ -265,7 +336,7 @@ class ComisionistaController extends Controller
 
     private function presentar(ComisionVenta $c): array
     {
-        $c->loadMissing(['comisionista', 'lote:id,codigo_unico,numero_lote', 'negociacion:id,codigo_negociacion,precio_original,precio_final,enganche_pactado,enganche_pagado,total_capital_pagado,saldo_capital_pendiente,monto_financiado,estado', 'regla']);
+        $c->loadMissing(['comisionista', 'lote:id,codigo_unico,numero_lote', 'negociacion:id,codigo_negociacion,precio_original,precio_final,enganche_pactado,enganche_pagado,total_capital_pagado,saldo_capital_pendiente,monto_financiado,estado', 'regla', 'pagos']);
         if (! array_key_exists('pagado', $c->getAttributes())) {
             $c->loadSum('pagos as pagado', 'monto');
         }
@@ -295,7 +366,26 @@ class ComisionistaController extends Controller
             'excedente' => $liberacion['excedente'],
             'venta_liquidada' => $liberacion['liquidada'],
             'estado' => $c->estado,
+            'pagos' => $c->pagos->map(fn ($p) => [
+                'id' => $p->id,
+                'fecha' => $p->fecha?->toDateString(),
+                'monto' => round((float) $p->monto, 2),
+                'referencia' => $p->referencia,
+            ])->values(),
         ];
+    }
+
+    private function refrescarEstadoComision(ComisionVenta $comision): void
+    {
+        $pagado = round((float) $comision->pagos()->sum('monto'), 2);
+        if ($pagado <= 0.009) {
+            $comision->estado = 'pendiente';
+        } elseif ($pagado + 0.009 >= (float) $comision->monto_comision) {
+            $comision->estado = 'pagada';
+        } else {
+            $comision->estado = 'parcial';
+        }
+        $comision->save();
     }
 
     private function liberacion(ComisionVenta $c): array

@@ -150,7 +150,7 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold">Comisionistas</h1>
-          <p className="text-sm text-muted-foreground">Si el lote se vende por encima del precio de lista, la comisión es esa diferencia. Se paga en la misma proporción en que el comprador abona, y se termina al escriturar. En cero, deja de aparecer para cobro.</p>
+          <p className="text-sm text-muted-foreground">Si el lote se vende por encima del precio de lista, la comisión es esa diferencia. El pago sale de la caja del día y no rebaja el precio de venta del lote.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/comisiones/reporte-pendientes?formato=pdf', 'comisiones-pendientes.pdf')}>Pendientes</Button>}
@@ -165,6 +165,8 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
       <Tabs defaultValue="comisiones">
         <TabsList className="h-auto w-full flex-wrap justify-start">
           <TabsTrigger value="comisiones">Comisiones de ventas</TabsTrigger>
+          <TabsTrigger value="ligar">Ligar comisión</TabsTrigger>
+          <TabsTrigger value="pago">Pago de comisión</TabsTrigger>
           <TabsTrigger value="personas">Personas</TabsTrigger>
           <TabsTrigger value="reglas">Reglas</TabsTrigger>
         </TabsList>
@@ -236,6 +238,9 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
             </CardContent>
           </Card>
 
+        </TabsContent>
+
+        <TabsContent value="ligar" className="space-y-4">
           {puedeEditar && (
             <Card>
               <CardHeader><CardTitle>Ligar una comisión a una venta</CardTitle></CardHeader>
@@ -329,6 +334,9 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
             </Card>
           )}
 
+        </TabsContent>
+
+        <TabsContent value="pago" className="space-y-4">
           {puedePagar && (
             <Card>
               <CardHeader>

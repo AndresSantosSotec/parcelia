@@ -14,7 +14,8 @@ import { SelectorUbicacion } from '@/components/shared/SelectorUbicacion'
 import { MapPickerField, type GeoCoords } from '@/components/ui/MapPickerField'
 import { urlFichaTerreno, urlFotoLote } from '@/lib/media'
 import { usePermissions } from '@/hooks/use-permissions'
-import { areaDesdeLados, textoMedidas } from '@/lib/areaLote'
+import { areaDesdeLados, CUERDA_M2, FACTORES_MEDIDA, metrosDePartes, textoMedidas, type UnidadMedida } from '@/lib/areaLote'
+import { DesarrolladoraModule } from '@/components/modules/desarrolladora/DesarrolladoraModule'
 
 const PASOS_LOTE = [
   { id: 0, titulo: 'Identidad', desc: 'Número y tipo' },
@@ -74,10 +75,34 @@ type UserSessionProp = {
 
 interface FincasModuleProps {
   userSession?: UserSessionProp
+  abrirCompra?: boolean
 }
 
-export function FincasModule({ userSession }: FincasModuleProps) {
+const UNIDADES_MEDIDA: Array<{ id: UnidadMedida; etiqueta: string }> = [
+  { id: 'metro', etiqueta: 'Metros' },
+  { id: 'vara', etiqueta: 'Varas' },
+  { id: 'cuarto', etiqueta: 'Cuartos' },
+  { id: 'pie', etiqueta: 'Pies' },
+  { id: 'yarda', etiqueta: 'Yardas' },
+]
+const LADOS_LOTE = [
+  { id: 'norte', etiqueta: 'Norte', campo: 'lado_norte' },
+  { id: 'sur', etiqueta: 'Sur', campo: 'lado_sur' },
+  { id: 'oriente', etiqueta: 'Oriente', campo: 'lado_este' },
+  { id: 'poniente', etiqueta: 'Poniente', campo: 'lado_oeste' },
+] as const
+
+type PartesLote = Record<(typeof LADOS_LOTE)[number]['id'], Record<UnidadMedida, string>>
+
+function partesVacias(): PartesLote {
+  const lado = { metro: '', vara: '', cuarto: '', pie: '', yarda: '' }
+  return { norte: { ...lado }, sur: { ...lado }, oriente: { ...lado }, poniente: { ...lado } }
+}
+
+export function FincasModule({ userSession, abrirCompra = false }: FincasModuleProps) {
   const { isAdmin } = usePermissions(userSession?.userData)
+  const [panel, setPanel] = useState<'inventario' | 'compra'>(abrirCompra ? 'compra' : 'inventario')
+  const [partesLote, setPartesLote] = useState<PartesLote>(partesVacias)
   const [fincas, setFincas] = useState<Finca[]>([])
   const [fincaSeleccionada, setFincaSeleccionada] = useState<Finca | null>(null)
   const [parcelaSeleccionada, setParcelaSeleccionada] = useState<Parcela | null>(null)
@@ -304,7 +329,27 @@ export function FincasModule({ userSession }: FincasModuleProps) {
       vendedor_id: userSession?.userData?.id ? Number(userSession.userData.id) : '',
     })
     limpiarFotosNuevoLote()
+    setPartesLote(partesVacias())
     setModalLote(true)
+  }
+
+  const aplicarPartes = (siguientes: PartesLote) => {
+    const norte = metrosDePartes(siguientes.norte)
+    const sur = metrosDePartes(siguientes.sur)
+    const este = metrosDePartes(siguientes.oriente)
+    const oeste = metrosDePartes(siguientes.poniente)
+    const calc = areaDesdeLados(norte, sur, este, oeste)
+    setFormLote((prev) => ({
+      ...prev,
+      lado_norte: norte,
+      lado_sur: sur,
+      lado_este: este,
+      lado_oeste: oeste,
+      frente_metros: calc?.promedio ?? prev.frente_metros,
+      fondo_metros: calc?.altura ?? prev.fondo_metros,
+      area_m2: calc?.area ?? prev.area_m2,
+      precio_venta: calc ? Math.round(calc.area * prev.precio_m2 * 100) / 100 : prev.precio_venta,
+    }))
   }
 
   const abrirEditarLote = (lote: Lote) => {
@@ -334,6 +379,12 @@ export function FincasModule({ userSession }: FincasModuleProps) {
       vendedor_id: lote.vendedor_id != null ? Number(lote.vendedor_id) : '',
     })
     limpiarFotosNuevoLote()
+    const partes = partesVacias()
+    partes.norte.metro = lote.lado_norte ? String(lote.lado_norte) : ''
+    partes.sur.metro = lote.lado_sur ? String(lote.lado_sur) : ''
+    partes.oriente.metro = lote.lado_este ? String(lote.lado_este) : ''
+    partes.poniente.metro = lote.lado_oeste ? String(lote.lado_oeste) : ''
+    setPartesLote(partes)
     setModalLote(true)
   }
 
@@ -580,6 +631,8 @@ export function FincasModule({ userSession }: FincasModuleProps) {
           </p>
         </div>
         <div className="page-toolbar-actions">
+          <Button variant={panel === 'inventario' ? 'default' : 'outline'} onClick={() => setPanel('inventario')}>Inventario</Button>
+          <Button variant={panel === 'compra' ? 'default' : 'outline'} onClick={() => setPanel('compra')}>Compra y escrituras</Button>
           <Button onClick={abrirNuevaFinca} className="gap-2 shadow-sm">
             <Plus size={18} weight="bold" /> Nueva Finca
           </Button>
@@ -596,6 +649,8 @@ export function FincasModule({ userSession }: FincasModuleProps) {
         </div>
       </div>
 
+      {panel === 'compra' && <DesarrolladoraModule userSession={userSession} />}
+      {panel === 'inventario' && <>
       {/* Selector de Fincas */}
       <div className="md:hidden space-y-2">
         {fincas.length === 0 ? (
@@ -1212,33 +1267,34 @@ export function FincasModule({ userSession }: FincasModuleProps) {
 
             {pasoLote === 1 && (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  {([
-                    ['lado_norte', 'Norte (m)'],
-                    ['lado_sur', 'Sur (m)'],
-                    ['lado_este', 'Este (m)'],
-                    ['lado_oeste', 'Oeste (m)'],
-                  ] as const).map(([campo, etiqueta]) => (
-                    <div key={campo} className="space-y-2">
-                      <Label>{etiqueta}</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={formLote[campo] || ''}
-                        onChange={(e) => {
-                          const valor = parseFloat(e.target.value) || 0
-                          const lados = { ...formLote, [campo]: valor }
-                          const calc = areaDesdeLados(lados.lado_norte, lados.lado_sur, lados.lado_este, lados.lado_oeste)
-                          setFormLote({
-                            ...lados,
-                            frente_metros: calc?.promedio ?? lados.frente_metros,
-                            fondo_metros: calc?.altura ?? lados.fondo_metros,
-                            area_m2: calc?.area ?? lados.area_m2,
-                            precio_venta: calc ? Math.round(calc.area * lados.precio_m2 * 100) / 100 : lados.precio_venta,
-                          })
-                        }}
-                      />
+                <div className="space-y-3">
+                  {LADOS_LOTE.map((lado) => (
+                    <div key={lado.id} className="rounded-lg border p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label>{lado.etiqueta}</Label>
+                        <span className="text-xs text-muted-foreground">{metrosDePartes(partesLote[lado.id])} m</span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                        {UNIDADES_MEDIDA.map((unidad) => (
+                          <div key={unidad.id} className="space-y-1">
+                            <span className="text-[0.6875rem] text-muted-foreground">{unidad.etiqueta}</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={partesLote[lado.id][unidad.id]}
+                              onChange={(e) => {
+                                const siguientes: PartesLote = {
+                                  ...partesLote,
+                                  [lado.id]: { ...partesLote[lado.id], [unidad.id]: e.target.value },
+                                }
+                                setPartesLote(siguientes)
+                                aplicarPartes(siguientes)
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1284,8 +1340,11 @@ export function FincasModule({ userSession }: FincasModuleProps) {
                     />
                   </div>
                 </div>
+                <p className="text-sm">
+                  Promedio norte-sur {formLote.frente_metros || 0} m · promedio oriente-poniente {formLote.fondo_metros || 0} m · {(Number(formLote.area_m2) / CUERDA_M2).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} cuerdas
+                </p>
                 <p className="text-xs text-muted-foreground rounded-lg bg-muted/50 p-2">
-                  En un trapecio el área es el promedio de norte y sur, multiplicado por la altura. Por ejemplo, (200 + 150) / 2 = 175 m, y 175 × 100 m = 17,500 m². Puedes ajustar el área o el precio a mano.
+                  Cada lindero suma metros, varas (× {FACTORES_MEDIDA.vara}), cuartos (× {FACTORES_MEDIDA.cuarto}), pies (× {FACTORES_MEDIDA.pie}) y yardas (× {FACTORES_MEDIDA.yarda}). El área es el promedio de norte y sur por el promedio de oriente y poniente. Con 85.1 m, 79.5 m, 40 m y 40 m da 3,292 m², o {(3292 / CUERDA_M2).toLocaleString('es-GT')} cuerdas de {CUERDA_M2} m². Puedes ajustar el área o el precio a mano.
                 </p>
               </div>
             )}
@@ -1432,7 +1491,7 @@ export function FincasModule({ userSession }: FincasModuleProps) {
 
                 <div className="rounded-lg border p-3 text-xs space-y-1 bg-muted/30">
                   <p><strong>Resumen:</strong> Lote {formLote.numero_lote || '—'} · {formLote.tipo_terreno}</p>
-                  <p>{formLote.area_m2} m² · Q{Number(formLote.precio_venta).toLocaleString('es-GT')}</p>
+                  <p>{formLote.area_m2} m² · {(Number(formLote.area_m2) / CUERDA_M2).toLocaleString('es-GT', { maximumFractionDigits: 2 })} cuerdas · Q{Number(formLote.precio_venta).toLocaleString('es-GT')}</p>
                   <p>{fotosNuevoLote.length} foto(s) · {formLote.latitud !== '' ? 'Con GPS' : 'Sin GPS'}</p>
                 </div>
               </div>
@@ -1525,6 +1584,7 @@ export function FincasModule({ userSession }: FincasModuleProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </>}
     </div>
   )
 }

@@ -1,43 +1,42 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { lazy, Suspense, useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { navigation } from '@/lib/navigation'
-import { ClientesModule } from './modules/clientes/ClientesModule'
-import { SimuladorModule } from './modules/simulador/SimuladorModule'
-import { VentasModule } from './modules/ventas/VentasModule'
-import { CreditosModule } from './modules/creditos/CreditosModule'
-import { CajaModule } from './modules/caja/CajaModule'
-import { CobrosModule } from './modules/cobros/CobrosModule'
-import { ReportesModule } from './modules/reportes/ReportesModule'
-import { PrendasModule } from './modules/prendas/PrendasModule'
-import { HistorialModule } from './modules/historial/HistorialModule'
-import { UsuariosModule } from './modules/usuarios/UsuariosModule'
-import { SucursalesModule } from './modules/sucursales/SucursalesModule'
-import { CategoriasProductosModule } from './modules/categorias/CategoriasProductosModule'
-import { PlanesInteresModule } from './modules/planes-interes/PlanesInteresModule'
-import { CatalogoGastos } from './modules/gastos/CatalogoGastos'
-import { CotizacionesModule } from './modules/cotizaciones/CotizacionesModule'
-import { BovedaModule } from './modules/boveda/BovedaModule'
-import { ComprasModule } from './modules/compras/ComprasModule'
-import { RematesModule } from './modules/remates/RematesModule'
-import { AuditoriaModule } from './modules/auditoria/AuditoriaModule'
-import { ReciboModule } from './modules/recibo/ReciboModule'
-import { ProfileModule } from './modules/profile/ProfileModule'
-import { MigracionModule } from './modules/migracion/MigracionModule'
-import { ContabilidadModule } from './modules/contabilidad/ContabilidadModule'
-import { OtrosGastosModule } from './modules/otros-gastos/OtrosGastosModule'
-import { TransferenciasModule } from './modules/transferencias/TransferenciasModule'
-import { PersonalizacionModule } from './modules/personalizacion/PersonalizacionModule'
-import { FincasModule } from './modules/fincas/FincasModule'
-import { DesarrolladoraModule } from './modules/desarrolladora/DesarrolladoraModule'
-import { FinancistasModule } from './modules/desarrolladora/FinancistasModule'
-import { ComisionistasModule } from './modules/desarrolladora/ComisionistasModule'
-import { NegociacionesModule } from './modules/negociaciones/NegociacionesModule'
-import { PlanoLotesModule } from './modules/lotificacion/PlanoLotesModule'
-import { TasasInmobiliariasModule } from './modules/tasas/TasasInmobiliariasModule'
+const ClientesModule = lazy(() => import('./modules/clientes/ClientesModule').then((m) => ({ default: m.ClientesModule })))
+const SimuladorModule = lazy(() => import('./modules/simulador/SimuladorModule').then((m) => ({ default: m.SimuladorModule })))
+const VentasModule = lazy(() => import('./modules/ventas/VentasModule').then((m) => ({ default: m.VentasModule })))
+const CreditosModule = lazy(() => import('./modules/creditos/CreditosModule').then((m) => ({ default: m.CreditosModule })))
+const CajaModule = lazy(() => import('./modules/caja/CajaModule').then((m) => ({ default: m.CajaModule })))
+const CobrosModule = lazy(() => import('./modules/cobros/CobrosModule').then((m) => ({ default: m.CobrosModule })))
+const ReportesModule = lazy(() => import('./modules/reportes/ReportesModule').then((m) => ({ default: m.ReportesModule })))
+const PrendasModule = lazy(() => import('./modules/prendas/PrendasModule').then((m) => ({ default: m.PrendasModule })))
+const HistorialModule = lazy(() => import('./modules/historial/HistorialModule').then((m) => ({ default: m.HistorialModule })))
+const UsuariosModule = lazy(() => import('./modules/usuarios/UsuariosModule').then((m) => ({ default: m.UsuariosModule })))
+const SucursalesModule = lazy(() => import('./modules/sucursales/SucursalesModule').then((m) => ({ default: m.SucursalesModule })))
+const CategoriasProductosModule = lazy(() => import('./modules/categorias/CategoriasProductosModule').then((m) => ({ default: m.CategoriasProductosModule })))
+const PlanesInteresModule = lazy(() => import('./modules/planes-interes/PlanesInteresModule').then((m) => ({ default: m.PlanesInteresModule })))
+const CatalogoGastos = lazy(() => import('./modules/gastos/CatalogoGastos').then((m) => ({ default: m.CatalogoGastos })))
+const CotizacionesModule = lazy(() => import('./modules/cotizaciones/CotizacionesModule').then((m) => ({ default: m.CotizacionesModule })))
+const BovedaModule = lazy(() => import('./modules/boveda/BovedaModule').then((m) => ({ default: m.BovedaModule })))
+const ComprasModule = lazy(() => import('./modules/compras/ComprasModule').then((m) => ({ default: m.ComprasModule })))
+const RematesModule = lazy(() => import('./modules/remates/RematesModule').then((m) => ({ default: m.RematesModule })))
+const AuditoriaModule = lazy(() => import('./modules/auditoria/AuditoriaModule').then((m) => ({ default: m.AuditoriaModule })))
+const ReciboModule = lazy(() => import('./modules/recibo/ReciboModule').then((m) => ({ default: m.ReciboModule })))
+const ProfileModule = lazy(() => import('./modules/profile/ProfileModule').then((m) => ({ default: m.ProfileModule })))
+const MigracionModule = lazy(() => import('./modules/migracion/MigracionModule').then((m) => ({ default: m.MigracionModule })))
+const ContabilidadModule = lazy(() => import('./modules/contabilidad/ContabilidadModule').then((m) => ({ default: m.ContabilidadModule })))
+const OtrosGastosModule = lazy(() => import('./modules/otros-gastos/OtrosGastosModule').then((m) => ({ default: m.OtrosGastosModule })))
+const TransferenciasModule = lazy(() => import('./modules/transferencias/TransferenciasModule').then((m) => ({ default: m.TransferenciasModule })))
+const PersonalizacionModule = lazy(() => import('./modules/personalizacion/PersonalizacionModule').then((m) => ({ default: m.PersonalizacionModule })))
+const FincasModule = lazy(() => import('./modules/fincas/FincasModule').then((m) => ({ default: m.FincasModule })))
+const FinancistasModule = lazy(() => import('./modules/desarrolladora/FinancistasModule').then((m) => ({ default: m.FinancistasModule })))
+const ComisionistasModule = lazy(() => import('./modules/desarrolladora/ComisionistasModule').then((m) => ({ default: m.ComisionistasModule })))
+const NegociacionesModule = lazy(() => import('./modules/negociaciones/NegociacionesModule').then((m) => ({ default: m.NegociacionesModule })))
+const PlanoLotesModule = lazy(() => import('./modules/lotificacion/PlanoLotesModule').then((m) => ({ default: m.PlanoLotesModule })))
+const TasasInmobiliariasModule = lazy(() => import('./modules/tasas/TasasInmobiliariasModule').then((m) => ({ default: m.TasasInmobiliariasModule })))
 import { useEmpresaConfig } from '@/hooks/useEmpresaConfig'
 import { ChatbotHelper } from './ChatbotHelper'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Package, Wallet, Receipt, ChartBar, UserCircle, ClockCounterClockwise, CreditCard as CreditCardIcon, List, SignOut, Moon, Sun, Monitor, Lock, Storefront, Users, CurrencyDollar, Warning, Coins, PaintBrush, Handshake, TreeStructure, Chats } from '@phosphor-icons/react'
+import { Package, Wallet, Receipt, ChartBar, UserCircle, ClockCounterClockwise, CreditCard as CreditCardIcon, List, SignOut, Moon, Sun, Monitor, Lock, Storefront, Users, CurrencyDollar, Warning, PaintBrush, Handshake, TreeStructure, Chats } from '@phosphor-icons/react'
 import { useKV } from '@/hooks/use-kv'
 import { EVENTO_NAVEGAR_MODULO } from '@/hooks/use-navigate-module'
 import { Cliente, Credito } from '@/lib/types'
@@ -60,7 +59,7 @@ import {
   DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
-import { sucursalService, dashboardService, DashboardData, authService } from '@/lib/api'
+import { api, sucursalService, dashboardService, DashboardData, authService } from '@/lib/api'
 import { isModuloOcultoEnOperacion } from '@/lib/empenos'
 
 interface UserSession {
@@ -99,7 +98,9 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
   const [cambiandoSucursal, setCambiandoSucursal] = useState(false)
   const [refrescarSucursales, setRefrescarSucursales] = useKV<number>('refrescar-sucursales-trigger', 0)
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
-  const [cargandoDashboard, setCargandoDashboard] = useState(false)
+  const [cargandoDashboard, setCargandoDashboard] = useState(true)
+  const [avisoInstalacion, setAvisoInstalacion] = useState(() => localStorage.getItem('kv:ocultar-instalacion') !== '1')
+  const atajoAplicado = useRef(false)
   const { isDesktop } = useResponsive()
   const { theme, setTheme } = useTheme()
   const { config: empresaConfig } = useEmpresaConfig()
@@ -232,11 +233,27 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
     return () => window.removeEventListener('beforeinstallprompt', guardar)
   }, [])
 
+  useEffect(() => {
+    const esperar = window.setTimeout(() => {
+      import('./modules/fincas/FincasModule')
+      import('./modules/negociaciones/NegociacionesModule')
+      import('./modules/caja/CajaModule')
+    }, 1200)
+    return () => window.clearTimeout(esperar)
+  }, [])
+
+  useEffect(() => {
+    if (atajoAplicado.current) return
+    const modulo = new URLSearchParams(window.location.search).get('modulo')
+    if (!modulo) return
+    atajoAplicado.current = true
+    handleNavegacion(modulo)
+  }, [handleNavegacion])
+
   const atajosMovil = useMemo(() => {
     const base = [
       { id: 'dashboard', label: 'Inicio', icon: ChartBar },
       { id: 'fincas', label: 'Fincas', icon: TreeStructure },
-      { id: 'compra_fincas', label: 'Comprar', icon: Coins },
       { id: 'negociaciones', label: 'Ventas', icon: Handshake },
       { id: 'caja', label: 'Caja', icon: Wallet },
     ]
@@ -335,10 +352,10 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
         return <ContabilidadModule />
       case 'fincas':
         return <FincasModule userSession={userSession} />
+      case 'compra_fincas':
+        return <FincasModule userSession={userSession} abrirCompra />
       case 'lotes':
         return <PlanoLotesModule sessionUser={userWithPermissions} />
-      case 'compra_fincas':
-        return <DesarrolladoraModule userSession={userSession} />
       case 'financistas':
         return <FinancistasModule userSession={userSession} />
       case 'comisionistas':
@@ -409,6 +426,10 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
       setCambiandoSucursal(false)
     }
   }
+
+  const aplicacionInstalada = window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
+  const esIos = /iphone|ipad|ipod/i.test(navigator.userAgent)
+  const mostrarAvisoInstalacion = avisoInstalacion && !aplicacionInstalada && Boolean(instalacion || esIos)
 
   return (
     <div className="min-h-screen bg-background">
@@ -641,19 +662,32 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
           )}
 
           <main className="flex-1 min-w-0 page-transition pb-28 lg:pb-0" key={moduloActivo}>
-            {renderModulo()}
+            <Suspense fallback={<ModuloCargando />}>
+              {renderModulo()}
+            </Suspense>
           </main>
         </div>
       </div>
-      {!isDesktop && instalacion && (
-        <div className="mobile-install">
-          <p>Instala TerraCloud para usarla como aplicación.</p>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={async () => {
-              await instalacion.prompt()
+      {mostrarAvisoInstalacion && (
+        <div className="app-install">
+          <p>
+            {instalacion
+              ? 'Instala TerraCloud en este teléfono, tableta o computadora.'
+              : 'En iPhone o iPad: Compartir y luego Agregar a inicio.'}
+          </p>
+          <div className="flex gap-2 shrink-0">
+            {instalacion && (
+              <Button size="sm" onClick={async () => {
+                await instalacion.prompt()
+                setInstalacion(null)
+                setAvisoInstalacion(false)
+              }}>Instalar</Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => {
+              localStorage.setItem('kv:ocultar-instalacion', '1')
+              setAvisoInstalacion(false)
               setInstalacion(null)
-            }}>Instalar</Button>
-            <Button size="sm" variant="ghost" onClick={() => setInstalacion(null)}>Ahora no</Button>
+            }}>Ahora no</Button>
           </div>
         </div>
       )}
@@ -680,6 +714,37 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
   )
 }
 
+function ModuloCargando() {
+  return (
+    <div className="space-y-4 p-1" aria-busy="true" aria-live="polite">
+      <div className="h-8 w-56 max-w-full rounded-md bg-muted animate-pulse" />
+      <div className="h-4 w-80 max-w-full rounded-md bg-muted animate-pulse" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="h-28 rounded-xl bg-muted animate-pulse" />
+        <div className="h-28 rounded-xl bg-muted animate-pulse" />
+      </div>
+    </div>
+  )
+}
+
+function rangoVentas(tipo: 'mes' | 'anterior' | 'anio') {
+  const hoy = new Date()
+  const fmt = (fecha: Date) => {
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0')
+    const dia = String(fecha.getDate()).padStart(2, '0')
+    return `${fecha.getFullYear()}-${mes}-${dia}`
+  }
+  const anio = hoy.getFullYear()
+  const mes = hoy.getMonth()
+  if (tipo === 'anterior') {
+    return { desde: fmt(new Date(anio, mes - 1, 1)), hasta: fmt(new Date(anio, mes, 0)) }
+  }
+  if (tipo === 'anio') {
+    return { desde: `${anio}-01-01`, hasta: `${anio}-12-31` }
+  }
+  return { desde: fmt(new Date(anio, mes, 1)), hasta: fmt(new Date(anio, mes + 1, 0)) }
+}
+
 function Dashboard({
   totalClientes,
   creditosActivos,
@@ -703,6 +768,35 @@ function Dashboard({
   modoBienvenida?: boolean
   mensajeBienvenida?: string
 }) {
+  const [intervaloVentas, setIntervaloVentas] = useState<'mes' | 'anterior' | 'anio' | 'personalizado'>('mes')
+  const [ventasDesde, setVentasDesde] = useState('')
+  const [ventasHasta, setVentasHasta] = useState('')
+  const [totalVentas, setTotalVentas] = useState<{ monto: number; contratos: number } | null>(null)
+
+  useEffect(() => {
+    if (modoBienvenida) return
+    const rango = intervaloVentas === 'personalizado'
+      ? { desde: ventasDesde, hasta: ventasHasta }
+      : rangoVentas(intervaloVentas)
+    if (intervaloVentas === 'personalizado' && (!rango.desde || !rango.hasta)) return
+    const q = new URLSearchParams({ per_page: '1' })
+    if (rango.desde) q.set('fecha_desde', rango.desde)
+    if (rango.hasta) q.set('fecha_hasta', rango.hasta)
+    let vigente = true
+    api.get<any>(`/reportes-inmobiliarios/ventas?${q.toString()}`)
+      .then((res) => {
+        if (!vigente || !res.success || !res.data) return
+        setTotalVentas({
+          monto: Number(res.data.monto_total_ventas || 0),
+          contratos: Number(res.data.total_contratos || 0),
+        })
+      })
+      .catch(() => {
+        if (vigente) setTotalVentas(null)
+      })
+    return () => { vigente = false }
+  }, [intervaloVentas, ventasDesde, ventasHasta, modoBienvenida])
+
   if (modoBienvenida) {
     return (
       <div className="space-y-4 sm:space-y-6">
@@ -743,27 +837,27 @@ function Dashboard({
       <ResponsiveGrid preset="stats">
         <StatCard
           title="Compradores"
-          value={totalClientes || 3}
+          value={totalClientes}
           icon={<Users size={16} />}
           loading={cargando}
         />
         <StatCard
           title="Ventas & Contratos"
-          value={creditosActivos || 1}
+          value={creditosActivos}
           icon={<Handshake size={16} />}
           variant="success"
           loading={cargando}
         />
         <StatCard
           title="Lotes en Inventario"
-          value={prendasEnInventario || 5}
+          value={prendasEnInventario}
           icon={<TreeStructure size={16} />}
           variant="muted"
           loading={cargando}
         />
         <StatCard
           title="Cartera Financiada"
-          value={<MoneyDisplay amount={totalPrestado || 96342} size="lg" />}
+          value={<MoneyDisplay amount={totalPrestado} size="lg" />}
           icon={<CurrencyDollar size={16} />}
           loading={cargando}
         />
@@ -778,15 +872,15 @@ function Dashboard({
           <CardContent className="space-y-2 sm:space-y-3">
             <div className="flex justify-between items-center text-xs sm:text-sm md:text-base">
               <span className="text-muted-foreground">Capital Financiado</span>
-              <MoneyDisplay amount={totalPrestado || 96342} />
+              <MoneyDisplay amount={totalPrestado} />
             </div>
             <div className="flex justify-between items-center text-xs sm:text-sm md:text-base">
               <span className="text-muted-foreground">Saldo Pendiente de Cobro</span>
-              <MoneyDisplay amount={totalSaldo || 70250} />
+              <MoneyDisplay amount={totalSaldo} />
             </div>
             <div className="flex justify-between items-center text-xs sm:text-sm md:text-base">
               <span className="text-muted-foreground">Enganches & Cuotas Recuperadas</span>
-              <MoneyDisplay amount={totalRecuperado || 26092} className="text-accent" />
+              <MoneyDisplay amount={totalRecuperado ?? 0} className="text-accent" />
             </div>
           </CardContent>
         </Card>
@@ -798,23 +892,69 @@ function Dashboard({
           <CardContent className="space-y-2 sm:space-y-3">
             <div className="flex justify-between items-center text-xs sm:text-sm md:text-base">
               <span className="text-muted-foreground">Lotes Disponibles</span>
-              <span className="font-semibold text-accent">3</span>
+              <span className="font-semibold text-accent">{cargando ? '…' : '—'}</span>
             </div>
             <div className="flex justify-between items-center text-xs sm:text-sm md:text-base">
               <span className="text-muted-foreground">Lotes Reservados</span>
-              <span className="font-semibold text-amber-600">1</span>
+              <span className="font-semibold text-amber-600">{cargando ? '…' : '—'}</span>
             </div>
             <div className="flex justify-between items-center text-xs sm:text-sm md:text-base">
               <span className="text-muted-foreground">Lotes Vendidos / Financiados</span>
-              <span className="font-semibold text-primary">1</span>
+              <span className="font-semibold text-primary">{cargando ? '…' : '—'}</span>
             </div>
             <div className="flex justify-between items-center text-xs sm:text-sm md:text-base pt-2 border-t">
               <span className="text-muted-foreground">Total Inventario de Terrenos</span>
-              <span className="font-semibold">5 Lotes</span>
+              <span className="font-semibold">{cargando ? '…' : `${prendasEnInventario ?? 0} lotes`}</span>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-2 sm:pb-3">
+          <CardTitle className="text-sm sm:text-base md:text-lg">Total de ventas</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {([
+              ['mes', 'Mes actual'],
+              ['anterior', 'Mes pasado'],
+              ['anio', 'Año completo'],
+              ['personalizado', 'Otro intervalo'],
+            ] as const).map(([id, etiqueta]) => (
+              <Button
+                key={id}
+                type="button"
+                size="sm"
+                variant={intervaloVentas === id ? 'default' : 'outline'}
+                onClick={() => setIntervaloVentas(id)}
+              >
+                {etiqueta}
+              </Button>
+            ))}
+          </div>
+          {intervaloVentas === 'personalizado' && (
+            <div className="flex flex-col sm:flex-row gap-2">
+              <label className="text-xs text-muted-foreground space-y-1">
+                <span className="block">Desde</span>
+                <input type="date" value={ventasDesde} onChange={(e) => setVentasDesde(e.target.value)} className="bg-background border rounded-lg px-2 py-1.5 text-sm text-foreground" />
+              </label>
+              <label className="text-xs text-muted-foreground space-y-1">
+                <span className="block">Hasta</span>
+                <input type="date" value={ventasHasta} onChange={(e) => setVentasHasta(e.target.value)} className="bg-background border rounded-lg px-2 py-1.5 text-sm text-foreground" />
+              </label>
+            </div>
+          )}
+          <div>
+            <p className="text-2xl font-black">
+              Q{Number(totalVentas?.monto || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {(totalVentas?.contratos ?? 0) === 1 ? '1 contrato' : `${totalVentas?.contratos ?? 0} contratos`} en el intervalo
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Chatbot Helper moved to MainApp level */}
     </div>

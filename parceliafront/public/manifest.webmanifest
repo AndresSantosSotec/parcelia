@@ -1,13 +1,17 @@
 {
+  "id": "/",
   "name": "TerraCloud",
   "short_name": "TerraCloud",
   "description": "Gestión y venta de terrenos",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
   "background_color": "#0c1f18",
   "theme_color": "#047857",
   "lang": "es",
+  "categories": ["business", "finance"],
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -27,5 +31,10 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "shortcuts": [
+    { "name": "Fincas", "url": "/?modulo=fincas", "description": "Inventario de fincas y lotes" },
+    { "name": "Ventas", "url": "/?modulo=negociaciones", "description": "Negociaciones y contratos" },
+    { "name": "Caja", "url": "/?modulo=caja", "description": "Caja del día" }
   ]
 }

@@ -211,18 +211,24 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-semibold">Financiamientos</h1>
-          <p className="text-sm text-muted-foreground">El dinero que entra por un financiamiento se queda en este módulo. No se suma a las ventas de lotes. El pago al financista sí sale de esas ventas.</p>
+          <p className="text-sm text-muted-foreground">El dinero recibido se suma a la caja del día. El pago al financista sale de esa caja y no cambia el precio de venta de los lotes.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {vista !== 'lista' && <Button size="sm" variant="outline" onClick={volver}>Volver al listado</Button>}
           {vista === 'lista' && puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/financistas/reporte?formato=pdf${filtro ? `&finca_id=${filtro}` : ''}`, 'financiamientos.pdf')}>Listado PDF</Button>}
           {vista === 'lista' && puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/financistas/reporte?formato=xlsx${filtro ? `&finca_id=${filtro}` : ''}`, 'financiamientos.xlsx')}>Listado Excel</Button>}
           {vista === 'lista' && puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/financistas/reporte-vencimientos?formato=pdf', 'vencimientos.pdf')}>Por vencer</Button>}
-          {vista === 'lista' && puedePagar && <Button size="sm" variant="outline" onClick={() => abrirPago(null)}>Registrar pago</Button>}
           {vista === 'lista' && puedeEditar && <Button size="sm" onClick={() => { setEditId(null); setForm({ ...formVacio, fecha_inicio: hoy() }); setVista('form') }}>Nuevo financiamiento</Button>}
           {vista === 'lista' && <Button size="sm" variant="outline" onClick={() => bajar('/financistas/requisitos', 'registro-modulos.pdf')}>Registro PDF</Button>}
         </div>
       </div>
+
+      {(vista === 'lista' || vista === 'pago') && (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant={vista === 'lista' ? 'default' : 'outline'} onClick={() => setVista('lista')}>Financiamientos</Button>
+          <Button size="sm" variant={vista === 'pago' ? 'default' : 'outline'} onClick={() => abrirPago(null)}>Pagos</Button>
+        </div>
+      )}
 
       {vista === 'lista' && alertas.length > 0 && (
         <Card className="border-amber-400">

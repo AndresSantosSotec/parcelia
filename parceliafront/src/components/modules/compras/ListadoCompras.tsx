@@ -494,6 +494,10 @@ export function ListadoCompras() {
                                                         <FilePdf size={16} className="mr-2" />
                                                         Descargar Recibo PDF
                                                     </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => compraService.descargarTicketPDF(compra.id).then(() => toast.success('Ticket descargado')).catch((error: any) => toast.error(error.message || 'Error al descargar el ticket'))}>
+                                                        <FilePdf size={16} className="mr-2" />
+                                                        Descargar Ticket
+                                                    </DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => handleDescargarContratoPDF(compra.id)}>
                                                         <FilePdf size={16} className="mr-2" />
                                                         Descargar Contrato PDF

@@ -304,6 +304,18 @@ class ApiClient {
    */
   async downloadFile(endpoint: string, filename?: string): Promise<void> {
     const url = `${this.baseUrl}${endpoint}`
+    const puente = typeof window !== 'undefined'
+      ? (window as Window & { ReactNativeWebView?: { postMessage: (mensaje: string) => void } }).ReactNativeWebView
+      : undefined
+    if (puente) {
+      puente.postMessage(JSON.stringify({
+        tipo: 'descarga',
+        url,
+        nombre: filename || 'documento.pdf',
+        token: this.token || '',
+      }))
+      return
+    }
     const headers: HeadersInit = {
       'Accept': 'application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream',
     }
@@ -1350,6 +1362,20 @@ export const ventaService = {
   },
 
   /** Descargar recibo PDF de pago de una cuota específica */
+  generarTicketCuota: (cuotaId: string): Promise<Blob> => {
+    const token = localStorage.getItem('auth_token')
+    return fetch(`${API_BASE_URL}/ventas/cuotas/${cuotaId}/ticket`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/pdf',
+      },
+      credentials: 'include',
+    }).then(r => {
+      if (!r.ok) return r.json().then(e => { throw new Error(e.message || 'Error al generar ticket') })
+      return r.blob()
+    })
+  },
+
   generarReciboCuota: (cuotaId: string): Promise<Blob> => {
     const token = localStorage.getItem('auth_token')
     return fetch(`${API_BASE_URL}/ventas/cuotas/${cuotaId}/recibo`, {
@@ -1806,6 +1832,12 @@ export const pagoTerrenoService = {
     return api.downloadFile(
       `/pagos-terrenos/${pagoId}/recibo-pdf`,
       `ReciboPago_${numRecibo || pagoId}.pdf`
+    )
+  },
+  descargarTicketPdf: (pagoId: number, numRecibo?: string) => {
+    return api.downloadFile(
+      `/pagos-terrenos/${pagoId}/ticket-pdf`,
+      `TicketPago_${numRecibo || pagoId}.pdf`
     )
   },
   anular: (pagoId: number, motivo: string) => {

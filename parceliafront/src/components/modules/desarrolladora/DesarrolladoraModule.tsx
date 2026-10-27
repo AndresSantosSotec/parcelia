@@ -976,6 +976,7 @@ export function DesarrolladoraModule({
                         if (res.data) aplicar(res.data)
                         if (puedeReportes && res.data?.pago_id) {
                           await bajar(`/fincas/${fincaId}/pagos-compra/${res.data.pago_id}/recibo`, `recibo-compra-${res.data.pago_id}.pdf`)
+                          await bajar(`/fincas/${fincaId}/pagos-compra/${res.data.pago_id}/ticket`, `ticket-compra-${res.data.pago_id}.pdf`)
                         }
                         toast.success(res.message || 'Pago registrado')
                       } catch (e: any) { toast.error(e?.message || 'No se pudo abonar') }

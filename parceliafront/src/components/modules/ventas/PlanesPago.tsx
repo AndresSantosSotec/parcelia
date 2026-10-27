@@ -134,6 +134,26 @@ export function PlanesPago() {
     }
   }
 
+  const descargarTicketCuota = async (cuotaId: string) => {
+    setDescargandoRecibo(`ticket-${cuotaId}`)
+    try {
+      const blob = await ventaService.generarTicketCuota(cuotaId)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Ticket_Cuota_${cuotaId}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast.success('Ticket descargado')
+    } catch {
+      toast.error('Error al descargar el ticket')
+    } finally {
+      setDescargandoRecibo(null)
+    }
+  }
+
   const obtenerCajaAbierta = async (): Promise<number | null> => {
     try {
       const { estado, caja } = await cajaService.checkEstado()
@@ -728,6 +748,17 @@ if (resp?.success) {
                                   ? <Spinner className="h-3 w-3 animate-spin" />
                                   : <Receipt className="h-3 w-3" />
                                 }
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-1 text-[0.625rem]"
+                                title="Ticket térmico"
+                                disabled={descargandoRecibo === `ticket-${cuota.id}`}
+                                onClick={e => { e.stopPropagation(); descargarTicketCuota(String(cuota.id)) }}
+                              >
+                                Ticket
                               </Button>
                             </>
                           )}

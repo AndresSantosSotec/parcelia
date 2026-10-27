@@ -182,6 +182,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/fincas/{id}/reportes/estado-compra', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'estadoCompra'])->middleware('permiso:compra_fincas,reportes');
             Route::get('/fincas/{id}/reportes/contrato-compra', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'contratoCompra'])->middleware('permiso:compra_fincas,reportes');
             Route::get('/fincas/{id}/pagos-compra/{pagoId}/recibo', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'reciboCompra'])->middleware('permiso:compra_fincas,reportes');
+            Route::get('/fincas/{id}/pagos-compra/{pagoId}/ticket', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'ticketCompra'])->middleware('permiso:compra_fincas,reportes');
             Route::get('/fincas/{id}/reportes/plan-compra', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'planCompra'])->middleware('permiso:compra_fincas,reportes');
             Route::get('/fincas/{id}/reportes/costeo', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'costeo'])->middleware('permiso:compra_fincas,reportes');
             Route::get('/financistas/reporte', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'financistas'])->middleware('permiso:financistas,reportes');
@@ -190,6 +191,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/comisiones/reporte', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'comisiones'])->middleware('permiso:comisionistas,reportes');
             Route::get('/comisiones/{id}/reporte', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'estadoComision'])->middleware('permiso:comisionistas,reportes');
             Route::get('/comisiones/{id}/recibo-pdf', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'reciboComision'])->middleware('permiso:comisionistas,reportes');
+            Route::get('/comisiones/{id}/ticket-pdf', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'ticketComision'])->middleware('permiso:comisionistas,reportes');
 
             Route::get('/lotes', [LoteController::class, 'index'])->middleware('permiso:lotes,ver');
             Route::get('/lotes/disponibles', [LoteController::class, 'disponibles'])->middleware('permiso:lotes,ver');
@@ -221,6 +223,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/pagos-terrenos', [PagoTerrenoController::class, 'store'])->middleware('permiso:pagos_terreno,cobrar');
             Route::post('/pagos-terrenos/{id}/anular', [PagoTerrenoController::class, 'anular'])->middleware('permiso:pagos_terreno,anular');
             Route::get('/pagos-terrenos/{id}/recibo-pdf', [PagoTerrenoController::class, 'reciboPdf'])->middleware('permiso:pagos_terreno,ver');
+            Route::get('/pagos-terrenos/{id}/ticket-pdf', [PagoTerrenoController::class, 'ticketPdf'])->middleware('permiso:pagos_terreno,ver');
 
             Route::get('/negociaciones/{id}/estado-cuenta', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'estadoCuenta'])->middleware('permiso:negociaciones,ver');
             Route::get('/negociaciones/{id}/plan-pagos-pdf', [\App\Http\Controllers\Api\InmobiliarioReporteController::class, 'planPagosPdf'])->middleware('permiso:negociaciones,ver');
@@ -401,6 +404,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/recibos/{id}', [ReciboController::class, 'show']);
             Route::post('/recibos/{id}/anular', [ReciboController::class, 'anular']);
             Route::get('/recibos/{id}/pdf', [ReciboController::class, 'generarPDF']);
+            Route::get('/recibos/{id}/ticket', [ReciboController::class, 'generarTicket']);
 
             // Créditos Prendarios
             Route::get('/creditos-prendarios', [CreditoPrendarioController::class, 'index']);
@@ -421,6 +425,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/creditos-prendarios/{id}/plan-pagos/pdf', [CreditoPrendarioController::class, 'descargarPlanPagos']);
             Route::get('/creditos-prendarios/{id}/contrato/pdf', [CreditoPrendarioController::class, 'descargarContrato']);
             Route::get('/creditos-prendarios/{id}/recibo/pdf', [CreditoPrendarioController::class, 'descargarRecibo']);
+            Route::get('/creditos-prendarios/{id}/recibo/ticket', [CreditoPrendarioController::class, 'descargarTicket']);
             Route::get('/creditos-prendarios/{id}/historial-pagos/pdf', [CreditoPrendarioController::class, 'descargarHistorialPagos']);
             Route::post('/creditos-prendarios/preliminar/recibo', [CreditoPrendarioController::class, 'generarReciboPreliminar']);
             Route::post('/creditos-prendarios/preliminar/contrato', [CreditoPrendarioController::class, 'generarContratoPreliminar']);
@@ -475,7 +480,8 @@ Route::prefix('v1')->group(function () {
             // Pagos y Ledger
             Route::get('/creditos-prendarios/{id}/calculo-pago', [\App\Http\Controllers\PagoController::class, 'calcularPago']);
             Route::post('/creditos-prendarios/{id}/pagos', [\App\Http\Controllers\PagoController::class, 'ejecutarPago']);
-            Route::get('/creditos-prendarios/{id}/movimientos/{movimientoId}/recibo', [\App\Http\Controllers\PagoController::class, 'generarReciboPago']); // Recibo PDF de pago
+            Route::get('/creditos-prendarios/{id}/movimientos/{movimientoId}/recibo', [\App\Http\Controllers\PagoController::class, 'generarReciboPago']);
+            Route::get('/creditos-prendarios/{id}/movimientos/{movimientoId}/ticket', [\App\Http\Controllers\PagoController::class, 'generarTicketPago']);
             Route::post('/creditos-prendarios/{id}/reactivar', [CreditoPrendarioController::class, 'reactivar']);
 
             // Prendas
@@ -533,7 +539,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/ventas/{id}/plan-pago', [\App\Http\Controllers\VentaPlanPagoController::class, 'obtenerDetallePlan']); // Detalle del plan
             Route::post('/ventas/cuotas/pagar-multiple', [\App\Http\Controllers\VentaPlanPagoController::class, 'pagarMultipleCuotas']); // Pago múltiple de cuotas (antes de la ruta con {cuotaId})
             Route::post('/ventas/cuotas/{cuotaId}/pagar', [\App\Http\Controllers\VentaPlanPagoController::class, 'pagarCuota']); // Pagar cuota
-            Route::get('/ventas/cuotas/{cuotaId}/recibo', [\App\Http\Controllers\VentaPlanPagoController::class, 'generarReciboCuota']); // Recibo PDF de pago de cuota
+            Route::get('/ventas/cuotas/{cuotaId}/recibo', [\App\Http\Controllers\VentaPlanPagoController::class, 'generarReciboCuota']);
+            Route::get('/ventas/cuotas/{cuotaId}/ticket', [\App\Http\Controllers\VentaPlanPagoController::class, 'generarTicketCuota']);
 
             // Compras Directas
             Route::get('/compras', [CompraController::class, 'index']);
@@ -544,6 +551,7 @@ Route::prefix('v1')->group(function () {
             Route::delete('/compras/{id}', [CompraController::class, 'destroy']);
             Route::post('/compras/{id}/cancelar', [CompraController::class, 'cancel']);
             Route::get('/compras/{id}/recibo-pdf', [CompraController::class, 'generarReciboPDF']);
+            Route::get('/compras/{id}/ticket-pdf', [CompraController::class, 'generarTicketPDF']);
             Route::get('/compras/{id}/contrato-pdf', [CompraController::class, 'generarContratoPDF']);
 
             // Reportes de Compras
@@ -641,8 +649,10 @@ Route::prefix('v1')->group(function () {
         Route::get('/creditos-prendarios/{id}/plan-pagos/pdf', [CreditoPrendarioController::class, 'descargarPlanPagos']);
         Route::get('/creditos-prendarios/{id}/contrato/pdf', [CreditoPrendarioController::class, 'descargarContrato']);
         Route::get('/creditos-prendarios/{id}/recibo/pdf', [CreditoPrendarioController::class, 'descargarRecibo']);
+        Route::get('/creditos-prendarios/{id}/recibo/ticket', [CreditoPrendarioController::class, 'descargarTicket']);
         Route::get('/creditos-prendarios/{id}/historial-pagos/pdf', [CreditoPrendarioController::class, 'descargarHistorialPagos']);
         Route::get('/recibos/{id}/pdf', [ReciboController::class, 'generarPDF']);
+        Route::get('/recibos/{id}/ticket', [ReciboController::class, 'generarTicket']);
         Route::get('/reportes/caja/excel', [ReporteCajaController::class, 'exportarExcel']);
         Route::get('/bovedas/exportar', [BovedaController::class, 'exportarBovedas']);
         Route::get('/bovedas/consolidacion/exportar', [BovedaController::class, 'exportarConsolidacion']);

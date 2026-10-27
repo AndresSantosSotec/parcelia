@@ -9,6 +9,7 @@ use App\Models\CajaAperturaCierre;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Support\TicketPdf;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class ReciboController extends Controller
@@ -239,6 +240,43 @@ class ReciboController extends Controller
         $pdf->setPaper('letter', 'portrait');
 
         return $pdf->stream("recibo-{$recibo->numero_recibo}.pdf");
+    }
+
+    public function generarTicket($id)
+    {
+        $user = Auth::user();
+        $recibo = Recibo::with(['cliente', 'usuario', 'sucursal'])->findOrFail($id);
+
+        if (!$user->hasPermission('recibos', 'imprimir')) {
+            return response()->json(['error' => 'No tienes permisos para imprimir recibos'], 403);
+        }
+
+        if (!in_array($user->rol, ['superadmin', 'administrador']) &&
+            $recibo->sucursal_id != $user->sucursal_id) {
+            return response()->json(['error' => 'No tienes permisos para ver este recibo'], 403);
+        }
+
+        $cliente = $recibo->cliente;
+        $nombre = $cliente
+            ? trim(($cliente->nombres ?? $cliente->nombre ?? '').' '.($cliente->apellidos ?? ''))
+            : '';
+
+        return TicketPdf::descargar([
+            'empresa' => $recibo->sucursal->nombre ?? config('app.name', 'TerraCloud'),
+            'titulo' => strtoupper($recibo->tipo === 'egreso' ? 'RECIBO DE EGRESO' : 'RECIBO DE INGRESO'),
+            'numero' => $recibo->numero_recibo,
+            'fecha' => optional($recibo->fecha)->format('d/m/Y'),
+            'anulado' => $recibo->estado === 'anulado',
+            'motivo' => $recibo->motivo_anulacion,
+            'lineas' => array_filter([
+                'Cliente: '.($nombre !== '' ? $nombre : '—'),
+                'Concepto: '.($recibo->concepto ?: '—'),
+                'Cajero: '.($recibo->usuario?->name ?? '—'),
+            ]),
+            'totalEtiqueta' => 'MONTO',
+            'total' => 'Q '.number_format((float) $recibo->monto, 2),
+            'nota' => $recibo->observaciones,
+        ], "ticket-{$recibo->numero_recibo}.pdf");
     }
 
     /**

@@ -470,8 +470,8 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
       if (res.success) {
         toast.success('Pago aplicado exitosamente e ingresado en Caja')
         if (res.data?.id) {
-          pagoTerrenoService.descargarReciboPdf(res.data.id, res.data.numero_recibo).catch(() => {
-            toast.error('El pago se registró, pero no se pudo descargar el recibo')
+          pagoTerrenoService.descargarTicketPdf(res.data.id, res.data.numero_recibo).catch(() => {
+            toast.error('El pago se registró, pero no se pudo descargar el ticket')
           })
         }
         setModalRegistrarPago(false)
@@ -552,6 +552,17 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
       await pagoTerrenoService.descargarReciboPdf(pagoId, numRecibo)
     } catch (e: any) {
       toast.error(e.message || 'No se pudo descargar el recibo')
+    } finally {
+      setDescargandoDoc(null)
+    }
+  }
+
+  const handleDescargarTicketPdf = async (pagoId: number, numRecibo?: string) => {
+    try {
+      setDescargandoDoc('ticket')
+      await pagoTerrenoService.descargarTicketPdf(pagoId, numRecibo)
+    } catch (e: any) {
+      toast.error(e.message || 'No se pudo descargar el ticket')
     } finally {
       setDescargandoDoc(null)
     }
@@ -1381,8 +1392,11 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                               {mov.pago_id ? (
                                 <div className="flex flex-wrap items-center gap-1">
                                   {mov.anulado && <Badge variant="outline" className="text-[0.625rem]">Anulado</Badge>}
-                                  <Button size="sm" variant="outline" onClick={() => handleDescargarReciboPdf(mov.pago_id, mov.documento)} disabled={descargandoDoc === 'recibo'} className="h-7 gap-1 px-2 text-[0.625rem]" title="Descargar recibo PDF">
-                                    <DownloadSimple size={12} /> {mov.anulado ? 'Descargar' : 'Reimprimir'}
+                                  <Button size="sm" variant="outline" onClick={() => handleDescargarReciboPdf(mov.pago_id, mov.documento)} disabled={descargandoDoc === 'recibo'} className="h-7 gap-1 px-2 text-[0.625rem]" title="Recibo en hoja carta">
+                                    <DownloadSimple size={12} /> Recibo
+                                  </Button>
+                                  <Button size="sm" variant="outline" onClick={() => handleDescargarTicketPdf(mov.pago_id, mov.documento)} disabled={descargandoDoc === 'ticket'} className="h-7 gap-1 px-2 text-[0.625rem]" title="Ticket de 80 mm para impresora térmica">
+                                    <Printer size={12} /> Ticket
                                   </Button>
                                   {!mov.anulado && puedeAnularRecibo && Number(mov.pago_id) === ultimoPagoVigente && (
                                     <Button size="sm" variant="outline" onClick={() => { setReciboAnular({ pagoId: Number(mov.pago_id), documento: mov.documento, abono: Number(mov.abono || 0) }); setMotivoAnulacion('') }} className="aviso-caja-cerrada h-7 border-0 px-2 text-[0.625rem]">

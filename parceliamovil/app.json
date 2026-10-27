@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "TerraCloud",
+    "slug": "terracloud",
+    "scheme": "terracloud",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "splash": {
+      "backgroundColor": "#0c1f18"
+    },
+    "android": {
+      "package": "com.terracloud.app",
+      "backgroundColor": "#0c1f18"
+    },
+    "ios": {
+      "bundleIdentifier": "com.terracloud.app",
+      "supportsTablet": true
+    },
+    "extra": {
+      "appUrl": "https://terra.stockgenius-sotecpro.com"
+    },
+    "plugins": [
+      "expo-asset"
+    ]
+  }
+}

@@ -306,6 +306,7 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                         <div className="flex items-center justify-end gap-1">
                           <Button size="sm" variant="outline" onClick={() => setHistorialId(c.id)}>Pagos</Button>
                           {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/comisiones/${c.id}/recibo-pdf`, `recibo-comision-${c.id}.pdf`)}>Recibo</Button>}
+                          {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/comisiones/${c.id}/ticket-pdf`, `ticket-comision-${c.id}.pdf`)}>Ticket</Button>}
                           <AccionesRegistro
                             onVer={puedeReportes ? () => bajar(`/comisiones/${c.id}/reporte?formato=pdf`, `estado-comision-${c.id}.pdf`) : undefined}
                             onDescargar={puedeReportes ? () => bajar(`/comisiones/${c.id}/reporte?formato=pdf`, `estado-comision-${c.id}.pdf`) : undefined}
@@ -506,6 +507,9 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                           if (puedeReportes) {
                             bajar(`/comisiones/${comisionId}/recibo-pdf`, `recibo-comision-${comisionId}.pdf`).catch(() => {
                               toast.error('El pago se registró, pero no se pudo descargar el recibo')
+                            })
+                            bajar(`/comisiones/${comisionId}/ticket-pdf`, `ticket-comision-${comisionId}.pdf`).catch(() => {
+                              toast.error('El pago se registró, pero no se pudo descargar el ticket')
                             })
                           }
                         } catch (e: any) {

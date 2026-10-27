@@ -745,6 +745,13 @@ export function CreditoDetalle({ credito, abierto, onCerrar, onActualizado, sess
               <Button
                 variant="outline"
                 className="flex-1"
+                onClick={() => creditoPrendarioService.descargarTicket(credito.id)}
+              >
+                Ticket
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1"
                 onClick={handleDescargarPlanPagos}
                 disabled={isDownloadingPlan}
               >

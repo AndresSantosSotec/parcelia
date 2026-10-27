@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Support\TicketPdf;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 
@@ -340,6 +341,39 @@ class CompraController extends Controller
                 'success' => false,
                 'message' => 'Error al generar el recibo',
                 'error' => config('app.debug') ? $e->getMessage() : null
+            ], 500);
+        }
+    }
+
+    public function generarTicketPDF($id)
+    {
+        try {
+            $compra = $this->compraService->obtenerDetalle($id);
+            $fecha = $compra->fecha_compra ? \Carbon\Carbon::parse($compra->fecha_compra)->format('d/m/Y H:i') : now()->format('d/m/Y H:i');
+
+            return TicketPdf::descargar([
+                'empresa' => $compra->sucursal->nombre ?? config('app.name', 'TerraCloud'),
+                'titulo' => 'RECIBO DE COMPRA',
+                'numero' => $compra->codigo_compra,
+                'fecha' => $fecha,
+                'lineas' => array_filter([
+                    'Vendedor: '.($compra->cliente_nombre ?: '—'),
+                    'Documento: '.($compra->cliente_documento ?: 'N/A'),
+                    'Artículo: '.($compra->descripcion ?: '—'),
+                    'Prenda: '.($compra->codigo_prenda_generado ?: '—'),
+                    'Pago: '.strtoupper((string) ($compra->metodo_pago ?: '')),
+                    'Tasación: Q '.number_format((float) ($compra->valor_tasacion ?? 0), 2),
+                ]),
+                'totalEtiqueta' => 'TOTAL PAGADO',
+                'total' => 'Q '.number_format((float) ($compra->monto_pagado ?? 0), 2),
+                'nota' => $compra->observaciones,
+            ], 'ticket-compra-'.$compra->codigo_compra.'.pdf');
+        } catch (\Exception $e) {
+            Log::error('Error al generar ticket de compra: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar el ticket',
             ], 500);
         }
     }

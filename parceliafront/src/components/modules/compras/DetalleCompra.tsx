@@ -187,6 +187,14 @@ export function DetalleCompra({ compraId, onVolver, onActualizar }: DetalleCompr
                         <FilePdf size={16} className="mr-2" />
                         Descargar Recibo
                     </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => compra && compraService.descargarTicketPDF(compra.id).then(() => toast.success('Ticket descargado')).catch((error: any) => toast.error(error.message || 'Error al descargar el ticket'))}
+                    >
+                        <FilePdf size={16} className="mr-2" />
+                        Ticket
+                    </Button>
                     <Button 
                         variant="outline" 
                         size="sm"

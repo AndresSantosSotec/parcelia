@@ -152,6 +152,10 @@ export const reciboService = {
     return `/recibos/${id}/pdf`
   },
 
+  getTicketUrl: (id: number) => {
+    return `/recibos/${id}/ticket`
+  },
+
   // Utilidades
   formatMonto: (monto: number) => {
     return new Intl.NumberFormat('es-GT', {

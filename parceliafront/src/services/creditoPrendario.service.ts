@@ -650,6 +650,53 @@ class CreditoPrendarioService {
     document.body.removeChild(a)
   }
 
+  async descargarTicket(id: string): Promise<void> {
+    const url = `${this.baseUrl}/${id}/recibo/ticket`
+    const puente = (window as Window & { ReactNativeWebView?: { postMessage: (mensaje: string) => void } }).ReactNativeWebView
+    if (puente) {
+      puente.postMessage(JSON.stringify({ tipo: 'descarga', url, nombre: `ticket-credito-${id}.pdf`, token: this.token || '' }))
+      return
+    }
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${this.token}`, Accept: 'application/pdf' },
+      credentials: 'include',
+    })
+    if (!response.ok) throw new Error('Error al descargar el ticket')
+    const blob = await response.blob()
+    const enlace = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = enlace
+    a.download = `ticket-credito-${id}.pdf`
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(enlace)
+    document.body.removeChild(a)
+  }
+
+  async descargarTicketPago(creditoId: string, movimientoId: string, numeroMovimiento?: string): Promise<void> {
+    const url = `${this.baseUrl}/${creditoId}/movimientos/${movimientoId}/ticket`
+    const nombre = `ticket-pago-${numeroMovimiento ?? movimientoId}.pdf`
+    const puente = (window as Window & { ReactNativeWebView?: { postMessage: (mensaje: string) => void } }).ReactNativeWebView
+    if (puente) {
+      puente.postMessage(JSON.stringify({ tipo: 'descarga', url, nombre, token: this.token || '' }))
+      return
+    }
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${this.token}`, Accept: 'application/pdf' },
+      credentials: 'include',
+    })
+    if (!response.ok) throw new Error('Error al descargar el ticket')
+    const blob = await response.blob()
+    const enlace = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = enlace
+    a.download = nombre
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(enlace)
+    document.body.removeChild(a)
+  }
+
   async calcularPago(id: string): Promise<CalculoPagoResponse> {
     // Recargar token antes de hacer la petición
     this.loadToken()

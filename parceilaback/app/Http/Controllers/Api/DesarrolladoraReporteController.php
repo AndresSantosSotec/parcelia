@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\FincaCompraPago;
 use App\Models\Comisionista;
 use App\Models\ComisionVenta;
+use App\Support\TicketPdf;
 use App\Models\Finca;
 use App\Models\FincaCuotaCompra;
 use App\Models\FincaGastoUrbanizacion;
@@ -234,6 +235,40 @@ class DesarrolladoraReporteController extends Controller
         return $pdf->download($pago->numero_recibo.'.pdf');
     }
 
+    public function ticketCompra($id, $pagoId): Response
+    {
+        $pago = FincaCompraPago::with('finca')->where('finca_id', $id)->findOrFail($pagoId);
+        $finca = $pago->finca;
+        $pagos = FincaCompraPago::where('finca_id', $finca->id)->orderBy('id')->get();
+        $pagado = round((float) $pagos->sum('monto'), 2);
+        $numero = $pagos->search(fn ($p) => $p->id === $pago->id);
+        $empresa = \App\Helpers\EmpresaConfigHelper::getConfig();
+
+        return TicketPdf::descargar([
+            'empresa' => $empresa['nombreEmpresa'] ?? 'TerraCloud',
+            'extras' => array_filter([$empresa['nit'] ?? null, $empresa['telefono'] ?? null]),
+            'titulo' => 'RECIBO DE COMPRA DE FINCA',
+            'numero' => $pago->numero_recibo,
+            'fecha' => optional($pago->fecha)->format('d/m/Y'),
+            'lineas' => [
+                'Vendedor: '.($finca->vendedor_nombre ?: '—'),
+                'DPI: '.($finca->vendedor_dpi ?: '—'),
+                'Finca: '.$finca->codigo,
+                trim(($finca->ubicacion ?: '').' '.($finca->municipio ?: '').' '.($finca->departamento ?: '')),
+                'Pago no. '.($numero === false ? 1 : $numero + 1),
+                'Origen: '.($pago->origen === 'boveda' ? 'Bóveda' : 'Caja'),
+            ],
+            'filas' => [
+                ['Valor del terreno', 'Q '.number_format((float) $finca->precio_compra, 2)],
+                ['Pagado', 'Q '.number_format($pagado, 2)],
+                ['Pendiente', 'Q '.number_format(round(max(0, (float) $finca->precio_compra - $pagado), 2), 2)],
+            ],
+            'totalEtiqueta' => 'ESTE PAGO',
+            'total' => 'Q '.number_format((float) $pago->monto, 2),
+            'pie' => $empresa['piePaginaDocumentos'] ?? 'Documento de cobro',
+        ], 'ticket-'.$pago->numero_recibo.'.pdf');
+    }
+
     public function costeo(Request $request, $id): Response
     {
         $finca = Finca::with('lotes')->findOrFail($id);
@@ -390,6 +425,35 @@ class DesarrolladoraReporteController extends Controller
             ['Este pago', $pago->monto],
             ['Pagado acumulado', round((float) $comision->pagos->sum('monto'), 2)],
         ], 'recibo-comision-'.$pago->id);
+    }
+
+    public function ticketComision($id): Response
+    {
+        $comision = ComisionVenta::with(['comisionista', 'lote:id,codigo_unico,numero_lote', 'pagos'])->findOrFail($id);
+        $pago = $comision->pagos->sortByDesc('id')->first();
+        abort_if(! $pago, 404, 'Esta comisión todavía no tiene pagos.');
+        $pagado = round((float) $comision->pagos->sum('monto'), 2);
+        $empresa = \App\Helpers\EmpresaConfigHelper::getConfig();
+
+        return TicketPdf::descargar([
+            'empresa' => $empresa['nombreEmpresa'] ?? 'TerraCloud',
+            'titulo' => 'RECIBO DE COMISIÓN',
+            'numero' => (string) $pago->id,
+            'fecha' => optional($pago->fecha)->format('d/m/Y'),
+            'lineas' => [
+                'Comisionista: '.($comision->comisionista?->nombre ?: '—'),
+                'Lote: '.($comision->lote?->numero_lote ?: $comision->lote?->codigo_unico ?: '—'),
+            ],
+            'filas' => [
+                ['Comisión pactada', 'Q '.number_format((float) $comision->monto_comision, 2)],
+                ['Pagado acumulado', 'Q '.number_format($pagado, 2)],
+                ['Pendiente', 'Q '.number_format(round(max(0, (float) $comision->monto_comision - $pagado), 2), 2)],
+            ],
+            'totalEtiqueta' => 'ESTE PAGO',
+            'total' => 'Q '.number_format((float) $pago->monto, 2),
+            'nota' => $pago->referencia ? 'Ref: '.$pago->referencia : null,
+            'pie' => $empresa['piePaginaDocumentos'] ?? 'Documento de cobro',
+        ], 'ticket-comision-'.$pago->id.'.pdf');
     }
 
     private function entregar(Request $request, string $titulo, array $lineas, array $encabezados, array $filas, string $archivo): Response

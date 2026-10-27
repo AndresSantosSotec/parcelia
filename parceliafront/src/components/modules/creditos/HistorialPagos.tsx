@@ -407,6 +407,15 @@ export function HistorialPagos({ creditoId, codigoCredito, open, onClose, sessio
                         )}
                         Reimprimir Recibo
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-7 px-2"
+                        disabled={descargandoRecibo === `ticket-${mov.id}`}
+                        onClick={() => creditoPrendarioService.descargarTicketPago(creditoId, mov.id, mov.numero_movimiento)}
+                      >
+                        Ticket
+                      </Button>
                     </div>
                   )}
                 </CardContent>

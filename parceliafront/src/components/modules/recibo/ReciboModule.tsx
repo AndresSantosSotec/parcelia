@@ -261,10 +261,17 @@ export function ReciboModule() {
 
   const handleImprimirRecibo = async (recibo: Recibo) => {
     try {
-      // Descargar PDF con autenticación
       await api.downloadFile(reciboService.getPDFUrl(recibo.id), `recibo_${recibo.numero_recibo}.pdf`)
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Error al descargar el recibo')
+    }
+  }
+
+  const handleImprimirTicket = async (recibo: Recibo) => {
+    try {
+      await api.downloadFile(reciboService.getTicketUrl(recibo.id), `ticket_${recibo.numero_recibo}.pdf`)
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Error al descargar el ticket')
     }
   }
 
@@ -392,6 +399,7 @@ export function ReciboModule() {
             setDialogAnular(true)
           }}
           onImprimir={handleImprimirRecibo}
+          onImprimirTicket={handleImprimirTicket}
           onBuscar={loadRecibos}
         />
       )}
@@ -431,6 +439,7 @@ export function ReciboModule() {
           }}
           onAnular={() => setDialogAnular(true)}
           onImprimir={() => handleImprimirRecibo(reciboSeleccionado)}
+          onImprimirTicket={() => handleImprimirTicket(reciboSeleccionado)}
         />
       )}
 
@@ -487,7 +496,7 @@ export function ReciboModule() {
 
 function VistaListaRecibos({
   recibos, filtros, setFiltros, simboloMoneda,
-  onVer, onAnular, onImprimir, onBuscar
+  onVer, onAnular, onImprimir, onImprimirTicket, onBuscar
 }: any) {
   return (
     <div className="space-y-4">
@@ -575,7 +584,10 @@ function VistaListaRecibos({
                     <Eye size={14} className="mr-1" /> Ver
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => onImprimir(recibo)}>
-                    <Printer size={14} className="mr-1" /> Imprimir
+                    <Printer size={14} className="mr-1" /> Recibo
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => onImprimirTicket(recibo)}>
+                    Ticket
                   </Button>
                   {recibo.estado === 'emitido' ? (
                     <Button size="sm" variant="outline" className="text-destructive" onClick={() => onAnular(recibo)}>
@@ -645,8 +657,11 @@ function VistaListaRecibos({
                         <Button size="sm" variant="ghost" onClick={() => onVer(recibo)}>
                           <Eye size={16} />
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => onImprimir(recibo)}>
+                        <Button size="sm" variant="ghost" onClick={() => onImprimir(recibo)} title="Recibo">
                           <Printer size={16} />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => onImprimirTicket(recibo)} title="Ticket térmico">
+                          Ticket
                         </Button>
                         {recibo.estado === 'emitido' && (
                           <Button size="sm" variant="ghost" onClick={() => onAnular(recibo)}>
@@ -891,7 +906,7 @@ function VistaNuevoRecibo({
 }
 
 function VistaDetalleRecibo({
-  recibo, simboloMoneda, onVolver, onAnular, onImprimir
+  recibo, simboloMoneda, onVolver, onAnular, onImprimir, onImprimirTicket
 }: any) {
   return (
     <div className="space-y-4">
@@ -982,7 +997,11 @@ function VistaDetalleRecibo({
           <div className="flex justify-center gap-4 pt-4 border-t">
             <Button variant="outline" onClick={onImprimir}>
               <Printer className="mr-2" size={18} />
-              Reimprimir
+              Recibo
+            </Button>
+            <Button variant="outline" onClick={onImprimirTicket}>
+              <Printer className="mr-2" size={18} />
+              Ticket
             </Button>
             {recibo.estado === 'emitido' && (
               <Button variant="destructive" onClick={onAnular}>

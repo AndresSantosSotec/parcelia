@@ -83,28 +83,28 @@
             </tr>
         </thead>
         <tbody>
-            @if(($pago->capital_aplicado ?? 0) > 0)
+            @if((float) ($pago->distribucion_capital ?? 0) > 0)
             <tr>
                 <td>Abono a capital</td>
-                <td class="right">{{ $moneda }}{{ number_format((float) ($pago->capital_aplicado ?? 0), 2) }}</td>
+                <td class="right">{{ $moneda }}{{ number_format((float) $pago->distribucion_capital, 2) }}</td>
             </tr>
             @endif
-            @if(($pago->interes_aplicado ?? 0) > 0)
+            @if((float) ($pago->distribucion_interes ?? 0) > 0)
             <tr>
                 <td>Intereses</td>
-                <td class="right">{{ $moneda }}{{ number_format((float) ($pago->interes_aplicado ?? 0), 2) }}</td>
+                <td class="right">{{ $moneda }}{{ number_format((float) $pago->distribucion_interes, 2) }}</td>
             </tr>
             @endif
-            @if(($pago->mora_aplicada ?? 0) > 0)
+            @if((float) ($pago->distribucion_mora ?? 0) > 0)
             <tr>
                 <td>Mora</td>
-                <td class="right">{{ $moneda }}{{ number_format((float) ($pago->mora_aplicada ?? 0), 2) }}</td>
+                <td class="right">{{ $moneda }}{{ number_format((float) $pago->distribucion_mora, 2) }}</td>
             </tr>
             @endif
-            @if(($pago->otros_cargos ?? 0) > 0)
+            @if((float) ($pago->distribucion_gastos ?? 0) > 0)
             <tr>
                 <td>Otros cargos</td>
-                <td class="right">{{ $moneda }}{{ number_format((float) ($pago->otros_cargos ?? 0), 2) }}</td>
+                <td class="right">{{ $moneda }}{{ number_format((float) $pago->distribucion_gastos, 2) }}</td>
             </tr>
             @endif
             <tr class="total-row">
@@ -116,7 +116,7 @@
 
     <p style="margin-top: 6px; font-size: 9px; color: #64748b;">
         Método de pago: <strong>{{ ucfirst($pago->metodo_pago ?? 'efectivo') }}</strong>
-        @if($pago->referencia_pago ?? null) · Ref: {{ $pago->referencia_pago }} @endif
+        @if($pago->referencia_bancaria ?? null) · Ref: {{ $pago->referencia_bancaria }} @endif
     </p>
 
     {{-- Saldo --}}
@@ -124,7 +124,7 @@
         <tr>
             <td class="info-card" style="text-align: center;">
                 <div style="font-size: 9px; color: #64748b;">Saldo pendiente después de este pago</div>
-                <div style="font-size: 16px; font-weight: bold; color: #b45309;">{{ $moneda }}{{ number_format((float) ($data['saldo_despues'] ?? 0), 2) }}</div>
+                <div style="font-size: 16px; font-weight: bold; color: #b45309;">{{ $moneda }}{{ number_format((float) ($pago->saldo_posterior ?? $data['saldo_despues'] ?? 0), 2) }}</div>
             </td>
         </tr>
     </table>

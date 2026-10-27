@@ -8,6 +8,7 @@ use App\Models\VentaCredito;
 use App\Models\VentaCreditoPlanPago;
 use App\Services\VentaPlanPagoService;
 use App\Http\Requests\PagarMultipleCuotasRequest;
+use App\Support\TicketPdf;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -503,6 +504,75 @@ class VentaPlanPagoController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al generar el recibo: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function generarTicketCuota(string $cuotaId)
+    {
+        try {
+            $cuota = VentaCreditoPlanPago::with([
+                'ventaCredito.venta',
+                'ventaCredito.cliente',
+                'ventaCredito.sucursal',
+            ])->findOrFail($cuotaId);
+
+            $ventaCredito = $cuota->ventaCredito;
+            $venta = $ventaCredito?->venta;
+            $cliente = $ventaCredito?->cliente;
+            $sucursal = $ventaCredito?->sucursal;
+
+            $clienteNombre = 'N/A';
+            $clienteDoc = null;
+            if ($cliente) {
+                if (!empty($cliente->nombres) || !empty($cliente->apellidos)) {
+                    $clienteNombre = trim(($cliente->nombres ?? '').' '.($cliente->apellidos ?? ''));
+                } elseif (!empty($cliente->nombre_completo)) {
+                    $clienteNombre = $cliente->nombre_completo;
+                } elseif (!empty($cliente->nombre)) {
+                    $clienteNombre = trim(($cliente->nombre ?? '').' '.($cliente->apellidos ?? ''));
+                }
+                $clienteDoc = $cliente->dpi ?? $cliente->cui ?? $cliente->nit ?? null;
+            } elseif ($venta) {
+                $clienteNombre = $venta->cliente_nombre ?? 'N/A';
+                $clienteDoc = $venta->cliente_nit ?? null;
+            }
+
+            $filas = [];
+            if ((float) ($cuota->capital_pagado ?? 0) > 0) {
+                $filas[] = ['Capital', 'Q '.number_format((float) $cuota->capital_pagado, 2)];
+            }
+            if ((float) ($cuota->interes_pagado ?? 0) > 0) {
+                $filas[] = ['Interés', 'Q '.number_format((float) $cuota->interes_pagado, 2)];
+            }
+            if ((float) ($cuota->mora_pagada ?? 0) > 0) {
+                $filas[] = ['Mora', 'Q '.number_format((float) $cuota->mora_pagada, 2)];
+            }
+
+            $codigo = $venta?->codigo_venta ?? $ventaCredito?->numero_credito ?? $cuotaId;
+
+            return TicketPdf::descargar([
+                'empresa' => $sucursal?->nombre ?? config('app.name', 'TerraCloud'),
+                'titulo' => 'RECIBO DE CUOTA',
+                'numero' => (string) $codigo,
+                'fecha' => now()->format('d/m/Y H:i'),
+                'lineas' => [
+                    'Crédito: '.($ventaCredito?->numero_credito ?? '—'),
+                    'Cuota '.$cuota->numero_cuota.' de '.($ventaCredito?->numero_cuotas ?? '—'),
+                    'Cliente: '.$clienteNombre,
+                    'DPI / NIT: '.($clienteDoc ?: 'N/A'),
+                    'Saldo: Q '.number_format((float) ($ventaCredito?->saldo_actual ?? 0), 2),
+                ],
+                'filas' => $filas,
+                'totalEtiqueta' => 'TOTAL PAGADO',
+                'total' => 'Q '.number_format((float) ($cuota->monto_total_pagado ?? 0), 2),
+            ], "Ticket_Cuota{$cuota->numero_cuota}_{$codigo}.pdf");
+        } catch (\Exception $e) {
+            Log::error('Error al generar ticket de cuota: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar el ticket: '.$e->getMessage(),
             ], 500);
         }
     }

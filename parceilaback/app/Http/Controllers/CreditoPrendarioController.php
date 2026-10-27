@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
+use App\Support\TicketPdf;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Picqer\Barcode\BarcodeGeneratorPNG;
 
@@ -3509,6 +3510,47 @@ class CreditoPrendarioController extends Controller
                 'success' => false,
                 'message' => 'Error al generar el recibo',
                 'error' => config('app.debug') ? $e->getMessage() : 'Error interno del servidor'
+            ], 500);
+        }
+    }
+
+    public function descargarTicket(string $id)
+    {
+        try {
+            $credito = CreditoPrendario::with(['cliente', 'sucursal', 'prendas'])->findOrFail($id);
+            $cliente = $credito->cliente;
+            $sucursal = $credito->sucursal;
+            $prendas = $credito->prendas
+                ? $credito->prendas->map(fn ($p) => $p->descripcion ?? $p->descripcion_general ?? 'Prenda')->implode(', ')
+                : '';
+            $plazo = $credito->plazo_dias
+                ? $credito->plazo_dias.' días'
+                : (($credito->numero_cuotas ?? null) ? $credito->numero_cuotas.' cuotas' : 'N/A');
+
+            return TicketPdf::descargar([
+                'empresa' => $sucursal?->nombre ?? config('app.name', 'TerraCloud'),
+                'extras' => array_filter([$sucursal?->direccion ?? null]),
+                'titulo' => 'RECIBO DE CRÉDITO',
+                'numero' => $credito->numero_credito,
+                'fecha' => now()->format('d/m/Y H:i'),
+                'lineas' => array_filter([
+                    'Cliente: '.trim(($cliente?->nombres ?? '').' '.($cliente?->apellidos ?? '')),
+                    'DPI: '.($cliente?->dpi ?? 'N/A'),
+                    $prendas !== '' ? 'Prenda: '.$prendas : null,
+                ]),
+                'filas' => [
+                    ['Tasa', number_format((float) ($credito->tasa_interes ?? 0), 2).'%'],
+                    ['Plazo', $plazo],
+                ],
+                'totalEtiqueta' => 'MONTO',
+                'total' => 'Q '.number_format((float) ($credito->monto_aprobado ?? $credito->monto_solicitado ?? 0), 2),
+            ], 'Ticket_Credito_'.$credito->numero_credito.'.pdf');
+        } catch (\Exception $e) {
+            Log::error('Error al generar ticket de crédito: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar el ticket',
             ], 500);
         }
     }

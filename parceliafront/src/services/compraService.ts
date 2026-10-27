@@ -241,6 +241,17 @@ class CompraService {
     /**
      * Descargar contrato PDF
      */
+    async descargarTicketPDF(compraId: number) {
+        try {
+            await api.downloadFile(
+                `/compras/${compraId}/ticket-pdf`,
+                `ticket-compra-${compraId}.pdf`
+            )
+        } catch (error: any) {
+            throw new Error(error.message || 'Error al descargar ticket')
+        }
+    }
+
     async descargarContratoPDF(compraId: number) {
         try {
             await api.downloadFile(

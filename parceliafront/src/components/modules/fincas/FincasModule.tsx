@@ -7,7 +7,9 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, TreeStructure, Compass, Camera, Trash, Pencil, Power, WarningCircle, MapPin, ShareNetwork, User, CaretLeft, CaretRight } from '@phosphor-icons/react'
+import { TableSkeleton } from '@/components/ui/TableSkeleton'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
+import { Plus, TreeStructure, Compass, Camera, Trash, Pencil, Power, WarningCircle, MapPin, ShareNetwork, User, CaretLeft, CaretRight, CaretDown, CurrencyDollar, FileText } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { fincaService, loteService, userService, Finca, Parcela, Lote } from '@/lib/api'
 import { SelectorUbicacion } from '@/components/shared/SelectorUbicacion'
@@ -108,6 +110,7 @@ export function FincasModule({ userSession, abrirCompra = false }: FincasModuleP
   const [parcelaSeleccionada, setParcelaSeleccionada] = useState<Parcela | null>(null)
   const [lotes, setLotes] = useState<Lote[]>([])
   const [cargando, setCargando] = useState(false)
+  const [cargandoLotes, setCargandoLotes] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [filtroEstado, setFiltroEstado] = useState<string>('todos')
   const [pasoLote, setPasoLote] = useState(0)
@@ -192,6 +195,7 @@ export function FincasModule({ userSession, abrirCompra = false }: FincasModuleP
   }
 
   const cargarLotes = async () => {
+    setCargandoLotes(true)
     try {
       const res = await loteService.getAll({
         finca_id: fincaSeleccionada?.id,
@@ -203,6 +207,8 @@ export function FincasModule({ userSession, abrirCompra = false }: FincasModuleP
       }
     } catch (e) {
       console.error(e)
+    } finally {
+      setCargandoLotes(false)
     }
   }
 
@@ -631,29 +637,98 @@ export function FincasModule({ userSession, abrirCompra = false }: FincasModuleP
           </p>
         </div>
         <div className="page-toolbar-actions">
-          <Button variant={panel === 'inventario' ? 'default' : 'outline'} onClick={() => setPanel('inventario')}>Inventario</Button>
-          <Button variant={panel === 'compra' ? 'default' : 'outline'} onClick={() => setPanel('compra')}>Compra y escrituras</Button>
-          <Button onClick={abrirNuevaFinca} className="gap-2 shadow-sm">
-            <Plus size={18} weight="bold" /> Nueva Finca
-          </Button>
-          {fincaSeleccionada && (
-            <Button variant="outline" onClick={() => setModalParcela(true)} className="gap-2">
-              <Plus size={18} weight="bold" /> Nueva Parcela
+          <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+            <Button
+              size="sm"
+              variant={panel === 'inventario' ? 'default' : 'ghost'}
+              className={`h-8 text-xs font-medium gap-1.5 ${panel === 'inventario' ? 'shadow-sm' : 'text-muted-foreground'}`}
+              onClick={() => setPanel('inventario')}
+            >
+              <TreeStructure size={15} weight={panel === 'inventario' ? 'fill' : 'regular'} />
+              Inventario de Lotes
             </Button>
-          )}
-          {parcelaSeleccionada && (
-            <Button variant="secondary" onClick={abrirModalLote} className="gap-2">
-              <Plus size={18} weight="bold" /> Nuevo Lote
+            <Button
+              size="sm"
+              variant={panel === 'compra' ? 'default' : 'ghost'}
+              className={`h-8 text-xs font-medium gap-1.5 ${panel === 'compra' ? 'shadow-sm' : 'text-muted-foreground'}`}
+              onClick={() => setPanel('compra')}
+            >
+              <CurrencyDollar size={15} weight={panel === 'compra' ? 'fill' : 'regular'} />
+              Compra y escrituras
             </Button>
-          )}
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="h-8 gap-1.5 text-xs shadow-sm">
+                <Plus size={16} weight="bold" />
+                Nueva Finca
+                <CaretDown size={14} className="opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64 p-1.5">
+              <DropdownMenuItem
+                onClick={() => {
+                  setPanel('compra')
+                  toast.info('Para registrar con compra, utiliza el botón "Nueva compra" en este módulo.')
+                }}
+                className="flex items-start gap-2.5 p-2 cursor-pointer rounded-md"
+              >
+                <div className="rounded-md bg-primary/10 p-1.5 text-primary shrink-0 mt-0.5">
+                  <CurrencyDollar size={18} weight="duotone" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-xs text-foreground">Con Compra y Finanzas</p>
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    Registrar adquisición, escrituras, plan de pagos y costeo.
+                  </p>
+                </div>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator className="my-1" />
+
+              <DropdownMenuItem
+                onClick={abrirNuevaFinca}
+                className="flex items-start gap-2.5 p-2 cursor-pointer rounded-md"
+              >
+                <div className="rounded-md bg-muted p-1.5 text-muted-foreground shrink-0 mt-0.5">
+                  <TreeStructure size={18} weight="duotone" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-xs text-foreground">Finca Directa / Existente</p>
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    Propiedad propia o aporte de socios sin compra financiera.
+                  </p>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
-      {panel === 'compra' && <DesarrolladoraModule userSession={userSession} />}
+      {panel === 'compra' && <DesarrolladoraModule userSession={userSession} onIrInventario={() => setPanel('inventario')} />}
       {panel === 'inventario' && <>
       {/* Selector de Fincas */}
       <div className="md:hidden space-y-2">
-        {fincas.length === 0 ? (
+        {cargando ? (
+          Array.from({ length: 3 }).map((_, idx) => (
+            <div key={idx} className="w-full rounded-lg border p-3 space-y-2.5 bg-card animate-pulse">
+              <div className="flex items-start justify-between">
+                <div className="space-y-1.5 flex-1">
+                  <div className="h-2.5 bg-muted rounded w-16"></div>
+                  <div className="h-4 bg-muted rounded w-44"></div>
+                  <div className="h-3 bg-muted rounded w-32"></div>
+                </div>
+                <div className="h-4 bg-muted rounded w-14"></div>
+              </div>
+              <div className="flex justify-between pt-1">
+                <div className="h-3 bg-muted rounded w-20"></div>
+                <div className="h-3 bg-muted rounded w-20"></div>
+                <div className="h-3 bg-muted rounded w-16"></div>
+              </div>
+            </div>
+          ))
+        ) : fincas.length === 0 ? (
           <p className="text-center text-muted-foreground py-6 text-sm">No hay fincas registradas.</p>
         ) : fincas.map((finca) => {
           const isSelected = fincaSeleccionada?.id === finca.id
@@ -738,7 +813,9 @@ export function FincasModule({ userSession, abrirCompra = false }: FincasModuleP
             </TableRow>
           </TableHeader>
           <TableBody>
-            {fincas.length === 0 ? (
+            {cargando ? (
+              <TableSkeleton rows={4} columns={7} />
+            ) : fincas.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                   No hay fincas registradas.
@@ -822,20 +899,54 @@ export function FincasModule({ userSession, abrirCompra = false }: FincasModuleP
                 </CardDescription>
               </div>
 
-              {/* Filtro por estado de lote */}
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <span className="text-xs text-muted-foreground">Estado:</span>
-                <select
-                  value={filtroEstado}
-                  onChange={(e) => setFiltroEstado(e.target.value)}
-                  className="w-full sm:w-auto text-xs bg-background border rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-primary outline-none"
+              {/* Acciones y Filtros de la Finca */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPanel('compra')}
+                  className="h-8 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                  title="Ver datos de compra, escrituras notariales y costeo"
                 >
-                  <option value="todos">Todos los lotes</option>
-                  <option value="disponible">Disponibles</option>
-                  <option value="reservado">Reservados</option>
-                  <option value="vendido">Vendidos / Financiados</option>
-                  <option value="pagado">Pagados / Escriturados</option>
-                </select>
+                  <FileText size={14} /> Compra y escrituras
+                </Button>
+
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Estado:</span>
+                  <select
+                    value={filtroEstado}
+                    onChange={(e) => setFiltroEstado(e.target.value)}
+                    className="text-xs bg-background border rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-primary outline-none"
+                  >
+                    <option value="todos">Todos los lotes</option>
+                    <option value="disponible">Disponibles</option>
+                    <option value="reservado">Reservados</option>
+                    <option value="vendido">Vendidos / Financiados</option>
+                    <option value="pagado">Pagados / Escriturados</option>
+                  </select>
+                </div>
+
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (!parcelaSeleccionada) {
+                      const primera = fincaSeleccionada.parcelas?.[0]
+                      if (primera) {
+                        setParcelaSeleccionada(primera)
+                        setTimeout(abrirModalLote, 50)
+                      } else {
+                        toast.info('Registra primero una parcela o sector para agregar lotes.')
+                        setModalParcela(true)
+                      }
+                      return
+                    }
+                    abrirModalLote()
+                  }}
+                  className="h-8 text-xs gap-1.5 shadow-sm"
+                >
+                  <Plus size={15} weight="bold" />
+                  {parcelaSeleccionada ? `Nuevo Lote en ${parcelaSeleccionada.nombre_identificador}` : 'Nuevo Lote'}
+                </Button>
               </div>
             </div>
 
@@ -864,19 +975,88 @@ export function FincasModule({ userSession, abrirCompra = false }: FincasModuleP
                   {par.nombre_identificador}
                 </button>
               ))}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setModalParcela(true)}
+                className="h-7 text-xs border-dashed gap-1 shrink-0 ml-1 hover:border-primary hover:text-primary"
+                title={`Agregar una nueva parcela o sector a ${fincaSeleccionada.nombre}`}
+              >
+                <Plus size={14} weight="bold" /> Nueva Parcela / Sector
+              </Button>
             </div>
           </CardHeader>
 
           <CardContent className="p-3 sm:p-6">
-            {lotes.length === 0 ? (
+            {cargandoLotes ? (
+              <div className="space-y-4">
+                <div className="md:hidden space-y-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="border rounded-xl p-3 space-y-2.5 bg-card animate-pulse">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="h-11 w-11 rounded-lg bg-muted shrink-0"></div>
+                          <div className="space-y-1.5">
+                            <div className="h-4 bg-muted rounded w-20"></div>
+                            <div className="h-3 bg-muted rounded w-16"></div>
+                          </div>
+                        </div>
+                        <div className="h-4 bg-muted rounded w-24"></div>
+                      </div>
+                      <div className="h-3 bg-muted rounded w-36"></div>
+                      <div className="flex gap-2 pt-1">
+                        <div className="h-7 bg-muted rounded w-16"></div>
+                        <div className="h-7 bg-muted rounded w-16"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden md:block overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Lote</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        {isAdmin && <TableHead>Vendedor</TableHead>}
+                        <TableHead className="text-right">Área m²</TableHead>
+                        <TableHead>Medidas</TableHead>
+                        <TableHead>Ubicación</TableHead>
+                        <TableHead className="text-right">Precio</TableHead>
+                        <TableHead>Observaciones</TableHead>
+                        <TableHead className="text-right">Fotos</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableSkeleton rows={5} columns={isAdmin ? 11 : 10} />
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            ) : lotes.length === 0 ? (
               <div className="text-center py-12 space-y-3">
                 <WarningCircle size={48} className="mx-auto text-muted-foreground/50" />
                 <h3 className="font-semibold text-base">No hay lotes registrados</h3>
                 <p className="text-sm text-muted-foreground max-w-md mx-auto">
                   Agrega sectores o parcelas y registra lotes individuales para comenzar a comercializar.
                 </p>
-                {parcelaSeleccionada && (
-                  <Button onClick={abrirModalLote} size="sm" className="gap-2">
+                {(!fincaSeleccionada.parcelas || fincaSeleccionada.parcelas.length === 0) ? (
+                  <Button onClick={() => setModalParcela(true)} size="sm" className="gap-2">
+                    <Plus size={16} /> Crear Primera Parcela / Sector
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => {
+                      const primera = fincaSeleccionada.parcelas?.[0]
+                      if (!parcelaSeleccionada && primera) {
+                        setParcelaSeleccionada(primera)
+                      }
+                      setTimeout(abrirModalLote, 50)
+                    }}
+                    size="sm"
+                    className="gap-2"
+                  >
                     <Plus size={16} /> Crear Primer Lote
                   </Button>
                 )}

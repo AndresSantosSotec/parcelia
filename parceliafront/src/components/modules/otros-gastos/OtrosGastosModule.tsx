@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { AvisoCaja, useCajaOperable } from '@/components/shared/AvisoCaja'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -83,6 +84,7 @@ const MESES = [
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export function OtrosGastosModule() {
+  const { abierta: cajaAbierta } = useCajaOperable()
   const now = new Date()
   const [tab, setTab] = useState<'movimientos' | 'catalogo'>('movimientos')
 
@@ -344,8 +346,9 @@ export function OtrosGastosModule() {
           <p className="text-sm text-muted-foreground mt-0.5">
             Ingresos y egresos adicionales que afectan la caja diaria, sin lote ni contrato.
           </p>
+          <AvisoCaja abierta={cajaAbierta} />
         </div>
-        <Button onClick={() => setDlgMovimiento(true)} className="flex items-center gap-2 w-full sm:w-auto">
+        <Button onClick={() => setDlgMovimiento(true)} disabled={cajaAbierta !== true} className="flex items-center gap-2 w-full sm:w-auto">
           <Plus className="h-4 w-4" />
           Registrar Movimiento
         </Button>

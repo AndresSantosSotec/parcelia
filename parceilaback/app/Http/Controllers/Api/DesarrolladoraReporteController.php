@@ -281,6 +281,26 @@ class DesarrolladoraReporteController extends Controller
         ], $filas, 'financiamientos');
     }
 
+    public function planFinancista(Request $request, $id): Response
+    {
+        $item = Financista::with('finca:id,nombre,codigo')->findOrFail($id);
+        $filasPlan = app(FinancistaController::class)->filasPlan($item);
+        $etiquetas = ['pagada' => 'Pagada', 'vencida' => 'Vencida', 'parcial' => 'Parcial', 'pendiente' => 'Pendiente'];
+        $filas = array_map(fn (array $c) => [
+            $c['numero'],
+            $c['fecha'],
+            $c['capital'],
+            $c['interes'],
+            $c['total'],
+            $etiquetas[$c['estado']] ?? $c['estado'],
+        ], $filasPlan);
+
+        return $this->entregar($request, 'Plan de pago del financiamiento', [
+            $item->nombre.' · Finca '.($item->finca?->nombre ?? ''),
+            'Capital '.$item->monto.' · Interés '.$item->interes_total.' · Vence '.optional($item->fecha_vencimiento)->format('Y-m-d'),
+        ], ['Cuota', 'Fecha', 'Capital', 'Interés', 'Total', 'Estado'], $filas, 'plan-financista-'.$item->id);
+    }
+
     public function estadoFinancista(Request $request, $id): Response
     {
         $item = Financista::with(['finca:id,nombre,codigo', 'pagos'])->findOrFail($id);

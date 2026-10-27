@@ -183,6 +183,83 @@
   border-color: var(--tint-danger-border);
 }
 
+.aviso-caja-lista {
+  border: 1px solid oklch(0.72 0.12 155);
+  background: oklch(0.95 0.045 155);
+  color: oklch(0.28 0.08 155);
+}
+
+.dark .aviso-caja-lista {
+  border-color: oklch(0.48 0.10 155);
+  background: oklch(0.26 0.05 155);
+  color: oklch(0.92 0.04 155);
+}
+
+.aviso-caja-cerrada {
+  border: 1px solid oklch(0.62 0.18 25);
+  background: oklch(0.96 0.03 25);
+  color: oklch(0.40 0.16 25);
+}
+
+.dark .aviso-caja-cerrada {
+  border-color: oklch(0.55 0.16 25);
+  background: oklch(0.28 0.06 25);
+  color: oklch(0.93 0.03 25);
+}
+
+.cuota-chip-pagada { background: oklch(0.45 0.14 155); color: #fff; }
+.cuota-chip-pendiente { background: oklch(0.48 0.14 250); color: #fff; }
+.cuota-chip-parcial { background: oklch(0.58 0.14 75); color: #fff; }
+.cuota-chip-vencida { background: oklch(0.52 0.18 25); color: #fff; }
+
+.cuota-pagada {
+  background: oklch(0.90 0.09 155) !important;
+  color: oklch(0.28 0.12 155) !important;
+  border-left: 6px solid oklch(0.48 0.16 155);
+}
+
+.cuota-pendiente {
+  background: oklch(0.90 0.07 250) !important;
+  color: oklch(0.30 0.12 250) !important;
+  border-left: 6px solid oklch(0.48 0.14 250);
+}
+
+.cuota-parcial {
+  background: oklch(0.92 0.10 85) !important;
+  color: oklch(0.36 0.12 70) !important;
+  border-left: 6px solid oklch(0.62 0.15 75);
+}
+
+.cuota-vencida {
+  background: oklch(0.90 0.08 25) !important;
+  color: oklch(0.38 0.16 25) !important;
+  border-left: 6px solid oklch(0.55 0.20 25);
+}
+
+.dark .cuota-pagada {
+  background: oklch(0.34 0.10 155) !important;
+  color: oklch(0.93 0.04 155) !important;
+  border-left-color: oklch(0.74 0.16 155);
+}
+
+.dark .cuota-pendiente {
+  background: oklch(0.34 0.09 250) !important;
+  color: oklch(0.93 0.03 250) !important;
+  border-left-color: oklch(0.74 0.12 250);
+}
+
+.dark .cuota-parcial {
+  background: oklch(0.38 0.10 85) !important;
+  color: oklch(0.95 0.04 85) !important;
+  border-left-color: oklch(0.80 0.14 85);
+}
+
+.dark .cuota-vencida {
+  background: oklch(0.36 0.12 25) !important;
+  color: oklch(0.95 0.03 25) !important;
+  border-left-color: oklch(0.70 0.18 25);
+}
+
 /* ============================================
    MODERN HEADER
    ============================================ */

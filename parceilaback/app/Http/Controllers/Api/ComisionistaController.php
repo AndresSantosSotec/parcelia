@@ -194,6 +194,9 @@ class ComisionistaController extends Controller
 
     public function pagar(Request $request, $id)
     {
+        if ($respuesta = $this->sinCaja($request)) {
+            return $respuesta;
+        }
         $comision = ComisionVenta::findOrFail($id);
         $validated = $request->validate([
             'fecha' => 'required|date',
@@ -252,6 +255,9 @@ class ComisionistaController extends Controller
 
     public function updatePago(Request $request, $id, $pagoId)
     {
+        if ($respuesta = $this->sinCaja($request)) {
+            return $respuesta;
+        }
         $comision = ComisionVenta::with(['negociacion', 'regla', 'comisionista', 'lote:id,codigo_unico,numero_lote'])->findOrFail($id);
         $pago = $comision->pagos()->findOrFail($pagoId);
         $validated = $request->validate([
@@ -300,6 +306,9 @@ class ComisionistaController extends Controller
 
     public function destroyPago(Request $request, $id, $pagoId)
     {
+        if ($respuesta = $this->sinCaja($request)) {
+            return $respuesta;
+        }
         $comision = ComisionVenta::with(['comisionista', 'lote:id,codigo_unico,numero_lote'])->findOrFail($id);
         $pago = $comision->pagos()->findOrFail($pagoId);
         $persona = $comision->comisionista?->nombre ?: 'comisionista';
@@ -373,6 +382,17 @@ class ComisionistaController extends Controller
                 'referencia' => $p->referencia,
             ])->values(),
         ];
+    }
+
+    private function sinCaja(Request $request)
+    {
+        try {
+            CajaService::exigirAbierta($request->user()?->id);
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        return null;
     }
 
     private function refrescarEstadoComision(ComisionVenta $comision): void

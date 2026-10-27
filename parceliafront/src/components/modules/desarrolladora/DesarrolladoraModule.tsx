@@ -17,8 +17,11 @@ import {
 } from '@/lib/api'
 import { usePermissions } from '@/hooks/use-permissions'
 import { AccionesRegistro, PaginacionLista } from './AccionesRegistro'
+import { AvisoCaja, useCajaOperable } from '@/components/shared/AvisoCaja'
 import { SelectorUbicacion } from '@/components/shared/SelectorUbicacion'
 import { MarcoDocumento, VistaPreviaDocumento } from './VistaPreviaDocumento'
+import { TreeStructure } from '@phosphor-icons/react'
+import { TableSkeleton } from '@/components/ui/TableSkeleton'
 
 const q = (n: number | string | null | undefined) =>
   `Q ${Number(n || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -100,12 +103,19 @@ function borradorTieneDatos(datos: DatosCompra) {
   return (Object.keys(COMPRA_VACIA) as Array<keyof DatosCompra>).some((clave) => datos[clave] !== COMPRA_VACIA[clave])
 }
 
-export function DesarrolladoraModule({ userSession }: { userSession?: { userData?: { rol?: string; permisos?: unknown } | null } }) {
+export function DesarrolladoraModule({
+  userSession,
+  onIrInventario,
+}: {
+  userSession?: { userData?: { rol?: string; permisos?: unknown } | null }
+  onIrInventario?: () => void
+}) {
   const { hasPermission } = usePermissions(userSession?.userData as any)
   const puedeCrear = hasPermission('compra_fincas', 'crear')
   const puedeEditar = hasPermission('compra_fincas', 'editar')
   const puedeEliminar = hasPermission('compra_fincas', 'eliminar')
   const puedeReportes = hasPermission('compra_fincas', 'reportes')
+  const { abierta: cajaAbierta } = useCajaOperable()
   const [vista, setVista] = useState<'lista' | 'ficha'>('lista')
   const [modo, setModo] = useState<'crear' | 'editar' | 'ver'>('ver')
   const [busqueda, setBusqueda] = useState('')
@@ -137,9 +147,15 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
     setFincas(res.data || [])
   }, [])
 
+  const [cargandoCompras, setCargandoCompras] = useState(false)
   const cargarCompras = useCallback(async () => {
-    const res = await compraFincaService.listar()
-    setCompras(res.data || [])
+    setCargandoCompras(true)
+    try {
+      const res = await compraFincaService.listar()
+      setCompras(res.data || [])
+    } finally {
+      setCargandoCompras(false)
+    }
   }, [])
 
   const cargarDetalle = useCallback(async (id: number) => {
@@ -369,10 +385,15 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
       <div className="space-y-4 p-3 sm:p-4 md:p-6">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-xl sm:text-2xl font-semibold">Comprar</h1>
-            <p className="text-sm text-muted-foreground">Paso 1. Al guardar se crea la finca. Desde Parcelar se divide en lotes y aparecen en Fincas y lotes.</p>
+            <h1 className="text-xl sm:text-2xl font-semibold">Compra de Fincas & Escrituras</h1>
+            <p className="text-sm text-muted-foreground">Adquisición de terrenos matrices, escrituras legales, cuotas al vendedor y plan de costeo.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {onIrInventario && (
+              <Button size="sm" variant="outline" onClick={onIrInventario} className="gap-1.5 shadow-sm text-xs border-primary/30 text-primary hover:bg-primary/5">
+                <TreeStructure size={15} weight="duotone" /> Ir a Inventario de Lotes
+              </Button>
+            )}
             {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/listado?formato=pdf', 'reporte-fincas.pdf')}>Listado PDF</Button>}
             {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/listado?formato=xlsx', 'reporte-fincas.xlsx')}>Listado Excel</Button>}
             {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/cuotas-pendientes?formato=pdf', 'cuotas-pendientes.pdf')}>Cuotas pendientes</Button>}
@@ -397,6 +418,7 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
         <Card>
           <CardContent className="pt-4 overflow-x-auto">
             <TablaSimple
+              cargando={cargandoCompras}
               headers={['Código', 'Finca', 'Vendedor', 'Lugar', 'Precio', 'Tipo', 'Pagado', 'Pendiente', 'Escrituras', 'Estado', '']}
               rows={comprasPagina.map((c) => [
                 c.codigo,
@@ -439,6 +461,11 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
           <p className="text-sm text-muted-foreground">La finca se crea aquí y queda en Fincas y lotes. Luego se parcela en lotes.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {onIrInventario && fincaId && (
+            <Button size="sm" variant="outline" onClick={onIrInventario} className="gap-1.5 shadow-sm text-xs border-primary/30 text-primary hover:bg-primary/5">
+              <TreeStructure size={15} weight="duotone" /> Ver en Inventario de Lotes
+            </Button>
+          )}
           <Button size="sm" variant="outline" onClick={volver}>Volver al listado</Button>
           {puedeReportes && <Button size="sm" variant="outline" disabled={!fincaId} onClick={() => bajar(`/fincas/${fincaId}/reportes/registro`, `registro-${detalle?.finca.codigo || 'finca'}.pdf`)}>Registro PDF</Button>}
         </div>
@@ -911,6 +938,7 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
                   c.estado,
                 ])}
               />
+              {formularioEditable && <AvisoCaja abierta={cajaAbierta} />}
               {formularioEditable && (
                 <div className="grid gap-3 md:grid-cols-5">
                   <div>
@@ -937,7 +965,7 @@ export function DesarrolladoraModule({ userSession }: { userSession?: { userData
                     </select>
                   </div>
                   <div className="flex items-end">
-                    <Button disabled={!fincaId || !pago.cuotaId} onClick={async () => {
+                    <Button disabled={!fincaId || !pago.cuotaId || cajaAbierta !== true} onClick={async () => {
                       if (!fincaId || !pago.cuotaId) return
                       try {
                         const res = await compraFincaService.pagarCuota(fincaId, pago.cuotaId, {
@@ -985,17 +1013,30 @@ function Campo({ label, value, onChange, type = 'text', disabled }: { label: str
   )
 }
 
-function TablaSimple({ headers, rows }: { headers: string[]; rows: Array<Array<ReactNode>> }) {
+function TablaSimple({
+  headers,
+  rows,
+  cargando = false,
+}: {
+  headers: string[]
+  rows: Array<Array<ReactNode>>
+  cargando?: boolean
+}) {
   return (
     <Table>
       <TableHeader>
         <TableRow>{headers.map((h, i) => <TableHead key={`${h}-${i}`} className={i === headers.length - 1 ? 'w-px' : undefined}>{h}</TableHead>)}</TableRow>
       </TableHeader>
       <TableBody>
-        {rows.length === 0 && <TableRow><TableCell colSpan={headers.length}>Sin registros</TableCell></TableRow>}
-        {rows.map((row, i) => (
-          <TableRow key={i}>{row.map((cell, j) => <TableCell key={j} className={j === row.length - 1 ? 'w-px whitespace-nowrap text-right' : undefined}>{cell}</TableCell>)}</TableRow>
-        ))}
+        {cargando ? (
+          <TableSkeleton rows={5} columns={headers.length} />
+        ) : rows.length === 0 ? (
+          <TableRow><TableCell colSpan={headers.length} className="text-center text-muted-foreground py-6">Sin registros</TableCell></TableRow>
+        ) : (
+          rows.map((row, i) => (
+            <TableRow key={i}>{row.map((cell, j) => <TableCell key={j} className={j === row.length - 1 ? 'w-px whitespace-nowrap text-right' : undefined}>{cell}</TableCell>)}</TableRow>
+          ))
+        )}
       </TableBody>
     </Table>
   )

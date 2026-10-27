@@ -19,7 +19,7 @@ class StorePagoTerrenoRequest extends FormRequest
             'monto' => 'required|numeric|min:0.01|decimal:0,2',
             'metodo_pago' => 'required|in:efectivo,transferencia,deposito,cheque,tarjeta',
             'referencia_bancaria' => 'nullable|string|max:100',
-            'observaciones' => 'nullable|string',
+            'observaciones' => 'nullable|string|max:500',
             'origen_fondos' => 'nullable|string|max:255',
             'caja_apertura_cierre_id' => 'nullable|exists:caja_apertura_cierres,id',
             'idempotency_key' => 'nullable|string|max:64',

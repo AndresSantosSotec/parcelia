@@ -17,9 +17,11 @@ import {
 } from '@/lib/api'
 import { usePermissions } from '@/hooks/use-permissions'
 import { AccionesRegistro, PaginacionLista } from './AccionesRegistro'
+import { AvisoCaja, useCajaOperable } from '@/components/shared/AvisoCaja'
 
 const q = (n: number | string | null | undefined) =>
   `Q ${Number(n || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const fecha = (v?: string | null) => (v ? String(v).slice(0, 10) : '')
 const campo = 'mt-1 flex h-9 w-full rounded-md border border-input bg-popover px-3 text-sm text-popover-foreground'
 
 const MOMENTO: Record<string, string> = {
@@ -41,6 +43,7 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
   const puedePagar = hasPermission('comisionistas', 'pagar')
   const puedeReglas = hasPermission('comisionistas', 'reglas')
   const puedeReportes = hasPermission('comisionistas', 'reportes')
+  const { abierta: cajaAbierta } = useCajaOperable()
   const [personas, setPersonas] = useState<ComisionistaItem[]>([])
   const [reglas, setReglas] = useState<ComisionRegla[]>([])
   const [comisiones, setComisiones] = useState<ComisionItem[]>([])
@@ -49,6 +52,8 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
   const [regla, setRegla] = useState({ nombre: '', tipo: 'porcentaje', base: 'precio_final', valor: '', momento: 'al_contrato' })
   const [aplicar, setAplicar] = useState({ comisionista_id: '', negociacion_id: '', regla_id: '', monto: '' })
   const [pago, setPago] = useState({ id: 0, fecha: '', monto: '', referencia: '' })
+  const [historialId, setHistorialId] = useState<number | null>(null)
+  const [edicionPago, setEdicionPago] = useState<{ pagoId: number; fecha: string; monto: string; referencia: string } | null>(null)
   const [buscaComision, setBuscaComision] = useState('')
   const [personaId, setPersonaId] = useState<number | null>(null)
   const [mostrarPersona, setMostrarPersona] = useState(false)
@@ -137,6 +142,96 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
   const paginaRegSegura = Math.min(paginaReg, paginasReg)
   const reglasPagina = reglasVisibles.slice((paginaRegSegura - 1) * porReg, paginaRegSegura * porReg)
 
+  const historial = comisiones.find((c) => c.id === historialId) || null
+
+  async function guardarEdicionPago(comisionId: number) {
+    if (!edicionPago) return
+    try {
+      await comisionistaService.actualizarPago(comisionId, edicionPago.pagoId, {
+        fecha: edicionPago.fecha,
+        monto: Number(edicionPago.monto),
+        referencia: edicionPago.referencia,
+      })
+      setEdicionPago(null)
+      await cargar()
+      toast.success('Pago actualizado. La caja quedó con el monto nuevo.')
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo actualizar el pago')
+    }
+  }
+
+  async function eliminarPagoComision(comisionId: number, pagoId: number) {
+    if (!window.confirm('Eliminar este pago? El dinero regresa a la caja abierta.')) return
+    try {
+      await comisionistaService.eliminarPago(comisionId, pagoId)
+      await cargar()
+      toast.success('Pago eliminado. El dinero volvió a la caja.')
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo eliminar el pago')
+    }
+  }
+
+  function panelPagos(comision: ComisionItem) {
+    const filas = Array.isArray(comision.pagos) ? comision.pagos : []
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">
+          {comision.comisionista?.nombre} · lote {comision.lote?.numero_lote || comision.lote?.codigo_unico || '—'} · comisión {q(comision.monto_comision)} · pagado {q(comision.pagado)} · pendiente {q(comision.pendiente)}
+        </p>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Fecha</TableHead>
+              <TableHead>Monto</TableHead>
+              <TableHead>Referencia</TableHead>
+              <TableHead className="w-px"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filas.map((fila) => (
+              <TableRow key={fila.id}>
+                {edicionPago?.pagoId === fila.id ? (
+                  <>
+                    <TableCell><Input type="date" value={edicionPago.fecha} onChange={(e) => setEdicionPago({ ...edicionPago, fecha: e.target.value })} /></TableCell>
+                    <TableCell><Input type="number" value={edicionPago.monto} onChange={(e) => setEdicionPago({ ...edicionPago, monto: e.target.value })} /></TableCell>
+                    <TableCell><Input value={edicionPago.referencia} onChange={(e) => setEdicionPago({ ...edicionPago, referencia: e.target.value })} /></TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <Button size="sm" disabled={cajaAbierta !== true} onClick={() => guardarEdicionPago(comision.id)}>Guardar</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEdicionPago(null)}>Cancelar</Button>
+                    </TableCell>
+                  </>
+                ) : (
+                  <>
+                    <TableCell>{fecha(fila.fecha)}</TableCell>
+                    <TableCell>{q(fila.monto)}</TableCell>
+                    <TableCell>{fila.referencia || '—'}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {puedePagar && (
+                        <>
+                          <Button size="sm" variant="outline" disabled={cajaAbierta !== true} onClick={() => setEdicionPago({
+                            pagoId: fila.id,
+                            fecha: fecha(fila.fecha),
+                            monto: String(fila.monto),
+                            referencia: fila.referencia || '',
+                          })}>Editar</Button>
+                          <Button size="sm" variant="ghost" disabled={cajaAbierta !== true} onClick={() => eliminarPagoComision(comision.id, fila.id)}>Eliminar</Button>
+                        </>
+                      )}
+                    </TableCell>
+                  </>
+                )}
+              </TableRow>
+            ))}
+            {filas.length === 0 && <TableRow><TableCell colSpan={4}>Esta comisión todavía no tiene pagos.</TableCell></TableRow>}
+          </TableBody>
+        </Table>
+        {puedeReportes && (
+          <Button size="sm" variant="outline" onClick={() => bajar(`/comisiones/${comision.id}/reporte?formato=pdf`, `estado-comision-${comision.id}.pdf`)}>Estado de cuenta</Button>
+        )}
+      </div>
+    )
+  }
+
   async function bajar(url: string, nombre: string) {
     try {
       await api.downloadFile(url, nombre)
@@ -202,13 +297,14 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                     <TableRow key={c.id}>
                       <TableCell>{c.comisionista?.nombre}</TableCell>
                       <TableCell>{c.negociacion?.codigo_negociacion || '—'}</TableCell>
-                      <TableCell>{c.lote?.codigo_unico || '—'}</TableCell>
+                      <TableCell>{c.lote?.numero_lote || c.lote?.codigo_unico || '—'}</TableCell>
                       <TableCell>{c.regla?.nombre || c.descripcion || '—'}</TableCell>
                       <TableCell>{q(c.monto_comision)}</TableCell>
                       <TableCell>{q(c.pendiente)}</TableCell>
                       <TableCell>{c.estado}</TableCell>
                       <TableCell className="w-px whitespace-nowrap text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <Button size="sm" variant="outline" onClick={() => setHistorialId(c.id)}>Pagos</Button>
                           {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/comisiones/${c.id}/recibo-pdf`, `recibo-comision-${c.id}.pdf`)}>Recibo</Button>}
                           <AccionesRegistro
                             onVer={puedeReportes ? () => bajar(`/comisiones/${c.id}/reporte?formato=pdf`, `estado-comision-${c.id}.pdf`) : undefined}
@@ -237,6 +333,15 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
               />
             </CardContent>
           </Card>
+          {historial && (
+            <Card>
+              <CardHeader><CardTitle>Pagos realizados</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <AvisoCaja abierta={cajaAbierta} />
+                {panelPagos(historial)}
+              </CardContent>
+            </Card>
+          )}
 
         </TabsContent>
 
@@ -251,7 +356,7 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                     <option value="">Elegir</option>
                     {ventas.map((v) => (
                       <option key={v.id} value={v.id}>
-                        {v.codigo_negociacion} · {v.lote?.codigo_unico || 'lote'} · {q(v.precio_final)}
+                        {v.codigo_negociacion} · {v.lote?.numero_lote || v.lote?.codigo_unico || 'lote'} · {q(v.precio_final)}
                       </option>
                     ))}
                   </select>
@@ -337,6 +442,7 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
         </TabsContent>
 
         <TabsContent value="pago" className="space-y-4">
+          <AvisoCaja abierta={cajaAbierta} />
           {puedePagar && (
             <Card>
               <CardHeader>
@@ -359,15 +465,18 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                         key={c.id}
                         type="button"
                         className={`rounded-md border px-3 py-2 text-left text-sm ${pago.id === c.id ? 'border-blue-600 bg-blue-50' : ''}`}
-                        onClick={() => setPago({
-                          ...pago,
-                          id: c.id,
-                          monto: String(c.disponible ?? c.pendiente),
-                        })}
+                        onClick={() => {
+                          setHistorialId(c.id)
+                          setPago({
+                            ...pago,
+                            id: c.id,
+                            monto: String(c.disponible ?? c.pendiente),
+                          })
+                        }}
                       >
                         <span className="font-medium">{c.comisionista?.nombre}</span>
                         {c.comisionista?.dpi ? ` · DPI ${c.comisionista.dpi}` : ''}
-                        {' · '}{c.lote?.codigo_unico || c.negociacion?.codigo_negociacion}
+                        {' · '}{c.lote?.numero_lote || c.lote?.codigo_unico || c.negociacion?.codigo_negociacion}
                         <span className="mt-1 block text-muted-foreground">
                           Comisión {q(c.monto_comision)} · liberado {q(c.liberado ?? c.monto_comision)} · se puede pagar {q(c.disponible ?? c.pendiente)} · pendiente {q(c.pendiente)}
                         </span>
@@ -388,17 +497,25 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                             monto: Number(pago.monto),
                             referencia: pago.referencia,
                           })
-                          await cargar()
-                          if (puedeReportes) await bajar(`/comisiones/${pago.id}/recibo-pdf`, `recibo-comision-${pago.id}.pdf`)
+                          const comisionId = pago.id
                           setPago({ id: 0, fecha: '', monto: '', referencia: '' })
-                          toast.success('Pago registrado. Si el saldo quedó en cero, esa comisión ya no aparece para cobro.')
+                          setEdicionPago(null)
+                          setBuscaComision('')
+                          await cargar()
+                          toast.success('Pago registrado. El formulario quedó en blanco para el siguiente.')
+                          if (puedeReportes) {
+                            bajar(`/comisiones/${comisionId}/recibo-pdf`, `recibo-comision-${comisionId}.pdf`).catch(() => {
+                              toast.error('El pago se registró, pero no se pudo descargar el recibo')
+                            })
+                          }
                         } catch (e: any) {
                           toast.error(e?.response?.data?.message || e?.message || 'No se pudo pagar')
                         }
-                      }}>Pagar y recibo</Button>
+                      }} disabled={cajaAbierta !== true}>Pagar y recibo</Button>
                     </div>
                   </div>
                 )}
+                {historial && panelPagos(historial)}
               </CardContent>
             </Card>
           )}

@@ -34,6 +34,19 @@ class CajaService
     }
 
     /**
+     * Las entradas y salidas de dinero solo proceden con la caja del usuario en turno.
+     */
+    public static function exigirAbierta(?int $userId = null): CajaAperturaCierre
+    {
+        $caja = self::getCajaAbierta($userId);
+        if (! $caja) {
+            throw new \RuntimeException('Debes abrir tu caja para registrar entradas o salidas de dinero. Ve a Caja y Cobros y apertúrala.');
+        }
+
+        return $caja;
+    }
+
+    /**
      * Registrar un ingreso a caja (pago de crédito, venta, etc.)
      */
     public static function registrarIngreso(
@@ -42,12 +55,7 @@ class CajaService
         ?array $detalles = null,
         ?int $userId = null
     ): ?MovimientoCaja {
-        $caja = self::getCajaAbierta($userId);
-
-        if (!$caja) {
-            Log::warning("Intento de registrar ingreso sin caja abierta. Usuario: " . ($userId ?? Auth::id()));
-            return null;
-        }
+        $caja = self::exigirAbierta($userId);
 
         return MovimientoCaja::create([
             'caja_id' => $caja->id,
@@ -69,12 +77,7 @@ class CajaService
         ?array $detalles = null,
         ?int $userId = null
     ): ?MovimientoCaja {
-        $caja = self::getCajaAbierta($userId);
-
-        if (!$caja) {
-            Log::warning("Intento de registrar egreso sin caja abierta. Usuario: " . ($userId ?? Auth::id()));
-            return null;
-        }
+        $caja = self::exigirAbierta($userId);
 
         return MovimientoCaja::create([
             'caja_id' => $caja->id,

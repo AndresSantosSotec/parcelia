@@ -102,23 +102,18 @@ class VentaCreditoService
 
             // 9. Registrar en caja si el método de pago es efectivo
             if ($metodoCodigo === 'efectivo' && $monto > 0) {
-                try {
-                    CajaService::registrarIngreso(
-                        $monto,
-                        "Abono venta crédito #{$venta->codigo_venta} - {$venta->cliente_nombre}",
-                        [
-                            'tipo_operacion' => 'abono_venta_credito',
-                            'venta_id'       => $venta->id,
-                            'codigo_venta'   => $venta->codigo_venta,
-                            'tipo_venta'     => $venta->tipo_venta,
-                            'pago_id'        => $pago->id,
-                            'fecha'          => now()->toDateTimeString(),
-                        ]
-                    );
-                } catch (\Exception $cajaError) {
-                    // No abortar la transacción si falla el registro de caja, solo advertir
-                    Log::warning("No se pudo registrar abono en caja para venta {$venta->codigo_venta}: " . $cajaError->getMessage());
-                }
+                CajaService::registrarIngreso(
+                    $monto,
+                    "Abono venta crédito #{$venta->codigo_venta} - {$venta->cliente_nombre}",
+                    [
+                        'tipo_operacion' => 'abono_venta_credito',
+                        'venta_id'       => $venta->id,
+                        'codigo_venta'   => $venta->codigo_venta,
+                        'tipo_venta'     => $venta->tipo_venta,
+                        'pago_id'        => $pago->id,
+                        'fecha'          => now()->toDateTimeString(),
+                    ]
+                );
             }
 
             Log::info("Abono registrado a venta {$venta->codigo_venta}", [

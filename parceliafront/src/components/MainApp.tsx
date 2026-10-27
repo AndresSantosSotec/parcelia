@@ -361,7 +361,7 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
       case 'comisionistas':
         return <ComisionistasModule userSession={userSession} />
       case 'negociaciones':
-        return <NegociacionesModule />
+        return <NegociacionesModule userSession={userSession} />
       case 'tasas_inmobiliarias':
         return <TasasInmobiliariasModule />
       case 'personalizacion':

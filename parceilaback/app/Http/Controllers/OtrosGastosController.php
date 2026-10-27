@@ -7,6 +7,7 @@ use App\Models\OtroGastoTipo;
 use App\Models\OtroGastoMovimiento;
 use App\Models\CajaAperturaCierre;
 use App\Models\MovimientoCaja;
+use App\Services\CajaService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -217,6 +218,13 @@ class OtrosGastosController extends Controller
         $tipo   = OtroGastoTipo::findOrFail($validated['otro_gasto_tipo_id']);
         $fecha  = Carbon::parse($validated['fecha'] ?? now())->toDateString();
 
+        if (! CajaService::tieneCajaAbierta($user->id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Debes abrir tu caja para registrar entradas o salidas de dinero. Ve a Caja y Cobros y apertúrala.',
+            ], 422);
+        }
+
         DB::beginTransaction();
         try {
             // Buscar caja abierta del usuario para registrar el movimiento en ella
@@ -272,9 +280,7 @@ class OtrosGastosController extends Controller
                 'success'        => true,
                 'data'           => $registro,
                 'aplico_en_caja' => $cajaAbierta !== null,
-                'message'        => $cajaAbierta
-                    ? 'Movimiento registrado y aplicado a la caja abierta'
-                    : 'Movimiento registrado (sin caja abierta, no se aplicó a caja)',
+                'message'        => 'Movimiento registrado y aplicado a la caja abierta',
             ], 201);
 
         } catch (\Exception $e) {
@@ -305,6 +311,14 @@ class OtrosGastosController extends Controller
             return response()->json(['success' => false, 'message' => 'El movimiento ya está anulado'], 400);
         }
 
+        $cajaAbierta = CajaService::getCajaAbierta($user->id);
+        if (! $cajaAbierta) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Debes abrir tu caja para anular un movimiento de dinero. Ve a Caja y Cobros y apertúrala.',
+            ], 422);
+        }
+
         DB::beginTransaction();
         try {
             $registro->update([
@@ -318,7 +332,7 @@ class OtrosGastosController extends Controller
                 if ($movCaja) {
                     // Crear movimiento inverso para revertir el efecto
                     MovimientoCaja::create([
-                        'caja_id'             => $movCaja->caja_id,
+                        'caja_id'             => $cajaAbierta->id,
                         'tipo'                => $movCaja->tipo === 'incremento' ? 'decremento' : 'incremento',
                         'monto'               => $movCaja->monto,
                         'concepto'            => 'ANULACIÓN - ' . $movCaja->concepto,

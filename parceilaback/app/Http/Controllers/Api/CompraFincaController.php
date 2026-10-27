@@ -415,6 +415,12 @@ class CompraFincaController extends Controller
         }
 
         try {
+            CajaService::exigirAbierta($request->user()?->id);
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        try {
             $pago = DB::transaction(function () use ($request, $finca, $cuota, $validated, $monto) {
                 return $this->registrarPago($request, $finca, $cuota, $monto, $validated['origen'], $validated['fecha'] ?? null);
             });

@@ -149,20 +149,17 @@ class VentaPlanPagoService
             ]);
 
             // 10. Registrar enganche en caja si se proporcionó
-            if ($enganche > 0 && $cajaId) {
-                try {
-                    CajaService::registrarIngreso(
-                        $enganche,
-                        "Enganche de venta a crédito {$numeroCredito}",
-                        [
-                            'tipo_movimiento' => 'enganche',
-                            'venta_id' => $venta->id,
-                            'numero_credito' => $numeroCredito,
-                        ]
-                    );
-                } catch (Exception $e) {
-                    Log::warning("No se pudo registrar enganche en caja: {$e->getMessage()}");
-                }
+            if ($enganche > 0) {
+                CajaService::exigirAbierta();
+                CajaService::registrarIngreso(
+                    $enganche,
+                    "Enganche de venta a crédito {$numeroCredito}",
+                    [
+                        'tipo_movimiento' => 'enganche',
+                        'venta_id' => $venta->id,
+                        'numero_credito' => $numeroCredito,
+                    ]
+                );
             }
 
             // 11. Registrar asiento contable
@@ -503,21 +500,16 @@ class VentaPlanPagoService
 
             $ventaCredito->save();
 
-            // 10. Registrar en caja
-            try {
-                CajaService::registrarIngreso(
-                    $monto,
-                    "Pago cuota #{$cuota->numero_cuota} - Crédito {$ventaCredito->numero_credito}",
-                    [
-                        'tipo_movimiento' => 'pago_cuota',
-                        'venta_id' => $ventaCredito->venta_id,
-                        'numero_credito' => $ventaCredito->numero_credito,
-                        'cuota_numero' => $cuota->numero_cuota,
-                    ]
-                );
-            } catch (Exception $e) {
-                Log::warning("No se pudo registrar pago en caja: {$e->getMessage()}");
-            }
+            CajaService::registrarIngreso(
+                $monto,
+                "Pago cuota #{$cuota->numero_cuota} - Crédito {$ventaCredito->numero_credito}",
+                [
+                    'tipo_movimiento' => 'pago_cuota',
+                    'venta_id' => $ventaCredito->venta_id,
+                    'numero_credito' => $ventaCredito->numero_credito,
+                    'cuota_numero' => $cuota->numero_cuota,
+                ]
+            );
 
             // 11. Registrar asiento contable
             try {
@@ -717,20 +709,16 @@ class VentaPlanPagoService
                 }
             }
 
-            try {
-                CajaService::registrarIngreso(
-                    $totalPagado,
-                    "Pago " . count($cuotas) . " cuota(s) - Crédito {$ventaCredito->numero_credito}",
-                    [
-                        'tipo_movimiento' => 'pago_cuota',
-                        'venta_id' => $ventaCredito->venta_id,
-                        'numero_credito' => $ventaCredito->numero_credito,
-                        'cuota_numeros' => array_column($detalle, 'numero_cuota'),
-                    ]
-                );
-            } catch (Exception $e) {
-                Log::warning("No se pudo registrar pago múltiple en caja: {$e->getMessage()}");
-            }
+            CajaService::registrarIngreso(
+                $totalPagado,
+                "Pago " . count($cuotas) . " cuota(s) - Crédito {$ventaCredito->numero_credito}",
+                [
+                    'tipo_movimiento' => 'pago_cuota',
+                    'venta_id' => $ventaCredito->venta_id,
+                    'numero_credito' => $ventaCredito->numero_credito,
+                    'cuota_numeros' => array_column($detalle, 'numero_cuota'),
+                ]
+            );
 
             try {
                 $this->contabilidadService->registrarAsiento('venta_credito_abono', [

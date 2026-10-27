@@ -147,8 +147,11 @@ Route::prefix('v1')->group(function () {
             Route::put('/financistas/{id}', [\App\Http\Controllers\Api\FinancistaController::class, 'update'])->middleware('permiso:financistas,editar');
             Route::delete('/financistas/{id}', [\App\Http\Controllers\Api\FinancistaController::class, 'destroy'])->middleware('permiso:financistas,editar');
             Route::post('/financistas/{id}/pagos', [\App\Http\Controllers\Api\FinancistaController::class, 'pagar'])->middleware('permiso:financistas,pagar');
+            Route::put('/financistas/{id}/pagos/{pagoId}', [\App\Http\Controllers\Api\FinancistaController::class, 'updatePago'])->middleware('permiso:financistas,pagar');
+            Route::delete('/financistas/{id}/pagos/{pagoId}', [\App\Http\Controllers\Api\FinancistaController::class, 'destroyPago'])->middleware('permiso:financistas,pagar');
             Route::get('/financistas/{id}/preview-pago', [\App\Http\Controllers\Api\FinancistaController::class, 'previewPago'])->middleware('permiso:financistas,pagar');
             Route::get('/financistas/{id}/estado', [\App\Http\Controllers\Api\FinancistaController::class, 'estado'])->middleware('permiso:financistas,ver');
+            Route::get('/financistas/{id}/plan-pdf', [\App\Http\Controllers\Api\DesarrolladoraReporteController::class, 'planFinancista'])->middleware('permiso:financistas,reportes');
 
             Route::get('/comision-reglas', [\App\Http\Controllers\Api\ComisionistaController::class, 'reglas'])->middleware('permiso:comisionistas,ver');
             Route::post('/comision-reglas', [\App\Http\Controllers\Api\ComisionistaController::class, 'storeRegla'])->middleware('permiso:comisionistas,reglas');
@@ -165,6 +168,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/comisiones', [\App\Http\Controllers\Api\ComisionistaController::class, 'comisiones'])->middleware('permiso:comisionistas,ver');
             Route::post('/comisiones', [\App\Http\Controllers\Api\ComisionistaController::class, 'storeComision'])->middleware('permiso:comisionistas,editar');
             Route::post('/comisiones/{id}/pagos', [\App\Http\Controllers\Api\ComisionistaController::class, 'pagar'])->middleware('permiso:comisionistas,pagar');
+            Route::put('/comisiones/{id}/pagos/{pagoId}', [\App\Http\Controllers\Api\ComisionistaController::class, 'updatePago'])->middleware('permiso:comisionistas,pagar');
+            Route::delete('/comisiones/{id}/pagos/{pagoId}', [\App\Http\Controllers\Api\ComisionistaController::class, 'destroyPago'])->middleware('permiso:comisionistas,pagar');
             Route::delete('/comisiones/{id}', [\App\Http\Controllers\Api\ComisionistaController::class, 'destroyComision'])->middleware('permiso:comisionistas,editar');
             Route::get('/comisiones/{id}/estado', [\App\Http\Controllers\Api\ComisionistaController::class, 'estado'])->middleware('permiso:comisionistas,ver');
 

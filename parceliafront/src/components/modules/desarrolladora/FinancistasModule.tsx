@@ -5,10 +5,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { api, fincaService, financistaService, type FinancistaItem, type Finca } from '@/lib/api'
 import { usePermissions } from '@/hooks/use-permissions'
 import { AccionesRegistro, PaginacionLista } from './AccionesRegistro'
+import { AvisoCaja, useCajaOperable } from '@/components/shared/AvisoCaja'
 
 const q = (n: number | string | null | undefined) =>
   `Q ${Number(n || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -46,30 +48,72 @@ function hoy() {
   return new Date().toISOString().slice(0, 10)
 }
 
+function fechaLocalHoy() {
+  const fecha = new Date()
+  return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`
+}
+
 function armarPlan(datos: { monto: string; tasa_anual: string; plazo: string; frecuencia: string; fecha_inicio: string; capital_al_vencimiento: boolean; esquema?: string }) {
   const monto = num(datos.monto)
   const tasa = num(datos.tasa_anual)
   const plazo = Number(datos.plazo) || 0
+  const interes = tasa > 0 && plazo > 0 ? redondear(monto * (tasa / 100) * (plazo / 12)) : 0
+  const inicio = datos.fecha_inicio || hoy()
+  if (datos.esquema === 'particular_anual') {
+    const meses = Math.min(24, Math.max(1, plazo || 12))
+    return {
+      interes,
+      n: plazo > 0 ? 1 : 0,
+      cuota: redondear(monto + interes),
+      vencimiento: plazo > 0 ? sumarMeses(inicio, meses) : '',
+      cuotas: plazo > 0 ? [{ numero: 1, fecha: sumarMeses(inicio, meses), capital: monto, interes }] : [],
+    }
+  }
   const paso = PASO[datos.frecuencia] || 1
   const n = plazo > 0 ? Math.ceil(plazo / paso) : 0
-  const interes = tasa > 0 && plazo > 0 ? redondear(monto * (tasa / 100) * (plazo / 12)) : 0
   const capitales = repartir(datos.capital_al_vencimiento ? 0 : monto, n)
   const intereses = repartir(interes, n)
   if (datos.capital_al_vencimiento && n > 0) capitales[n - 1] = redondear(monto)
-  const inicio = datos.fecha_inicio || hoy()
   const cuotas = capitales.map((capital, indice) => ({
     numero: indice + 1,
     fecha: sumarMeses(inicio, Math.min(plazo, (indice + 1) * paso)),
     capital,
     interes: intereses[indice] || 0,
   }))
-  let cuota = n > 0 ? redondear((datos.capital_al_vencimiento ? interes : monto + interes) / n) : 0
-  if (datos.esquema === 'particular_anual' && n === 1) cuota = redondear(monto + interes)
+  const cuota = n > 0 ? redondear((datos.capital_al_vencimiento ? interes : monto + interes) / n) : 0
   return { interes, n, cuota, vencimiento: plazo > 0 ? sumarMeses(inicio, plazo) : '', cuotas }
 }
 
+function situacionFinanciamiento(f: { estado?: string; saldo_capital?: number; interes_pendiente?: number; fecha_vencimiento?: string | null }) {
+  const pagado = f.estado === 'liquidado' || ((f.saldo_capital || 0) <= 0.009 && (f.interes_pendiente || 0) <= 0.009)
+  if (pagado) return 'pagada'
+  if (f.fecha_vencimiento && f.fecha_vencimiento.slice(0, 10) < fechaLocalHoy()) return 'vencida'
+  return 'pendiente'
+}
+
+function claseSituacion(estado: string) {
+  if (estado === 'pagada') return 'cuota-pagada'
+  if (estado === 'vencida') return 'cuota-vencida'
+  if (estado === 'parcial') return 'cuota-parcial'
+  return 'cuota-pendiente'
+}
+
+function chipSituacion(estado: string) {
+  if (estado === 'pagada') return 'cuota-chip-pagada'
+  if (estado === 'vencida') return 'cuota-chip-vencida'
+  if (estado === 'parcial') return 'cuota-chip-parcial'
+  return 'cuota-chip-pendiente'
+}
+
+function textoSituacion(estado: string) {
+  if (estado === 'pagada') return 'Pagada'
+  if (estado === 'vencida') return 'Vencida'
+  if (estado === 'parcial') return 'Parcial'
+  return 'Pendiente'
+}
+
 const ESQUEMA: Record<string, string> = {
-  particular_anual: 'Particular, un pago al año',
+  particular_anual: 'Particular, una sola cuota',
   cooperativa_mensual: 'Cooperativa, cuotas mensuales',
   libre: 'Otro esquema',
 }
@@ -94,6 +138,7 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
   const puedeEditar = hasPermission('financistas', 'editar')
   const puedePagar = hasPermission('financistas', 'pagar')
   const puedeReportes = hasPermission('financistas', 'reportes')
+  const { abierta: cajaAbierta } = useCajaOperable()
   const [fincas, setFincas] = useState<Finca[]>([])
   const [items, setItems] = useState<FinancistaItem[]>([])
   const [filtro, setFiltro] = useState('')
@@ -115,8 +160,9 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
   const [metodo, setMetodo] = useState('efectivo')
   const [concepto, setConcepto] = useState('')
   const [busquedaPago, setBusquedaPago] = useState('')
+  const [pagosHechos, setPagosHechos] = useState<Array<{ id: number; fecha?: string; monto_capital?: number | string; monto_interes?: number | string; monto_mora?: number | string; descuento_interes?: number | string; referencia?: string | null; numero_recibo?: string | null }>>([])
+  const [edicionPago, setEdicionPago] = useState<{ id: number; fecha: string; capital: string; interes: string; mora: string; referencia: string } | null>(null)
   const [planFilas, setPlanFilas] = useState<Array<{ numero: number; fecha: string; capital: number; interes: number; total: number; estado: string }>>([])
-  const [verPlan, setVerPlan] = useState(false)
   const [guardando, setGuardando] = useState(false)
 
   const cargar = useCallback(async () => {
@@ -131,6 +177,21 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
   useEffect(() => {
     cargar().catch(() => toast.error('No se pudieron cargar los financiamientos'))
   }, [cargar])
+
+  const cargarPagos = useCallback(async (id: number) => {
+    const res = await financistaService.estado(id)
+    const filas = res.data?.pagos
+    setPagosHechos(Array.isArray(filas) ? filas : [])
+    setPlanFilas(Array.isArray(res.data?.plan) ? res.data.plan : [])
+  }, [])
+
+  useEffect(() => {
+    if (vista !== 'pago' || !pagoItem) {
+      setPagosHechos([])
+      return
+    }
+    cargarPagos(pagoItem.id).catch(() => setPagosHechos([]))
+  }, [vista, pagoItem, cargarPagos, items])
 
   useEffect(() => {
     if (vista !== 'pago' || !pagoItem || !pagoFecha) return
@@ -151,6 +212,22 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
     }
   }
 
+  function limpiarFormularioPago() {
+    setPagoItem(null)
+    setPagoFecha(hoy())
+    setDescuento('')
+    setArchivo(null)
+    setRecibo('')
+    setMetodo('efectivo')
+    setConcepto('')
+    setPagoCalc({ capital: 0, interes: 0, mora: 0, nota: '' })
+    setPlanFilas([])
+    setEdicionPago(null)
+    setPagosHechos([])
+    setBusquedaPago('')
+    setVista('pago')
+  }
+
   function volver() {
     setVista('lista')
     setEditId(null)
@@ -159,24 +236,24 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
     setForm(formVacio)
   }
 
-  function abrirPago(item: FinancistaItem | null) {
+  function abrirPago(item: FinancistaItem | null, conservarBusqueda = false) {
     setPagoItem(item)
     setPagoFecha(hoy())
     setDescuento('')
     setArchivo(null)
     setRecibo('')
     setMetodo('efectivo')
-    setConcepto(item ? `PAGO DE FINANCIAMIENTO A NOMBRE DE ${item.nombre.toUpperCase()}` : '')
+    setConcepto(item ? `PAGO DE FINANCIAMIENTO A NOMBRE DE ${String(item.nombre || '').toUpperCase()}` : '')
     setPagoCalc({ capital: 0, interes: 0, mora: 0, nota: '' })
     setPlanFilas([])
-    setVerPlan(false)
-    setBusquedaPago('')
+    if (!conservarBusqueda) setBusquedaPago('')
     setVista('pago')
   }
 
   function aplicarEsquema(esquema: string) {
     if (esquema === 'particular_anual') {
-      setForm({ ...form, esquema, tipo: 'particular', frecuencia: 'anual', capital_al_vencimiento: true, plazo: form.plazo || '12' })
+      const meses = Math.min(24, Math.max(1, Number(form.plazo) || 12))
+      setForm({ ...form, esquema, tipo: 'particular', frecuencia: 'anual', capital_al_vencimiento: true, plazo: String(meses) })
       return
     }
     if (esquema === 'cooperativa_mensual') {
@@ -218,16 +295,22 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
           {vista === 'lista' && puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/financistas/reporte?formato=pdf${filtro ? `&finca_id=${filtro}` : ''}`, 'financiamientos.pdf')}>Listado PDF</Button>}
           {vista === 'lista' && puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/financistas/reporte?formato=xlsx${filtro ? `&finca_id=${filtro}` : ''}`, 'financiamientos.xlsx')}>Listado Excel</Button>}
           {vista === 'lista' && puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/financistas/reporte-vencimientos?formato=pdf', 'vencimientos.pdf')}>Por vencer</Button>}
-          {vista === 'lista' && puedeEditar && <Button size="sm" onClick={() => { setEditId(null); setForm({ ...formVacio, fecha_inicio: hoy() }); setVista('form') }}>Nuevo financiamiento</Button>}
+          {vista === 'lista' && puedeEditar && <Button size="sm" disabled={cajaAbierta !== true} onClick={() => { setEditId(null); setForm({ ...formVacio, fecha_inicio: hoy() }); setVista('form') }}>Nuevo financiamiento</Button>}
           {vista === 'lista' && <Button size="sm" variant="outline" onClick={() => bajar('/financistas/requisitos', 'registro-modulos.pdf')}>Registro PDF</Button>}
         </div>
       </div>
 
+      <AvisoCaja abierta={cajaAbierta} />
       {(vista === 'lista' || vista === 'pago') && (
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant={vista === 'lista' ? 'default' : 'outline'} onClick={() => setVista('lista')}>Financiamientos</Button>
-          <Button size="sm" variant={vista === 'pago' ? 'default' : 'outline'} onClick={() => abrirPago(null)}>Pagos</Button>
-        </div>
+        <Tabs value={vista === 'pago' ? 'pago' : 'lista'} onValueChange={(v) => {
+          if (v === 'pago' && vista !== 'pago') abrirPago(pagoItem)
+          if (v === 'lista' && vista === 'pago') setVista('lista')
+        }}>
+          <TabsList>
+            <TabsTrigger value="lista">Financiamientos</TabsTrigger>
+            <TabsTrigger value="pago">Pagos</TabsTrigger>
+          </TabsList>
+        </Tabs>
       )}
 
       {vista === 'lista' && alertas.length > 0 && (
@@ -274,7 +357,7 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
                   <TableHead>Capital</TableHead>
                   <TableHead>Saldo</TableHead>
                   <TableHead>Cuota</TableHead>
-                  <TableHead>Vence</TableHead>
+                  <TableHead>Situación</TableHead>
                   <TableHead className="w-px"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -287,7 +370,10 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
                     <TableCell>{q(f.monto)}</TableCell>
                     <TableCell>{q(f.saldo_capital)}</TableCell>
                     <TableCell>{q(f.cuota)}</TableCell>
-                    <TableCell>{fecha(f.fecha_vencimiento)}</TableCell>
+                    <TableCell>
+                      <span className={`rounded px-2 py-0.5 text-xs font-semibold ${chipSituacion(situacionFinanciamiento(f))}`}>{textoSituacion(situacionFinanciamiento(f))}</span>
+                      <span className="mt-1 block text-xs text-muted-foreground">{fecha(f.fecha_vencimiento) || '—'}</span>
+                    </TableCell>
                     <TableCell className="w-px whitespace-nowrap text-right">
                       <div className="flex items-center justify-end gap-1">
                         {puedePagar && f.estado !== 'liquidado' && (
@@ -353,6 +439,7 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
             <p>Interés pendiente: {q(visto.interes_pendiente)}</p>
             <p>Estado: {visto.estado}</p>
             <div className="flex flex-wrap gap-2">
+              {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/financistas/${visto.id}/plan-pdf?formato=pdf`, `plan-pago-${visto.id}.pdf`)}>Plan de pago</Button>}
               {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar(`/financistas/${visto.id}/reporte?formato=pdf`, `estado-financista-${visto.id}.pdf`)}>Estado de cuenta</Button>}
               {puedePagar && visto.estado !== 'liquidado' && <Button size="sm" onClick={() => abrirPago(visto)}>Registrar pago</Button>}
             </div>
@@ -384,12 +471,12 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
             <div className="md:col-span-3">
               <Label>Esquema</Label>
               <select className={campo} value={form.esquema} onChange={(e) => aplicarEsquema(e.target.value)}>
-                <option value="particular_anual">Particular: un solo pago al cumplir el año</option>
+                <option value="particular_anual">Particular: una sola cuota al vencimiento (hasta 24 meses)</option>
                 <option value="cooperativa_mensual">Cooperativa: amortización mensual</option>
                 <option value="libre">Otro (banco u otra frecuencia)</option>
               </select>
               <p className="mt-1 text-xs text-muted-foreground">
-                {form.esquema === 'particular_anual' && 'Ejemplo: Q100,000 al 10% por un año. Al vencer se paga en una sola cuota el capital más el interés. Ese ingreso no se mezcla con las ventas.'}
+                {form.esquema === 'particular_anual' && 'Una sola cuota al vencimiento, entre 1 y 24 meses. Ese día se paga junto el capital y el interés. El dinero recibido entra a la caja y no cambia el precio de los lotes.'}
                 {form.esquema === 'cooperativa_mensual' && 'Ejemplo: faltan Q500,000 para la finca y la cooperativa los presta. Capital e interés se pagan cada mes.'}
                 {form.esquema === 'libre' && 'Úsalo solo si el contrato no es ni el particular anual ni la cooperativa mensual.'}
               </p>
@@ -422,7 +509,12 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
             </div>
             <div>
               <Label>Plazo en meses</Label>
-              <Input type="number" min={1} value={form.plazo} onChange={(e) => setForm({ ...form, plazo: e.target.value })} />
+              <Input type="number" min={1} max={form.esquema === 'particular_anual' ? 24 : 600} value={form.plazo} onChange={(e) => {
+                const tope = form.esquema === 'particular_anual' ? 24 : 600
+                const valor = Math.min(tope, Math.max(1, Number(e.target.value) || 1))
+                setForm({ ...form, plazo: String(valor) })
+              }} />
+              {form.esquema === 'particular_anual' && <p className="mt-1 text-xs text-muted-foreground">Hasta 24 meses y una sola cuota al final.</p>}
             </div>
             {form.esquema === 'libre' && (
             <div>
@@ -447,8 +539,12 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
             )}
             <div className="md:col-span-3 rounded-md border p-3 text-sm">
               <p>Interés calculado: <strong>{q(plan.interes)}</strong></p>
-              <p>{plan.n || 0} cuotas · cuota {q(plan.cuota)} · vence el {plan.vencimiento || '—'}</p>
-              <p className="text-muted-foreground">El plazo en meses se parte según la forma de pago. El vencimiento es la fecha de inicio más esos meses.</p>
+              <p>{plan.n || 0} {plan.n === 1 ? 'cuota' : 'cuotas'} · {q(plan.cuota)} · vence el {plan.vencimiento || '—'}</p>
+              <p className="text-muted-foreground">
+                {form.esquema === 'particular_anual'
+                  ? 'Hay una sola cuota. El vencimiento es la fecha de inicio más el plazo en meses.'
+                  : 'El plazo en meses se parte según la forma de pago. El vencimiento es la fecha de inicio más esos meses.'}
+              </p>
               {plan.cuotas.length > 0 && (
                 <div className="mt-3 max-h-56 overflow-auto">
                   <Table>
@@ -516,32 +612,62 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
         <Card>
           <CardHeader className="space-y-3">
             <CardTitle>Pago al financista</CardTitle>
-            <p className="text-sm text-muted-foreground">Busca a la persona por nombre o DPI. El pago es una salida: se debita de las ventas de lotes y no se mezcla con el dinero que esa persona aportó.</p>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input placeholder="Nombre o DPI" value={busquedaPago} onChange={(e) => setBusquedaPago(e.target.value)} />
-              <Button type="button" className="bg-amber-400 text-black hover:bg-amber-500" onClick={() => {
-                const uno = candidatosPago[0]
-                if (!textoPago) {
-                  toast.error('Escribe el nombre o el DPI')
-                  return
-                }
-                if (!uno) {
-                  toast.error('No hay un financiamiento activo con ese nombre o DPI')
-                  return
-                }
-                abrirPago(uno)
-                setBusquedaPago(textoPago)
-              }}>Buscar financiamiento</Button>
-            </div>
-            {textoPago && candidatosPago.length > 1 && (
-              <div className="flex flex-wrap gap-2">
-                {candidatosPago.slice(0, 8).map((f) => (
-                  <Button key={f.id} type="button" size="sm" variant={pagoItem?.id === f.id ? 'default' : 'outline'} onClick={() => abrirPago(f)}>
-                    {f.nombre}{f.dpi ? ` · ${f.dpi}` : ''} · {f.finca?.nombre}
-                  </Button>
+            <p className="text-sm text-muted-foreground">Elige el financiamiento del listado. El pago sale de la caja del día: capital e interés. No cambia el precio de venta de los lotes.</p>
+            <Input placeholder="Filtrar por nombre, DPI o finca" value={busquedaPago} onChange={(e) => setBusquedaPago(e.target.value)} />
+            <div>
+              <Label>Financiamiento</Label>
+              <select
+                className={campo}
+                value={pagoItem?.id || ''}
+                onChange={(e) => {
+                  const elegido = candidatosPago.find((f) => f.id === Number(e.target.value))
+                  if (elegido) abrirPago(elegido, true)
+                }}
+              >
+                <option value="">Elegir del listado</option>
+                {candidatosPago.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.nombre}{f.dpi ? ` · DPI ${f.dpi}` : ''} · {f.finca?.nombre || 'Sin finca'} · saldo {q(f.saldo_capital)}
+                  </option>
                 ))}
-              </div>
-            )}
+              </select>
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Persona</TableHead>
+                    <TableHead>Finca</TableHead>
+                    <TableHead>Saldo</TableHead>
+                    <TableHead>Situación</TableHead>
+                    <TableHead className="w-px"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {candidatosPago.map((f) => (
+                    <TableRow key={f.id} className={pagoItem?.id === f.id ? 'bg-blue-50' : ''}>
+                      <TableCell>{f.nombre}{f.dpi ? <span className="block text-xs text-muted-foreground">DPI {f.dpi}</span> : null}</TableCell>
+                      <TableCell>{f.finca?.nombre || '—'}</TableCell>
+                      <TableCell>{q(f.saldo_capital)}</TableCell>
+                      <TableCell>
+                        <span className={`rounded px-2 py-0.5 text-xs font-semibold ${chipSituacion(situacionFinanciamiento(f))}`}>{textoSituacion(situacionFinanciamiento(f))}</span>
+                        <span className="mt-1 block text-xs text-muted-foreground">{fecha(f.fecha_vencimiento) || '—'}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Button type="button" size="sm" variant={pagoItem?.id === f.id ? 'default' : 'outline'} onClick={() => abrirPago(f, true)}>
+                          {pagoItem?.id === f.id ? 'Elegido' : 'Elegir'}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {candidatosPago.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5}>{textoPago ? 'Ningún financiamiento coincide con esa búsqueda.' : 'No hay financiamientos pendientes de pago.'}</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardHeader>
           {pagoItem && (
           <CardContent className="space-y-4">
@@ -619,7 +745,24 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
               <p className="text-2xl font-semibold">{q(Math.max(0, totalPagar))}</p>
             </div>
 
-            {verPlan && (
+            {puedeReportes && (
+              <div className="rounded-md border p-3">
+                <p className="mb-2 font-medium">Documentos</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" onClick={() => bajar(`/financistas/${pagoItem.id}/plan-pdf?formato=pdf`, `plan-pago-${pagoItem.id}.pdf`)}>Descargar plan de pago</Button>
+                  <Button type="button" variant="outline" onClick={() => bajar(`/financistas/${pagoItem.id}/reporte?formato=pdf`, `estado-financista-${pagoItem.id}.pdf`)}>Descargar estado de cuenta</Button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium">Plan de pago</p>
+                <span className={`rounded px-2 py-0.5 text-xs font-semibold ${chipSituacion('pagada')}`}>Pagada</span>
+                <span className={`rounded px-2 py-0.5 text-xs font-semibold ${chipSituacion('pendiente')}`}>Pendiente</span>
+                <span className={`rounded px-2 py-0.5 text-xs font-semibold ${chipSituacion('parcial')}`}>Parcial</span>
+                <span className={`rounded px-2 py-0.5 text-xs font-semibold ${chipSituacion('vencida')}`}>Vencida</span>
+              </div>
               <div className="max-h-64 overflow-auto">
                 <Table>
                   <TableHeader>
@@ -634,23 +777,23 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
                   </TableHeader>
                   <TableBody>
                     {planFilas.map((fila) => (
-                      <TableRow key={fila.numero}>
+                      <TableRow key={fila.numero} className={claseSituacion(fila.estado)}>
                         <TableCell>{fila.numero}</TableCell>
                         <TableCell>{fila.fecha}</TableCell>
                         <TableCell>{q(fila.capital)}</TableCell>
                         <TableCell>{q(fila.interes)}</TableCell>
                         <TableCell>{q(fila.total)}</TableCell>
-                        <TableCell>{fila.estado}</TableCell>
+                        <TableCell><span className={`rounded px-2 py-0.5 text-xs font-semibold ${chipSituacion(fila.estado)}`}>{textoSituacion(fila.estado)}</span></TableCell>
                       </TableRow>
                     ))}
                     {planFilas.length === 0 && <TableRow><TableCell colSpan={6}>Este financiamiento todavía no tiene plan de cuotas.</TableCell></TableRow>}
                   </TableBody>
                 </Table>
               </div>
-            )}
+            </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button disabled={guardando || totalPagar <= 0} onClick={async () => {
+              <Button disabled={guardando || totalPagar <= 0 || cajaAbierta !== true} onClick={async () => {
                 if (!pagoFecha) return
                 try {
                   setGuardando(true)
@@ -666,28 +809,103 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
                     archivo,
                   })
                   await cargar()
-                  volver()
-                  toast.success(res.message || 'Pago registrado')
+                  limpiarFormularioPago()
+                  toast.success(res.message || 'Pago registrado. El formulario quedó en blanco para el siguiente.')
                 } catch (e: any) {
                   toast.error(e?.message || 'No se pudo pagar')
                 } finally {
                   setGuardando(false)
                 }
               }}>Pagar</Button>
-              <Button type="button" variant="outline" onClick={async () => {
-                try {
-                  const res = await financistaService.estado(pagoItem.id)
-                  setPlanFilas(res.data?.plan || [])
-                  setVerPlan(true)
-                } catch (e: any) {
-                  toast.error(e?.message || 'No se pudo consultar el plan')
-                }
-              }}>Consultar plan de pago</Button>
-              {puedeReportes && (
-                <Button type="button" variant="outline" onClick={() => bajar(`/financistas/${pagoItem.id}/reporte?formato=pdf`, `estado-financista-${pagoItem.id}.pdf`)}>Estado de cuenta</Button>
-              )}
               <Button type="button" variant="outline" onClick={() => abrirPago(null)}>Cancelar</Button>
               <Button type="button" variant="ghost" onClick={volver}>Salir</Button>
+            </div>
+
+            <div className="space-y-2">
+              <p className="font-medium">Pagos realizados</p>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Capital</TableHead>
+                    <TableHead>Interés</TableHead>
+                    <TableHead>Mora</TableHead>
+                    <TableHead>Referencia</TableHead>
+                    <TableHead className="w-px"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pagosHechos.map((pagoHecho) => (
+                    <TableRow key={pagoHecho.id}>
+                      {edicionPago?.id === pagoHecho.id ? (
+                        <>
+                          <TableCell><Input type="date" value={edicionPago.fecha} onChange={(e) => setEdicionPago({ ...edicionPago, fecha: e.target.value })} /></TableCell>
+                          <TableCell><Input type="number" value={edicionPago.capital} onChange={(e) => setEdicionPago({ ...edicionPago, capital: e.target.value })} /></TableCell>
+                          <TableCell><Input type="number" value={edicionPago.interes} onChange={(e) => setEdicionPago({ ...edicionPago, interes: e.target.value })} /></TableCell>
+                          <TableCell><Input type="number" value={edicionPago.mora} onChange={(e) => setEdicionPago({ ...edicionPago, mora: e.target.value })} /></TableCell>
+                          <TableCell><Input value={edicionPago.referencia} onChange={(e) => setEdicionPago({ ...edicionPago, referencia: e.target.value })} /></TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <Button size="sm" disabled={cajaAbierta !== true} onClick={async () => {
+                              try {
+                                const res = await financistaService.actualizarPago(pagoItem.id, pagoHecho.id, {
+                                  fecha: edicionPago.fecha,
+                                  monto_capital: num(edicionPago.capital),
+                                  monto_interes: num(edicionPago.interes),
+                                  monto_mora: num(edicionPago.mora),
+                                  referencia: edicionPago.referencia,
+                                })
+                                if (res.data) setPagoItem(res.data)
+                                setEdicionPago(null)
+                                await cargar()
+                                await cargarPagos(pagoItem.id)
+                                toast.success(res.message || 'Pago actualizado')
+                              } catch (e: any) {
+                                toast.error(e?.message || 'No se pudo actualizar el pago')
+                              }
+                            }}>Guardar</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEdicionPago(null)}>Cancelar</Button>
+                          </TableCell>
+                        </>
+                      ) : (
+                        <>
+                          <TableCell>{fecha(pagoHecho.fecha)}</TableCell>
+                          <TableCell>{q(pagoHecho.monto_capital)}</TableCell>
+                          <TableCell>{q(pagoHecho.monto_interes)}</TableCell>
+                          <TableCell>{q(pagoHecho.monto_mora)}</TableCell>
+                          <TableCell>{pagoHecho.referencia || pagoHecho.numero_recibo || '—'}</TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {puedePagar && (
+                              <>
+                                <Button size="sm" variant="outline" disabled={cajaAbierta !== true} onClick={() => setEdicionPago({
+                                  id: pagoHecho.id,
+                                  fecha: fecha(pagoHecho.fecha),
+                                  capital: String(pagoHecho.monto_capital ?? 0),
+                                  interes: String(pagoHecho.monto_interes ?? 0),
+                                  mora: String(pagoHecho.monto_mora ?? 0),
+                                  referencia: pagoHecho.referencia || '',
+                                })}>Editar</Button>
+                                <Button size="sm" variant="ghost" disabled={cajaAbierta !== true} onClick={async () => {
+                                  if (!window.confirm('Eliminar este pago? El dinero regresa a la caja abierta.')) return
+                                  try {
+                                    const res = await financistaService.eliminarPago(pagoItem.id, pagoHecho.id)
+                                    if (res.data) setPagoItem(res.data)
+                                    await cargar()
+                                    await cargarPagos(pagoItem.id)
+                                    toast.success(res.message || 'Pago eliminado')
+                                  } catch (e: any) {
+                                    toast.error(e?.message || 'No se pudo eliminar el pago')
+                                  }
+                                }}>Eliminar</Button>
+                              </>
+                            )}
+                          </TableCell>
+                        </>
+                      )}
+                    </TableRow>
+                  ))}
+                  {pagosHechos.length === 0 && <TableRow><TableCell colSpan={6}>Todavía no hay pagos registrados para este financiamiento.</TableCell></TableRow>}
+                </TableBody>
+              </Table>
             </div>
           </CardContent>
           )}

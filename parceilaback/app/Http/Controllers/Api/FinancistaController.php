@@ -29,6 +29,9 @@ class FinancistaController extends Controller
 
     public function store(Request $request)
     {
+        if ($respuesta = $this->sinCaja($request)) {
+            return $respuesta;
+        }
         $validated = $this->aplicarPlan($this->validar($request));
         $item = Financista::create($validated);
         $ingreso = CajaService::registrarIngreso((float) $item->monto, 'Inversión recibida de '.$item->nombre, [
@@ -41,7 +44,7 @@ class FinancistaController extends Controller
             'success' => true,
             'message' => $ingreso
                 ? 'Financiamiento registrado. El dinero recibido se sumó a la caja del día.'
-                : 'Financiamiento registrado. No había caja abierta, así que el ingreso a caja queda pendiente.',
+                : 'Financiamiento registrado.',
             'data' => $this->presentar($item->fresh()),
             'caja_aplicada' => (bool) $ingreso,
         ], 201);
@@ -77,6 +80,9 @@ class FinancistaController extends Controller
 
     public function pagar(Request $request, $id)
     {
+        if ($respuesta = $this->sinCaja($request)) {
+            return $respuesta;
+        }
         $item = Financista::findOrFail($id);
         $validated = $request->validate([
             'fecha' => 'required|date',
@@ -156,9 +162,7 @@ class FinancistaController extends Controller
             $vista['estado'] = 'liquidado';
         }
 
-        $mensaje = $cajaAplicada
-            ? 'Pago registrado. Salió del disponible de la caja del día y no modifica el precio de venta de los lotes.'
-            : 'Pago registrado en el financiamiento. No había caja abierta, así que el débito de caja queda pendiente de registrarse en el siguiente movimiento de caja.';
+        $mensaje = 'Pago registrado. Salió del disponible de la caja del día y no modifica el precio de venta de los lotes.';
 
         return response()->json([
             'success' => true,
@@ -166,6 +170,91 @@ class FinancistaController extends Controller
             'data' => $vista,
             'numero_recibo' => $recibo,
             'caja_aplicada' => $cajaAplicada,
+        ]);
+    }
+
+    public function updatePago(Request $request, $id, $pagoId)
+    {
+        if ($respuesta = $this->sinCaja($request)) {
+            return $respuesta;
+        }
+        $item = Financista::findOrFail($id);
+        $pago = $item->pagos()->findOrFail($pagoId);
+        $validated = $request->validate([
+            'fecha' => 'required|date',
+            'monto_capital' => 'nullable|numeric|min:0',
+            'monto_interes' => 'nullable|numeric|min:0',
+            'monto_mora' => 'nullable|numeric|min:0',
+            'descuento_interes' => 'nullable|numeric|min:0',
+            'referencia' => 'nullable|string|max:255',
+        ]);
+
+        $capital = round((float) ($validated['monto_capital'] ?? 0), 2);
+        $interes = round((float) ($validated['monto_interes'] ?? 0), 2);
+        $mora = round((float) ($validated['monto_mora'] ?? 0), 2);
+        $descuento = round((float) ($validated['descuento_interes'] ?? 0), 2);
+        if ($capital + $interes + $mora + $descuento <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Indica capital, interés, mora o descuento.',
+            ], 422);
+        }
+
+        $salida = round($capital + $interes + $mora, 2);
+        $antes = $pago->movimiento_caja_id
+            ? round((float) $pago->monto_capital + (float) $pago->monto_interes + (float) $pago->monto_mora, 2)
+            : 0;
+        $concepto = 'Pago de financiamiento a '.$item->nombre;
+        $movimientoId = CajaService::conciliarEgreso($pago->movimiento_caja_id, $antes, $salida, $concepto, [
+            'tipo_operacion' => 'pago_financista',
+            'debita_ventas' => false,
+            'financista_id' => $item->id,
+            'pago_id' => $pago->id,
+            'capital' => $capital,
+            'interes' => $interes,
+            'mora' => $mora,
+            'fecha' => $validated['fecha'],
+        ], $request->user()?->id);
+
+        $pago->update([
+            'fecha' => $validated['fecha'],
+            'monto_capital' => $capital,
+            'monto_interes' => $interes,
+            'monto_mora' => $mora,
+            'descuento_interes' => $descuento,
+            'referencia' => $validated['referencia'] ?? $pago->referencia,
+            'movimiento_caja_id' => $movimientoId,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pago actualizado. La caja quedó con el monto nuevo y el precio de venta de los lotes no cambia.',
+            'data' => $this->sincronizarEstado($item),
+        ]);
+    }
+
+    public function destroyPago(Request $request, $id, $pagoId)
+    {
+        if ($respuesta = $this->sinCaja($request)) {
+            return $respuesta;
+        }
+        $item = Financista::findOrFail($id);
+        $pago = $item->pagos()->findOrFail($pagoId);
+        $antes = $pago->movimiento_caja_id
+            ? round((float) $pago->monto_capital + (float) $pago->monto_interes + (float) $pago->monto_mora, 2)
+            : 0;
+        CajaService::conciliarEgreso($pago->movimiento_caja_id, $antes, 0, 'Reverso de pago de financiamiento a '.$item->nombre, [
+            'tipo_operacion' => 'reverso_pago_financista',
+            'debita_ventas' => false,
+            'financista_id' => $item->id,
+            'pago_id' => $pago->id,
+        ], $request->user()?->id);
+        $pago->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Pago eliminado. El dinero volvió al disponible de caja y el precio de venta de los lotes no cambia.',
+            'data' => $this->sincronizarEstado($item),
         ]);
     }
 
@@ -201,6 +290,37 @@ class FinancistaController extends Controller
         ]);
     }
 
+    private function sincronizarEstado(Financista $item): array
+    {
+        $fresco = $item->fresh();
+        $fresco->loadSum('pagos as capital_pagado', 'monto_capital');
+        $fresco->loadSum('pagos as interes_pagado', 'monto_interes');
+        $fresco->loadSum('pagos as mora_pagada', 'monto_mora');
+        $fresco->loadSum('pagos as descuento_aplicado', 'descuento_interes');
+        $vista = $this->presentar($fresco);
+        $conPagos = $vista['capital_pagado'] > 0.009 || $vista['interes_pagado'] > 0.009 || $vista['mora_pagada'] > 0.009;
+        $liquidado = $conPagos && $vista['saldo_capital'] <= 0.009 && $vista['interes_pendiente'] <= 0.009;
+        $estado = $liquidado ? 'liquidado' : 'activo';
+        if ($fresco->estado !== $estado) {
+            $fresco->estado = $estado;
+            $fresco->save();
+            $vista['estado'] = $estado;
+        }
+
+        return $vista;
+    }
+
+    private function sinCaja(Request $request)
+    {
+        try {
+            CajaService::exigirAbierta($request->user()?->id);
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        return null;
+    }
+
     private function validar(Request $request): array
     {
         return $request->validate([
@@ -230,9 +350,8 @@ class FinancistaController extends Controller
             $datos['tipo'] = 'particular';
             $datos['frecuencia'] = 'anual';
             $datos['capital_al_vencimiento'] = true;
-            if ((int) ($datos['plazo'] ?? 0) < 1) {
-                $datos['plazo'] = 12;
-            }
+            $plazoParticular = (int) ($datos['plazo'] ?? 12);
+            $datos['plazo'] = max(1, min(24, $plazoParticular < 1 ? 12 : $plazoParticular));
         } elseif ($esquema === 'cooperativa_mensual') {
             $datos['tipo'] = 'cooperativa';
             $datos['frecuencia'] = 'mensual';
@@ -246,7 +365,9 @@ class FinancistaController extends Controller
             ? round($monto * ($tasa / 100) * ($meses / 12), 2)
             : round((float) ($datos['interes_total'] ?? 0), 2);
 
-        $n = $this->numeroDesdePlazo($meses, $datos['frecuencia'] ?? 'mensual');
+        $n = ($datos['esquema'] ?? null) === 'particular_anual'
+            ? ($meses > 0 ? 1 : 0)
+            : $this->numeroDesdePlazo($meses, $datos['frecuencia'] ?? 'mensual');
         $capitalAlFinal = (bool) ($datos['capital_al_vencimiento'] ?? false);
         $datos['cuota'] = $n > 0
             ? round(($capitalAlFinal ? (float) $datos['interes_total'] : $monto + (float) $datos['interes_total']) / $n, 2)
@@ -299,6 +420,22 @@ class FinancistaController extends Controller
 
     private function cuotasDe(Financista $f): array
     {
+        if ($f->esquema === 'particular_anual') {
+            if ((int) $f->plazo < 1 || ! $f->fecha_inicio) {
+                return [];
+            }
+            $fecha = $f->fecha_vencimiento
+                ? Carbon::parse($f->fecha_vencimiento)->toDateString()
+                : Carbon::parse($f->fecha_inicio)->addMonths((int) $f->plazo)->toDateString();
+
+            return [[
+                'numero' => 1,
+                'fecha' => $fecha,
+                'capital' => round((float) $f->monto, 2),
+                'interes' => round((float) $f->interes_total, 2),
+            ]];
+        }
+
         $plazo = (int) $f->plazo;
         $n = $this->numeroDesdePlazo($plazo, $f->frecuencia);
         if ($n < 1 || ! $f->fecha_inicio) {
@@ -427,6 +564,7 @@ class FinancistaController extends Controller
             $pendienteInteres = round($cuota['interes'] - $tomarInteres, 2);
             $cubierta = $pendienteCapital <= 0.009 && $pendienteInteres <= 0.009;
             $algo = $tomarCapital > 0.009 || $tomarInteres > 0.009;
+            $vencida = ! $cubierta && Carbon::parse($cuota['fecha'])->startOfDay()->lt(Carbon::today());
             $filas[] = [
                 'numero' => $cuota['numero'],
                 'fecha' => $cuota['fecha'],
@@ -435,11 +573,21 @@ class FinancistaController extends Controller
                 'total' => round($cuota['capital'] + $cuota['interes'], 2),
                 'pendiente_capital' => $pendienteCapital,
                 'pendiente_interes' => $pendienteInteres,
-                'estado' => $cubierta ? 'pagada' : ($algo ? 'parcial' : 'pendiente'),
+                'estado' => $cubierta ? 'pagada' : ($vencida ? 'vencida' : ($algo ? 'parcial' : 'pendiente')),
             ];
         }
 
         return $filas;
+    }
+
+    public function filasPlan(Financista $f): array
+    {
+        if (! array_key_exists('capital_pagado', $f->getAttributes())) {
+            $f->loadSum('pagos as capital_pagado', 'monto_capital');
+            $f->loadSum('pagos as interes_pagado', 'monto_interes');
+        }
+
+        return $this->planConSaldos($f);
     }
 
     private function presentar(Financista $f): array
@@ -480,7 +628,9 @@ class FinancistaController extends Controller
             'fecha_inicio' => $f->fecha_inicio?->toDateString(),
             'fecha_vencimiento' => $f->fecha_vencimiento?->toDateString(),
             'cuota' => (float) $f->cuota,
-            'numero_cuotas' => $this->numeroDesdePlazo((int) $f->plazo, $f->frecuencia),
+            'numero_cuotas' => $f->esquema === 'particular_anual'
+                ? ((int) $f->plazo > 0 ? 1 : 0)
+                : $this->numeroDesdePlazo((int) $f->plazo, $f->frecuencia),
             'capital_al_vencimiento' => (bool) $f->capital_al_vencimiento,
             'estado' => $f->estado,
             'observaciones' => $f->observaciones,

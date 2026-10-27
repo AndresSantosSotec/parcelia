@@ -26,6 +26,7 @@
         .total-row { background: #ecfdf5; font-weight: bold; font-size: 12px; }
         .separator { border: 0; border-top: 1px dashed #cbd5e1; margin: 15px 0; }
         .firma { border-top: 1px solid #000; padding-top: 8px; width: 200px; text-align: center; margin-top: 40px; }
+        .anulado { margin: 0 0 12px; padding: 8px 10px; border: 2px solid #b91c1c; background: #fef2f2; color: #991b1b; font-weight: bold; text-align: center; letter-spacing: 0.08em; }
     </style>
 </head>
 <body>
@@ -44,6 +45,15 @@
             </td>
         </tr>
     </table>
+
+    @if(!empty($pago->anulado))
+    <div class="anulado">
+        RECIBO ANULADO
+        @if(!empty($pago->motivo_anulacion))
+        <div style="font-weight: normal; letter-spacing: 0; margin-top: 4px;">Motivo: {{ $pago->motivo_anulacion }}</div>
+        @endif
+    </div>
+    @endif
 
     {{-- Datos del cliente y terreno --}}
     <table style="margin-bottom: 12px;">

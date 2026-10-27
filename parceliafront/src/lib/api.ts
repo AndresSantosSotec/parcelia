@@ -1808,6 +1808,9 @@ export const pagoTerrenoService = {
       `ReciboPago_${numRecibo || pagoId}.pdf`
     )
   },
+  anular: (pagoId: number, motivo: string) => {
+    return api.post<any>(`/pagos-terrenos/${pagoId}/anular`, { motivo })
+  },
 }
 
 export interface TasaInmobiliaria {
@@ -2036,6 +2039,9 @@ export const financistaService = {
     return api.post<FinancistaItem>(`/financistas/${id}/pagos`, body)
   },
   previewPago: (id: number, fecha: string) => api.get<{ capital: number; interes: number; mora: number; nota: string }>(`/financistas/${id}/preview-pago?fecha=${fecha}`),
+  actualizarPago: (id: number, pagoId: number, data: { fecha: string; monto_capital: number; monto_interes: number; monto_mora: number; descuento_interes?: number; referencia?: string }) =>
+    api.put<FinancistaItem>(`/financistas/${id}/pagos/${pagoId}`, data),
+  eliminarPago: (id: number, pagoId: number) => api.delete<FinancistaItem>(`/financistas/${id}/pagos/${pagoId}`),
   estado: (id: number) => api.get<{
     financista: FinancistaItem
     pagos: Array<Record<string, unknown>>
@@ -2074,6 +2080,7 @@ export interface ComisionItem {
   excedente?: number
   venta_liquidada?: boolean
   estado: string
+  pagos?: Array<{ id: number; fecha: string; monto: number; referencia?: string | null }>
 }
 
 export interface ComisionRegla {
@@ -2105,5 +2112,8 @@ export const comisionistaService = {
     api.post<ComisionItem>('/comisiones/aplicar', data),
   pagar: (id: number, data: { fecha: string; monto: number; referencia?: string }) =>
     api.post<ComisionItem>(`/comisiones/${id}/pagos`, data),
+  actualizarPago: (id: number, pagoId: number, data: { fecha: string; monto: number; referencia?: string }) =>
+    api.put<ComisionItem>(`/comisiones/${id}/pagos/${pagoId}`, data),
+  eliminarPago: (id: number, pagoId: number) => api.delete<ComisionItem>(`/comisiones/${id}/pagos/${pagoId}`),
   estado: (id: number) => api.get<{ comision: ComisionItem; pagos: Array<{ fecha: string; monto: number | string; referencia?: string | null }> }>(`/comisiones/${id}/estado`),
 }

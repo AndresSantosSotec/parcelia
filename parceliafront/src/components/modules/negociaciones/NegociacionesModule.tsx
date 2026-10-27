@@ -4,7 +4,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
+import { usePermissions } from '@/hooks/use-permissions'
+import { AvisoCaja, useCajaOperable } from '@/components/shared/AvisoCaja'
 import { Plus, Handshake, Calculator, Receipt, User, Package, Calendar, CurrencyDollar, CheckCircle, Clock, ArrowRight, Eye, ShieldCheck, Wallet, Printer, FileText, XCircle, DownloadSimple, WarningCircle, MagnifyingGlass } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { api, negociacionService, loteService, clienteService, pagoTerrenoService, moraInmobiliariaService, Negociacion, Lote, SimuladorResponse, ParametrizacionMoraInmo } from '@/lib/api'
@@ -62,6 +65,57 @@ function etiquetaTipo(tipo?: string) {
   return tipo || ''
 }
 
+function MarcaTipo({ tipo }: { tipo?: string }) {
+  if (tipo === 'contado') {
+    return <Badge className="border-sky-500/50 bg-sky-500/20 font-semibold text-sky-900 dark:text-sky-100">Contado</Badge>
+  }
+  if (tipo === 'credito') {
+    return <Badge className="border-violet-500/50 bg-violet-500/20 font-semibold text-violet-900 dark:text-violet-100">A plazo / crédito</Badge>
+  }
+  return <Badge className="border-amber-500/50 bg-amber-500/20 font-semibold text-amber-900 dark:text-amber-100">Reserva</Badge>
+}
+
+function tonoTipo(tipo?: string) {
+  if (tipo === 'contado') return 'border-l-4 border-l-sky-500 bg-sky-500/10'
+  if (tipo === 'credito') return 'border-l-4 border-l-violet-500 bg-violet-500/10'
+  return 'border-l-4 border-l-amber-500 bg-amber-500/10'
+}
+
+function marcaCuotaContrato(cuota: { estado?: string; fecha_vencimiento?: string }) {
+  const estado = String(cuota.estado || '').toLowerCase()
+  if (estado === 'pagada' || estado === 'pagado') return 'pagada'
+  const fecha = String(cuota.fecha_vencimiento || '').slice(0, 10)
+  if (fecha && fecha < fechaLocalHoy()) return 'vencida'
+  if (estado === 'parcial') return 'parcial'
+  return 'pendiente'
+}
+
+function claseCuotaContrato(estado: string) {
+  if (estado === 'pagada') return 'cuota-pagada'
+  if (estado === 'vencida') return 'cuota-vencida'
+  if (estado === 'parcial') return 'cuota-parcial'
+  return 'cuota-pendiente'
+}
+
+function chipCuotaContrato(estado: string) {
+  if (estado === 'pagada') return 'cuota-chip-pagada'
+  if (estado === 'vencida') return 'cuota-chip-vencida'
+  if (estado === 'parcial') return 'cuota-chip-parcial'
+  return 'cuota-chip-pendiente'
+}
+
+function textoCuotaContrato(estado: string) {
+  if (estado === 'pagada') return 'Pagada'
+  if (estado === 'vencida') return 'Vencida'
+  if (estado === 'parcial') return 'Parcial'
+  return 'Pendiente'
+}
+
+function fechaLocalHoy() {
+  const hoy = new Date()
+  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+}
+
 function quetzales(valor: number) {
   return `Q${Number(valor || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
@@ -99,8 +153,11 @@ function resumenMoraContrato(neg: Negociacion) {
   return `${nombre ? `${nombre} · ` : ''}${Number(pct).toFixed(4)}% diario sobre capital vencido · ${neg.mora_dias_gracia_snapshot ?? 0} días de gracia`
 }
 
-export function NegociacionesModule() {
+export function NegociacionesModule({ userSession }: { userSession?: { userData?: { rol?: string; permisos?: unknown } | null } }) {
   const { navigate } = useNavigateModule()
+  const { hasPermission } = usePermissions(userSession?.userData)
+  const puedeAnularRecibo = hasPermission('pagos_terreno', 'anular')
+  const { abierta: cajaAbierta } = useCajaOperable()
   const [negociaciones, setNegociaciones] = useState<Negociacion[]>([])
   const [lotesDisponibles, setLotesDisponibles] = useState<Lote[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -118,6 +175,15 @@ export function NegociacionesModule() {
   const [cargandoEstadoCuenta, setCargandoEstadoCuenta] = useState(false)
   const [descargandoDoc, setDescargandoDoc] = useState<string | null>(null)
   const [kardexMovimientos, setKardexMovimientos] = useState<any[]>([])
+  const [reciboAnular, setReciboAnular] = useState<{ pagoId: number; documento?: string; abono?: number } | null>(null)
+  const [motivoAnulacion, setMotivoAnulacion] = useState('')
+  const [anulando, setAnulando] = useState(false)
+  const ultimoPagoVigente = useMemo(() => {
+    return kardexMovimientos.reduce((mayor, mov) => {
+      if (mov?.anulado || !mov?.pago_id) return mayor
+      return Math.max(mayor, Number(mov.pago_id))
+    }, 0)
+  }, [kardexMovimientos])
 
   // Formulario Nueva Negociación
   const formVentaInicial = {
@@ -143,6 +209,7 @@ export function NegociacionesModule() {
   const [busquedaLote, setBusquedaLote] = useState('')
   const [ventasDesde, setVentasDesde] = useState('')
   const [ventasHasta, setVentasHasta] = useState('')
+  const [filtroTipoVenta, setFiltroTipoVenta] = useState<'' | 'contado' | 'credito' | 'reserva'>('')
   const [totalVentas, setTotalVentas] = useState<{ contratos: number; monto: number } | null>(null)
   const [totalIntervalo, setTotalIntervalo] = useState<{ contratos: number; monto: number } | null>(null)
 
@@ -347,6 +414,18 @@ export function NegociacionesModule() {
       toast.error('Selecciona el tipo de mora que se aplicará a este crédito')
       return
     }
+    if (formVenta.tipo_negociacion === 'contado') {
+      try {
+        const estado = await cajaService.checkEstado()
+        if (estado?.estado !== 'abierta' || !estado.caja?.id) {
+          avisarAbrirCaja()
+          return
+        }
+      } catch {
+        avisarAbrirCaja()
+        return
+      }
+    }
 
     try {
       const res = await negociacionService.create({
@@ -475,6 +554,27 @@ export function NegociacionesModule() {
       toast.error(e.message || 'No se pudo descargar el recibo')
     } finally {
       setDescargandoDoc(null)
+    }
+  }
+
+  const confirmarAnulacionRecibo = async () => {
+    if (!reciboAnular || !negociacionSeleccionada) return
+    if (motivoAnulacion.trim().length < 5) {
+      toast.error('Escribe el motivo de la anulación, con al menos 5 caracteres.')
+      return
+    }
+    setAnulando(true)
+    try {
+      const res = await pagoTerrenoService.anular(reciboAnular.pagoId, motivoAnulacion.trim())
+      toast.success(res.message || 'Recibo anulado. El cobro se revirtió en la caja.')
+      setReciboAnular(null)
+      setMotivoAnulacion('')
+      await abrirEstadoCuenta(negociacionSeleccionada)
+      cargarDatos()
+    } catch (e: any) {
+      toast.error(e?.message || 'No se pudo anular el recibo')
+    } finally {
+      setAnulando(false)
     }
   }
 
@@ -631,25 +731,32 @@ export function NegociacionesModule() {
       {/* Listado de Negociaciones */}
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Contratos y Negociaciones Activas ({negociaciones.length})</CardTitle>
-          <CardDescription className="text-xs">Seguimiento en tiempo real de saldos, cuotas y pagos de compradores.</CardDescription>
+          <CardTitle className="text-lg">Contratos y Negociaciones Activas ({negociaciones.filter((n) => !filtroTipoVenta || n.tipo_negociacion === filtroTipoVenta).length})</CardTitle>
+          <CardDescription className="text-xs">El contado queda en azul y el crédito a plazo en violeta.</CardDescription>
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Button type="button" size="sm" variant={filtroTipoVenta === '' ? 'default' : 'outline'} onClick={() => setFiltroTipoVenta('')}>Todos ({negociaciones.length})</Button>
+            <Button type="button" size="sm" variant={filtroTipoVenta === 'contado' ? 'default' : 'outline'} className={filtroTipoVenta === 'contado' ? 'bg-sky-600 hover:bg-sky-700' : 'border-sky-500/40 text-sky-800 dark:text-sky-200'} onClick={() => setFiltroTipoVenta('contado')}>Contado ({negociaciones.filter((n) => n.tipo_negociacion === 'contado').length})</Button>
+            <Button type="button" size="sm" variant={filtroTipoVenta === 'credito' ? 'default' : 'outline'} className={filtroTipoVenta === 'credito' ? 'bg-violet-600 hover:bg-violet-700' : 'border-violet-500/40 text-violet-800 dark:text-violet-200'} onClick={() => setFiltroTipoVenta('credito')}>A plazo / crédito ({negociaciones.filter((n) => n.tipo_negociacion === 'credito').length})</Button>
+            <Button type="button" size="sm" variant={filtroTipoVenta === 'reserva' ? 'default' : 'outline'} onClick={() => setFiltroTipoVenta('reserva')}>Reserva ({negociaciones.filter((n) => n.tipo_negociacion === 'reserva').length})</Button>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="md:hidden divide-y">
-            {negociaciones.map((neg) => {
+            {negociaciones.filter((n) => !filtroTipoVenta || n.tipo_negociacion === filtroTipoVenta).map((neg) => {
               const total = Number(neg.precio_final || 1)
               const pagado = Number(neg.total_capital_pagado || 0)
               const porcentaje = Math.min(100, Math.round((pagado / total) * 100))
               return (
-                <div key={neg.id} className="p-4 space-y-3">
+                <div key={neg.id} className={`p-4 space-y-3 ${tonoTipo(neg.tipo_negociacion)}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
+                      <div className="mb-1"><MarcaTipo tipo={neg.tipo_negociacion} /></div>
                       <p className="font-mono font-bold text-xs text-primary">{neg.codigo_negociacion}</p>
                       <p className="font-medium truncate">
                         {neg.comprador?.nombres ? `${neg.comprador.nombres} ${neg.comprador.apellidos}` : neg.comprador?.nombre_completo || 'Cliente'}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {neg.lote?.codigo_unico || 'Lote'} · {neg.plazo_meses} meses
+                        {neg.lote?.numero_lote || neg.lote?.codigo_unico || 'Lote'} · {neg.plazo_meses} meses
                       </p>
                     </div>
                     {neg.estado === 'activa' && <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 shrink-0">Al Día</Badge>}
@@ -713,14 +820,15 @@ export function NegociacionesModule() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {negociaciones.map((neg) => {
+                {negociaciones.filter((n) => !filtroTipoVenta || n.tipo_negociacion === filtroTipoVenta).map((neg) => {
                   const total = Number(neg.precio_final || 1)
                   const pagado = Number(neg.total_capital_pagado || 0)
                   const porcentaje = Math.min(100, Math.round((pagado / total) * 100))
 
                   return (
-                    <tr key={neg.id} className="hover:bg-muted/20 transition-colors">
+                    <tr key={neg.id} className={`transition-colors hover:bg-muted/20 ${tonoTipo(neg.tipo_negociacion)}`}>
                       <td className="py-3.5 px-4 font-mono font-bold text-xs text-primary">
+                        <div className="mb-1"><MarcaTipo tipo={neg.tipo_negociacion} /></div>
                         {neg.codigo_negociacion}
                         <span className="block text-[0.6875rem] text-muted-foreground font-normal">
                           {etiquetaTipo(neg.tipo_negociacion)} · {neg.plazo_meses} meses
@@ -742,7 +850,7 @@ export function NegociacionesModule() {
                         </span>
                       </td>
                       <td className="py-3.5 px-4">
-                        <span className="font-semibold text-foreground">{neg.lote?.codigo_unico || 'Lote'}</span>
+                        <span className="font-semibold text-foreground">{neg.lote?.numero_lote || neg.lote?.codigo_unico || 'Lote'}</span>
                         <span className="block text-xs text-muted-foreground">
                           {neg.lote?.parcela?.finca?.nombre || 'Finca'} · {neg.lote?.area_m2} m²
                         </span>
@@ -1119,7 +1227,7 @@ export function NegociacionesModule() {
       {/* Modal Estado de Cuenta Detallado */}
       {negociacionSeleccionada && (
         <Dialog open={modalEstadoCuenta} onOpenChange={setModalEstadoCuenta}>
-          <DialogContent className="w-[95vw] sm:max-w-[860px] max-h-[90vh] overflow-y-auto">
+          <DialogContent className="!w-[min(96vw,1200px)] !max-w-[min(96vw,1200px)] max-h-[94vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center justify-between">
                 <span>Estado de Cuenta: {negociacionSeleccionada.codigo_negociacion}</span>
@@ -1170,10 +1278,15 @@ export function NegociacionesModule() {
 
               {/* Plan de Pagos / Cronograma de Cuotas */}
               <div>
-                <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground mb-2">
-                  Cronograma de Cuotas & Amortización
-                </h4>
-                <div className="max-h-56 overflow-auto border rounded-xl">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+                    Cronograma de Cuotas & Amortización
+                  </h4>
+                  <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato('pagada')}`}>Pagada</span>
+                  <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato('pendiente')}`}>Pendiente</span>
+                  <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato('vencida')}`}>Vencida</span>
+                </div>
+                <div className="max-h-[42vh] overflow-auto border rounded-xl">
                   <table className="w-full text-left text-xs min-w-[640px]">
                     <thead className="bg-muted/60 sticky top-0 border-b">
                       <tr>
@@ -1206,8 +1319,9 @@ export function NegociacionesModule() {
                         cuotasPlan(negociacionSeleccionada).map((cuota: any) => {
                         const cargos = Number(cuota.otros_cargos || 0)
                         const cargosPagados = Number(cuota.otros_cargos_pagados || 0)
+                        const marca = marcaCuotaContrato(cuota)
                         return (
-                        <tr key={cuota.id || cuota.numero_cuota} className={cuota.estado === 'pagada' ? 'bg-emerald-500/5' : ''}>
+                        <tr key={cuota.id || cuota.numero_cuota} className={claseCuotaContrato(marca)}>
                           <td className="p-2 font-mono">{cuota.numero_cuota}</td>
                           <td className="p-2 whitespace-nowrap">{formatFechaCorta(cuota.fecha_vencimiento)}</td>
                           <td className="p-2">Q{Number(cuota.cuota_capital).toLocaleString()}</td>
@@ -1227,11 +1341,7 @@ export function NegociacionesModule() {
                           <td className="p-2 font-bold">Q{Number(cuota.cuota_monto_total).toLocaleString()}</td>
                           <td className="p-2">Q{Number(cuota.saldo_capital_restante).toLocaleString()}</td>
                           <td className="p-2">
-                            {cuota.estado === 'pagada' ? (
-                              <Badge className="bg-emerald-500/20 text-emerald-600 text-[0.625rem]">PAGADA</Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-[0.625rem]">{String(cuota.estado || 'pendiente').toUpperCase()}</Badge>
-                            )}
+                            <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato(marca)}`}>{textoCuotaContrato(marca)}</span>
                           </td>
                         </tr>
                         )
@@ -1247,7 +1357,7 @@ export function NegociacionesModule() {
                   <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground mb-2">
                     Kardex de movimientos
                   </h4>
-                  <div className="max-h-40 overflow-auto border rounded-xl">
+                  <div className="max-h-[28vh] overflow-auto border rounded-xl">
                     <table className="w-full text-left text-xs min-w-[520px]">
                       <thead className="bg-muted/60 sticky top-0 border-b">
                         <tr>
@@ -1256,23 +1366,31 @@ export function NegociacionesModule() {
                           <th className="p-2">Concepto</th>
                           <th className="p-2">Abono</th>
                           <th className="p-2">Saldo</th>
-                          <th className="p-2 w-8"></th>
+                          <th className="p-2">Recibo</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
                         {kardexMovimientos.map((mov, idx) => (
-                          <tr key={`${mov.documento || 'mov'}-${idx}`} className={mov.anulado ? 'opacity-60' : ''}>
+                          <tr key={`${mov.documento || 'mov'}-${idx}`}>
                             <td className="p-2 whitespace-nowrap">{formatFechaCorta(mov.fecha)}</td>
                             <td className="p-2 font-mono">{mov.documento || '—'}</td>
                             <td className="p-2">{mov.concepto}</td>
                             <td className="p-2">Q{Number(mov.abono || 0).toLocaleString()}</td>
                             <td className="p-2">Q{Number(mov.saldo || 0).toLocaleString()}</td>
                             <td className="p-2">
-                              {mov.pago_id && !mov.anulado && (
-                                <Button size="sm" variant="ghost" onClick={() => handleDescargarReciboPdf(mov.pago_id, mov.documento)} disabled={descargandoDoc === 'recibo'} className="h-6 w-6 p-0" title="Descargar recibo PDF">
-                                  <DownloadSimple size={12} />
-                                </Button>
-                              )}
+                              {mov.pago_id ? (
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {mov.anulado && <Badge variant="outline" className="text-[0.625rem]">Anulado</Badge>}
+                                  <Button size="sm" variant="outline" onClick={() => handleDescargarReciboPdf(mov.pago_id, mov.documento)} disabled={descargandoDoc === 'recibo'} className="h-7 gap-1 px-2 text-[0.625rem]" title="Descargar recibo PDF">
+                                    <DownloadSimple size={12} /> {mov.anulado ? 'Descargar' : 'Reimprimir'}
+                                  </Button>
+                                  {!mov.anulado && puedeAnularRecibo && Number(mov.pago_id) === ultimoPagoVigente && (
+                                    <Button size="sm" variant="outline" onClick={() => { setReciboAnular({ pagoId: Number(mov.pago_id), documento: mov.documento, abono: Number(mov.abono || 0) }); setMotivoAnulacion('') }} className="aviso-caja-cerrada h-7 border-0 px-2 text-[0.625rem]">
+                                      Anular
+                                    </Button>
+                                  )}
+                                </div>
+                              ) : null}
                             </td>
                           </tr>
                         ))}
@@ -1285,6 +1403,7 @@ export function NegociacionesModule() {
 
             <DialogFooter className="flex items-center justify-between sm:justify-between w-full gap-2 flex-wrap">
               <div className="flex gap-2 flex-wrap">
+                <span className="self-center text-xs font-semibold text-muted-foreground">Documentos</span>
                 <Button variant="outline" onClick={() => handleDescargarEstadoCuentaPdf(negociacionSeleccionada)} disabled={descargandoDoc === 'estado'} className="gap-1.5 text-xs">
                   <DownloadSimple size={16} /> {descargandoDoc === 'estado' ? 'Descargando...' : 'Estado de cuenta PDF'}
                 </Button>
@@ -1307,7 +1426,7 @@ export function NegociacionesModule() {
       {/* Modal Registrar Pago en Caja */}
       {negociacionSeleccionada && (
         <Dialog open={modalRegistrarPago} onOpenChange={setModalRegistrarPago}>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="!w-[min(96vw,980px)] !max-w-[min(96vw,980px)]">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Wallet className="text-primary" size={24} weight="duotone" />
@@ -1323,7 +1442,7 @@ export function NegociacionesModule() {
                   Verificando caja...
                 </div>
               ) : cajaPagoAbierta === false ? (
-                <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-3 text-sm text-destructive flex gap-2 items-start">
+                <div className="aviso-caja-cerrada rounded-lg px-3 py-3 text-sm flex gap-2 items-start">
                   <WarningCircle size={18} className="shrink-0 mt-0.5" weight="fill" />
                   <div className="space-y-2 min-w-0">
                     <p className="font-semibold">Debes abrir caja para cobrar</p>
@@ -1341,7 +1460,7 @@ export function NegociacionesModule() {
                   </div>
                 </div>
               ) : cajaPagoAbierta === true ? (
-                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-200">
+                <div className="aviso-caja-lista rounded-lg px-3 py-2 text-xs">
                   Caja abierta · lista para registrar el cobro
                 </div>
               ) : null}
@@ -1351,7 +1470,7 @@ export function NegociacionesModule() {
                 <select
                   value={formPago.tipo_pago}
                   onChange={(e) => setFormPago({ ...formPago, tipo_pago: e.target.value })}
-                  className="w-full bg-background border rounded-lg p-2.5 text-sm"
+                  className="w-full rounded-lg border border-border bg-background p-2.5 text-sm text-foreground"
                 >
                   <option value="cuota_normal">Pago de Cuota Ordinaria</option>
                   <option value="enganche">Pago de Enganche</option>
@@ -1379,7 +1498,7 @@ export function NegociacionesModule() {
                   <select
                     value={formPago.metodo_pago}
                     onChange={(e) => setFormPago({ ...formPago, metodo_pago: e.target.value })}
-                    className="w-full bg-background border rounded-lg p-2 text-sm"
+                    className="w-full rounded-lg border border-border bg-background p-2 text-sm text-foreground"
                   >
                     <option value="efectivo">Efectivo</option>
                     <option value="transferencia">Transferencia Bancaria</option>
@@ -1397,6 +1516,17 @@ export function NegociacionesModule() {
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <Label>Comentario u observación</Label>
+                <Textarea
+                  value={formPago.observaciones}
+                  maxLength={500}
+                  rows={3}
+                  placeholder="Nota del cobro. Sale en el recibo."
+                  onChange={(e) => setFormPago({ ...formPago, observaciones: e.target.value })}
+                />
+              </div>
+
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setModalRegistrarPago(false)}>Cancelar</Button>
                 <Button type="submit" disabled={verificandoCajaPago || cajaPagoAbierta !== true}>
@@ -1407,6 +1537,31 @@ export function NegociacionesModule() {
           </DialogContent>
         </Dialog>
       )}
+
+      <Dialog open={reciboAnular !== null} onOpenChange={(abierto) => { if (!abierto) setReciboAnular(null) }}>
+        <DialogContent className="!w-[min(92vw,760px)] !max-w-[min(92vw,760px)]">
+          <DialogHeader>
+            <DialogTitle>Anular recibo {reciboAnular?.documento || ''}</DialogTitle>
+            <DialogDescription>
+              Esta anulación usa el permiso Pagos de terrenos → Anular. Solo procede el último recibo vigente, con tu caja abierta. El cobro sale de la caja, el saldo del contrato vuelve y el recibo queda anulado.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <AvisoCaja abierta={cajaAbierta} />
+            <p className="text-sm">Monto del recibo: Q{Number(reciboAnular?.abono || 0).toLocaleString('es-GT', { minimumFractionDigits: 2 })}</p>
+            <div className="space-y-1">
+              <Label>Motivo de la anulación *</Label>
+              <Textarea value={motivoAnulacion} maxLength={500} rows={6} placeholder="Escribe por qué se anula este recibo" onChange={(e) => setMotivoAnulacion(e.target.value)} />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setReciboAnular(null)}>Cancelar</Button>
+              <Button type="button" variant="destructive" disabled={anulando || cajaAbierta !== true || motivoAnulacion.trim().length < 5} onClick={() => void confirmarAnulacionRecibo()}>
+                {anulando ? 'Anulando...' : 'Anular recibo'}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={modalRescision} onOpenChange={setModalRescision}>
         <DialogContent className="sm:max-w-[480px]">

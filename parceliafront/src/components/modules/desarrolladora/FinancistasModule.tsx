@@ -155,6 +155,7 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
   const [pagoFecha, setPagoFecha] = useState(hoy())
   const [pagoCalc, setPagoCalc] = useState({ capital: 0, interes: 0, mora: 0, nota: '' })
   const [descuento, setDescuento] = useState('')
+  const [moraManual, setMoraManual] = useState<string>('')
   const [archivo, setArchivo] = useState<File | null>(null)
   const [recibo, setRecibo] = useState('')
   const [metodo, setMetodo] = useState('efectivo')
@@ -197,7 +198,12 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
     if (vista !== 'pago' || !pagoItem || !pagoFecha) return
     let vigente = true
     financistaService.previewPago(pagoItem.id, pagoFecha)
-      .then((res) => { if (vigente && res.data) setPagoCalc(res.data) })
+      .then((res) => {
+        if (vigente && res.data) {
+          setPagoCalc(res.data)
+          setMoraManual(String(res.data.mora ?? 0))
+        }
+      })
       .catch(() => { if (vigente) toast.error('No se pudo calcular el pago para esa fecha') })
     return () => { vigente = false }
   }, [vista, pagoItem, pagoFecha])
@@ -216,6 +222,7 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
     setPagoItem(null)
     setPagoFecha(hoy())
     setDescuento('')
+    setMoraManual('')
     setArchivo(null)
     setRecibo('')
     setMetodo('efectivo')
@@ -240,6 +247,7 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
     setPagoItem(item)
     setPagoFecha(hoy())
     setDescuento('')
+    setMoraManual('')
     setArchivo(null)
     setRecibo('')
     setMetodo('efectivo')
@@ -269,7 +277,8 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
     if (!textoPago) return true
     return [f.nombre, f.dpi, f.finca?.nombre, f.finca?.codigo].some((valor) => String(valor || '').toLowerCase().includes(textoPago))
   })
-  const totalPagar = redondear(pagoCalc.capital + pagoCalc.interes + pagoCalc.mora - num(descuento))
+  const moraEfectiva = moraManual !== '' ? Math.max(0, num(moraManual)) : (pagoCalc.mora || 0)
+  const totalPagar = redondear(pagoCalc.capital + pagoCalc.interes + moraEfectiva - num(descuento))
 
   const alertas = items.filter((f) => f.alerta_vencimiento)
   const financiamientosVisibles = items.filter((f) => {
@@ -728,15 +737,42 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
             <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm">
               <p className="mb-2 font-medium">Pagos pendientes</p>
               <p className="mb-2 text-muted-foreground">{pagoCalc.nota || 'Elige la fecha para calcular la cuota.'}</p>
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-                <div><span className="text-muted-foreground">Capital</span><div>{q(pagoCalc.capital)}</div></div>
-                <div><span className="text-muted-foreground">Interés</span><div>{q(pagoCalc.interes)}</div></div>
-                <div><span className="text-muted-foreground">Mora</span><div>{q(pagoCalc.mora)}</div></div>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-5 items-end">
+                <div><span className="text-muted-foreground block text-xs">Capital</span><div className="font-medium text-foreground">{q(pagoCalc.capital)}</div></div>
+                <div><span className="text-muted-foreground block text-xs">Interés</span><div className="font-medium text-foreground">{q(pagoCalc.interes)}</div></div>
                 <div>
-                  <Label>Descuento</Label>
-                  <Input type="number" value={descuento} onChange={(e) => setDescuento(e.target.value)} />
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <Label className="text-xs">Mora</Label>
+                    {moraEfectiva > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setMoraManual('0')}
+                        className="text-[0.6875rem] text-primary hover:underline font-semibold"
+                        title="Poner la mora en 0"
+                      >
+                        Poner en 0
+                      </button>
+                    )}
+                  </div>
+                  <Input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={moraManual}
+                    onChange={(e) => setMoraManual(e.target.value)}
+                    placeholder="0.00"
+                  />
+                  {pagoCalc.mora > 0 && moraEfectiva === 0 && (
+                    <span className="text-[0.625rem] text-emerald-600 block mt-0.5 font-medium">
+                      Mora condonada (calculada: {q(pagoCalc.mora)})
+                    </span>
+                  )}
                 </div>
-                <div><span className="text-muted-foreground">Total cuota</span><div className="font-semibold">{q(Math.max(0, totalPagar))}</div></div>
+                <div>
+                  <Label className="text-xs mb-1 block">Descuento</Label>
+                  <Input type="number" step="any" min="0" value={descuento} onChange={(e) => setDescuento(e.target.value)} placeholder="0.00" />
+                </div>
+                <div><span className="text-muted-foreground block text-xs">Total cuota</span><div className="font-semibold text-base text-foreground">{q(Math.max(0, totalPagar))}</div></div>
               </div>
             </div>
 
@@ -801,7 +837,7 @@ export function FinancistasModule({ userSession }: { userSession?: { userData?: 
                     fecha: pagoFecha,
                     monto_capital: pagoCalc.capital,
                     monto_interes: pagoCalc.interes,
-                    monto_mora: pagoCalc.mora,
+                    monto_mora: moraEfectiva,
                     descuento_interes: num(descuento),
                     numero_recibo: recibo,
                     metodo_pago: metodo,

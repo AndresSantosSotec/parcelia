@@ -259,7 +259,7 @@ class CajaService
 
         if ($movimiento && $movimiento->estado === 'aplicado' && $cajaAbierta && $movimiento->tipo === 'egreso_desembolso') {
             if ($despues <= 0.009) {
-                $movimiento->update(['estado' => 'anulado']);
+                $movimiento->update(['estado' => 'rechazado']);
 
                 return null;
             }

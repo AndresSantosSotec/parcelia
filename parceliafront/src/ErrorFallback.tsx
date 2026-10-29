@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { Alert, AlertTitle, AlertDescription } from "./components/ui/alert";
 import { Button } from "./components/ui/button";
+import { esErrorDeChunk, recargarPorNuevaVersion } from "./lib/chunk-reload";
 
 import { AlertTriangleIcon, RefreshCwIcon } from "lucide-react";
 
@@ -8,31 +10,69 @@ export const ErrorFallback = ({ error, resetErrorBoundary }) => {
   // The parent UI will take care of showing a more helpful dialog.
   if (import.meta.env.DEV) throw error;
 
+  const esNuevaVersion = esErrorDeChunk(error);
+  const [actualizando, setActualizando] = useState(esNuevaVersion);
+
+  useEffect(() => {
+    if (!esNuevaVersion) return;
+    // Intento automático (una sola vez para evitar bucles)
+    recargarPorNuevaVersion().then((recargo) => {
+      if (!recargo) setActualizando(false);
+    });
+  }, [esNuevaVersion]);
+
+  const reintentar = () => {
+    if (esNuevaVersion) {
+      setActualizando(true);
+      void recargarPorNuevaVersion(true);
+      return;
+    }
+    resetErrorBoundary();
+  };
+
+  if (esNuevaVersion) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md space-y-6">
+          <Alert className="mb-2">
+            <RefreshCwIcon className={actualizando ? "animate-spin" : ""} />
+            <AlertTitle>Hay una nueva versión del sistema</AlertTitle>
+            <AlertDescription>
+              {actualizando
+                ? "Actualizando el sistema, espera un momento..."
+                : "Se publicó una actualización. Presiona el botón para cargar la versión más reciente. Tu sesión se mantiene."}
+            </AlertDescription>
+          </Alert>
+          <Button onClick={reintentar} className="w-full" disabled={actualizando}>
+            <RefreshCwIcon className={actualizando ? "animate-spin" : ""} />
+            {actualizando ? "Actualizando..." : "Actualizar ahora"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <Alert variant="destructive" className="mb-6">
           <AlertTriangleIcon />
-          <AlertTitle>This spark has encountered a runtime error</AlertTitle>
+          <AlertTitle>Ocurrió un error inesperado</AlertTitle>
           <AlertDescription>
-            Something unexpected happened while running the application. The error details are shown below. Contact the spark author and let them know about this issue.
+            Algo falló al ejecutar la aplicación. Abajo se muestra el detalle del error; compártelo con soporte si vuelve a ocurrir.
           </AlertDescription>
         </Alert>
-        
+
         <div className="bg-card border rounded-lg p-4 mb-6">
-          <h3 className="font-semibold text-sm text-muted-foreground mb-2">Error Details:</h3>
+          <h3 className="font-semibold text-sm text-muted-foreground mb-2">Detalle del error:</h3>
           <pre className="text-xs text-destructive bg-muted/50 p-3 rounded border overflow-auto max-h-32">
-            {error.message}
+            {error?.message}
           </pre>
         </div>
-        
-        <Button 
-          onClick={resetErrorBoundary} 
-          className="w-full"
-          variant="outline"
-        >
+
+        <Button onClick={reintentar} className="w-full" variant="outline">
           <RefreshCwIcon />
-          Try Again
+          Reintentar
         </Button>
       </div>
     </div>

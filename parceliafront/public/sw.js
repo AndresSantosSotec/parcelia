@@ -1,4 +1,4 @@
-const CACHE = 'terracloud-shell-v2'
+const CACHE = 'terracloud-shell-v3'
 const SHELL = '/index.html'
 
 self.addEventListener('install', (event) => {
@@ -52,6 +52,10 @@ async function desdeCache(request) {
   const cached = await cache.match(request)
   if (cached) return cached
   const response = await fetch(request)
-  if (response.ok) cache.put(request, response.clone()).catch(() => undefined)
+  // Solo cachear archivos reales (no el index.html que devuelve el servidor cuando el chunk ya no existe)
+  const tipo = response.headers.get('content-type') || ''
+  if (response.ok && !tipo.includes('text/html')) {
+    cache.put(request, response.clone()).catch(() => undefined)
+  }
   return response
 }

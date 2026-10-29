@@ -3,11 +3,14 @@ import { ErrorBoundary } from "react-error-boundary";
 
 import App from './App.tsx'
 import { ErrorFallback } from './ErrorFallback.tsx'
+import { instalarRecuperacionDeChunks } from './lib/chunk-reload'
 
 import "./main.css"
 import "./styles/theme.css"
 import "./index.css"
 import "./styles/responsive-enhanced.css"
+
+instalarRecuperacionDeChunks()
 
 if ('serviceWorker' in navigator) {
   if (import.meta.env.PROD) {

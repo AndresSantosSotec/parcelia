@@ -171,6 +171,7 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
   const { navigate } = useNavigateModule()
   const { hasPermission } = usePermissions(userSession?.userData)
   const puedeAnularRecibo = hasPermission('pagos_terreno', 'anular')
+  const puedeEditarFecha = hasPermission('negociaciones', 'ajustar_condiciones')
   const { abierta: cajaAbierta } = useCajaOperable()
   const [negociaciones, setNegociaciones] = useState<Negociacion[]>([])
   const [lotesDisponibles, setLotesDisponibles] = useState<Lote[]>([])
@@ -852,8 +853,17 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                       <p className="text-xs text-muted-foreground">
                         {neg.lote?.numero_lote || neg.lote?.codigo_unico || 'Lote'} · {neg.plazo_meses} meses
                       </p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                      <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5 flex-wrap">
                         <Calendar size={12} className="text-primary" /> Fecha venta: <span className="font-medium text-foreground">{formatFechaCorta(neg.fecha_negociacion)}</span>
+                        {puedeEditarFecha && neg.estado !== 'rescindida' && (
+                          <button
+                            type="button"
+                            onClick={() => abrirEditarFecha(neg)}
+                            className="inline-flex items-center gap-1 rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/20"
+                          >
+                            Editar fecha
+                          </button>
+                        )}
                       </p>
                     </div>
                     {neg.estado === 'activa' && <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 shrink-0">Al Día</Badge>}
@@ -890,7 +900,7 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                         <Wallet size={14} /> Cobrar
                       </Button>
                     )}
-                    {neg.estado !== 'rescindida' && (
+                    {puedeEditarFecha && neg.estado !== 'rescindida' && (
                       <Button size="sm" variant="outline" onClick={() => abrirEditarFecha(neg)} className="h-8 gap-1 text-xs" title="Cambiar fecha de venta / contrato">
                         <Calendar size={14} /> Fecha
                       </Button>
@@ -939,8 +949,20 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                             : ''}
                           {neg.tipo_negociacion === 'credito' ? ` · ${etiquetaSistema(neg.sistema_amortizacion)}` : ''}
                         </span>
-                        <span className="block text-[0.6875rem] text-muted-foreground font-normal mt-0.5">
-                          Fecha venta: <strong className="text-foreground">{formatFechaCorta(neg.fecha_negociacion)}</strong>
+                        <span className="flex items-center gap-1.5 flex-wrap text-[0.6875rem] text-muted-foreground font-normal mt-0.5">
+                          <span>
+                            Fecha venta: <strong className="text-foreground">{formatFechaCorta(neg.fecha_negociacion)}</strong>
+                          </span>
+                          {puedeEditarFecha && neg.estado !== 'rescindida' && (
+                            <button
+                              type="button"
+                              onClick={() => abrirEditarFecha(neg)}
+                              className="inline-flex items-center gap-1 rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/20 transition-colors"
+                              title="Cambiar fecha de venta y recalcular cronograma"
+                            >
+                              <Calendar size={11} /> Editar fecha
+                            </button>
+                          )}
                         </span>
                         {resumenMoraContrato(neg) && (
                           <span className="block text-[0.625rem] text-amber-700 dark:text-amber-400 font-normal mt-0.5">
@@ -998,7 +1020,7 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                           <Button size="sm" variant="outline" onClick={() => abrirEstadoCuenta(neg)} className="h-8 gap-1 text-xs">
                             <Receipt size={14} /> Estado Cuenta
                           </Button>
-                          {neg.estado !== 'rescindida' && (
+                          {puedeEditarFecha && neg.estado !== 'rescindida' && (
                             <Button size="sm" variant="outline" onClick={() => abrirEditarFecha(neg)} className="h-8 gap-1 text-xs" title="Cambiar fecha de venta y recalcular cronograma">
                               <Calendar size={14} /> Cambiar fecha
                             </Button>
@@ -1386,7 +1408,7 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {negociacionSeleccionada.estado !== 'rescindida' && (
+                  {puedeEditarFecha && negociacionSeleccionada.estado !== 'rescindida' && (
                     <Button size="sm" variant="outline" onClick={() => abrirEditarFecha(negociacionSeleccionada)} className="h-8 gap-1 text-xs">
                       <Calendar size={14} /> Cambiar fecha de venta
                     </Button>

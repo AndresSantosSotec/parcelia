@@ -55,6 +55,7 @@ class Permission extends Model
                     'comisionistas.pagar' => 'Registrar pagos de comisión y su recibo',
                     'comisionistas.reglas' => 'Parametrizar reglas de comisión',
                     'comisionistas.reportes' => 'Estado de cuenta y listados de comisionistas',
+                    'negociaciones.ajustar_condiciones' => 'Ajustar condiciones y editar fechas de venta/contrato',
                     default => ucfirst(str_replace('_', ' ', (string) $accion)).' en '.ucfirst(str_replace('_', ' ', (string) $modulo)),
                 };
 

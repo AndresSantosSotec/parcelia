@@ -194,7 +194,7 @@ export const ACCION_LABELS: Record<string, string> = {
   configurar: 'Configurar Cuentas',
   asientos: 'Ver Asientos',
   asignar_credito: 'Asignar a crédito',
-  ajustar_condiciones: 'Ajustar condiciones',
+  ajustar_condiciones: 'Ajustar condiciones / editar fecha de venta',
   rescindir: 'Rescindir',
   cobrar: 'Cobrar',
   desactivar: 'Desactivar',

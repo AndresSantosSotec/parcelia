@@ -1753,6 +1753,7 @@ export interface Negociacion {
   id: number
   codigo_negociacion: string
   cliente_id: number
+  cliente?: any
   comprador?: any
   lote_id: number
   lote?: Lote

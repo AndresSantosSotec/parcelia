@@ -15,8 +15,14 @@ trait NormalizesClienteIdentidad
         foreach (['telefono', 'telefono_secundario'] as $campo) {
             $valor = $this->input($campo);
             if (is_string($valor)) {
-                $digits = preg_replace('/\D+/', '', $valor) ?? '';
-                $this->merge([$campo => $digits === '' ? null : $digits]);
+                $trimmed = trim($valor);
+                $hasPlus = str_starts_with($trimmed, '+');
+                $digits = preg_replace('/\D+/', '', $trimmed) ?? '';
+                if ($digits === '') {
+                    $this->merge([$campo => null]);
+                } else {
+                    $this->merge([$campo => ($hasPlus ? '+' : '') . $digits]);
+                }
             }
         }
 

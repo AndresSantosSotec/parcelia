@@ -176,8 +176,8 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
           if (response.success && response.data) {
             const lista = Array.isArray(response.data) ? response.data : []
             setDepartamentos(lista)
-            const id = cliente?.departamentoGeonameId
-            if (id && lista.some((item) => item.geonameId === id)) {
+            const id = Number(cliente?.departamentoGeonameId)
+            if (id && lista.some((item) => Number(item.geonameId) === id)) {
               setDepartamentoSeleccionado(id)
               cargarMunicipios(id)
             }
@@ -190,7 +190,7 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
           setCargandoDepartamentos(false)
         })
     }
-  }, [abierto, refrescarSucursalesTrigger])
+  }, [abierto, refrescarSucursalesTrigger, cliente?.id, cliente?.departamentoGeonameId])
 
   const cargarMunicipios = async (departamentoId: number) => {
     setCargandoMunicipios(true)
@@ -254,8 +254,20 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
 
   useEffect(() => {
     if (cliente) {
-      setFormData(cliente)
+      const departamentoId = cliente.departamentoGeonameId ? Number(cliente.departamentoGeonameId) : undefined
+      const municipioId = cliente.municipioGeonameId ? Number(cliente.municipioGeonameId) : undefined
+      setFormData({
+        ...cliente,
+        departamentoGeonameId: departamentoId,
+        municipioGeonameId: municipioId,
+      })
       setFotoPreview(cliente.fotografia || null)
+      setDepartamentoSeleccionado(departamentoId ?? null)
+      if (departamentoId) {
+        cargarMunicipios(departamentoId)
+      } else {
+        setMunicipios([])
+      }
     } else {
       setFormData({
         nombres: '',
@@ -316,7 +328,7 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
     if (!formData.telefono?.trim()) {
       nuevosErrores.telefono = 'Requerido'
     } else if (!validarTelefono(formData.telefono)) {
-      nuevosErrores.telefono = 'Teléfono inválido (8 dígitos)'
+      nuevosErrores.telefono = 'El teléfono debe tener entre 8 y 15 dígitos'
     }
     if (!formData.direccion?.trim()) nuevosErrores.direccion = 'Requerido'
 
@@ -336,7 +348,7 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
         if (telefono === '') {
           nuevosErrores[`referencia_telefono_${index}`] = 'Teléfono requerido'
         } else if (!validarTelefono(telefono)) {
-          nuevosErrores[`referencia_telefono_${index}`] = 'Teléfono inválido (8 dígitos)'
+          nuevosErrores[`referencia_telefono_${index}`] = 'El teléfono debe tener entre 8 y 15 dígitos'
         }
       })
     }
@@ -373,6 +385,9 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
       telefonoSecundario: formData.telefonoSecundario,
       email: formData.email,
       direccion: formData.direccion!,
+      municipio: formData.municipio,
+      departamentoGeonameId: formData.departamentoGeonameId,
+      municipioGeonameId: formData.municipioGeonameId,
       fotografia: fotoPreview || formData.fotografia,
       estado: formData.estado as 'activo' | 'inactivo',
       sucursal: formData.sucursal,
@@ -688,9 +703,10 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
                     <Input
                       id="telefono"
                       value={formData.telefono}
-                      onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, telefono: e.target.value.replace(/\D/g, '').slice(0, 15) })}
                       placeholder="12345678"
-                      maxLength={8}
+                      maxLength={15}
+                      inputMode="numeric"
                       className={errores.telefono ? 'border-destructive' : ''}
                     />
                     {errores.telefono && <p className="text-xs text-destructive">{errores.telefono}</p>}
@@ -700,10 +716,11 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
                     <Label htmlFor="telefonoSecundario">Teléfono Secundario</Label>
                     <Input
                       id="telefonoSecundario"
-                      value={formData.telefonoSecundario}
-                      onChange={(e) => setFormData({ ...formData, telefonoSecundario: e.target.value })}
+                      value={formData.telefonoSecundario || ''}
+                      onChange={(e) => setFormData({ ...formData, telefonoSecundario: e.target.value.replace(/\D/g, '').slice(0, 15) })}
                       placeholder="12345678"
-                      maxLength={8}
+                      maxLength={15}
+                      inputMode="numeric"
                     />
                   </div>
 
@@ -759,7 +776,11 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
                   <div className="space-y-2">
                     <Label htmlFor="departamento">Departamento</Label>
                     <Select
-                      value={formData.departamentoGeonameId ? String(formData.departamentoGeonameId) : undefined}
+                      value={
+                        departamentos.some((item) => Number(item.geonameId) === Number(formData.departamentoGeonameId))
+                          ? String(formData.departamentoGeonameId)
+                          : undefined
+                      }
                       onValueChange={handleDepartamentoChange}
                       disabled={cargandoDepartamentos}
                     >
@@ -779,7 +800,11 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
                   <div className="space-y-2">
                     <Label htmlFor="municipio">Municipio</Label>
                     <Select
-                      value={formData.municipioGeonameId ? String(formData.municipioGeonameId) : undefined}
+                      value={
+                        municipios.some((item) => Number(item.geonameId) === Number(formData.municipioGeonameId))
+                          ? String(formData.municipioGeonameId)
+                          : undefined
+                      }
                       onValueChange={handleMunicipioChange}
                       disabled={!departamentoSeleccionado || cargandoMunicipios}
                     >
@@ -899,11 +924,12 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
                               const nuevas = [...(formData.referencias || [])]
                               nuevas[index] = {
                                 ...nuevas[index],
-                                telefono: e.target.value,
+                                telefono: e.target.value.replace(/\D/g, '').slice(0, 15),
                               }
                               setFormData({ ...formData, referencias: nuevas })
                             }}
-                            maxLength={8}
+                            maxLength={15}
+                            inputMode="numeric"
                             className={errores[`referencia_telefono_${index}`] ? 'border-destructive' : ''}
                             placeholder="12345678"
                           />

@@ -1760,9 +1760,10 @@ export function NuevaVenta({ onVolver, onVentaRegistrada }: NuevaVentaProps) {
                   <Input
                     id="telefono"
                     value={nuevoCliente.telefono}
-                    onChange={(e) => setNuevoCliente({ ...nuevoCliente, telefono: e.target.value })}
-                    placeholder="12345678"
-                    maxLength={8}
+                    onChange={(e) => setNuevoCliente({ ...nuevoCliente, telefono: e.target.value.replace(/\D/g, '').slice(0, 15) })}
+                    placeholder="Ej. 12345678 o 15551234567"
+                    maxLength={15}
+                    inputMode="numeric"
                   />
                 </div>
                 <div className="space-y-2">

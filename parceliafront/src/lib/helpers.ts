@@ -192,5 +192,6 @@ export const formatearDPI = (dpi: string): string => {
 }
 
 export const validarTelefono = (telefono: string): boolean => {
-  return /^\d{8}$/.test(telefono.replace(/[\s-]/g, ''))
+  const digitos = (telefono || '').replace(/\D/g, '')
+  return digitos.length >= 8 && digitos.length <= 15
 }

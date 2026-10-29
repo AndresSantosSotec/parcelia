@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePermissions } from '@/hooks/use-permissions'
 import { AvisoCaja, useCajaOperable } from '@/components/shared/AvisoCaja'
 import { Plus, Handshake, Calculator, Receipt, User, Package, Calendar, CurrencyDollar, CheckCircle, Clock, ArrowRight, Eye, ShieldCheck, Wallet, Printer, FileText, XCircle, DownloadSimple, WarningCircle, MagnifyingGlass } from '@phosphor-icons/react'
@@ -183,6 +184,7 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
   // Modales
   const [modalNuevaVenta, setModalNuevaVenta] = useState(false)
   const [modalEstadoCuenta, setModalEstadoCuenta] = useState(false)
+  const [tabEstadoCuenta, setTabEstadoCuenta] = useState<'kardex' | 'plan' | 'resumen'>('kardex')
   const [modalRegistrarPago, setModalRegistrarPago] = useState(false)
   const [modalRescision, setModalRescision] = useState(false)
   const [modalEditarFecha, setModalEditarFecha] = useState(false)
@@ -522,7 +524,8 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
     }
   }
 
-  const abrirEstadoCuenta = async (neg: Negociacion) => {
+  const abrirEstadoCuenta = async (neg: Negociacion, tabInicial: 'kardex' | 'plan' | 'resumen' = 'kardex') => {
+    setTabEstadoCuenta(tabInicial)
     setNegociacionSeleccionada(normalizarNegociacion(neg))
     setKardexMovimientos([])
     setModalEstadoCuenta(true)
@@ -891,25 +894,25 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                       <div className="bg-primary h-1.5 rounded-full" style={{ width: `${porcentaje}%` }} />
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <Button size="sm" variant="outline" onClick={() => abrirEstadoCuenta(neg)} className="h-8 gap-1 text-xs flex-1">
-                      <Receipt size={14} /> Estado
+                  <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 pt-1">
+                    <Button size="sm" variant="default" onClick={() => abrirEstadoCuenta(neg, 'kardex')} className="h-8.5 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium" title="Reimprimir tickets y recibos de pago">
+                      <Printer size={15} /> Recibos / Ticket
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => abrirEstadoCuenta(neg, 'plan')} className="h-8.5 gap-1.5 text-xs font-medium">
+                      <Receipt size={15} /> Cuotas & Estado
                     </Button>
                     {neg.estado !== 'rescindida' && (
-                      <Button size="sm" onClick={() => abrirPago(neg)} className="h-8 gap-1 text-xs flex-1">
-                        <Wallet size={14} /> Cobrar
+                      <Button size="sm" variant="outline" onClick={() => abrirPago(neg)} className="h-8.5 gap-1.5 text-xs text-primary border-primary/30 hover:bg-primary/10">
+                        <Wallet size={15} /> Registrar Pago
                       </Button>
                     )}
                     {puedeEditarFecha && neg.estado !== 'rescindida' && (
-                      <Button size="sm" variant="outline" onClick={() => abrirEditarFecha(neg)} className="h-8 gap-1 text-xs" title="Cambiar fecha de venta / contrato">
+                      <Button size="sm" variant="outline" onClick={() => abrirEditarFecha(neg)} className="h-8.5 gap-1 text-xs" title="Cambiar fecha de venta / contrato">
                         <Calendar size={14} /> Fecha
                       </Button>
                     )}
-                    <Button size="sm" variant="ghost" onClick={() => handleDescargarContratoPdf(neg)} className="h-8 gap-1 text-xs">
-                      <Printer size={14} /> Contrato
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => handleDescargarContratoPdf(neg)} disabled={descargandoDoc === 'contrato'} className="h-8 gap-1 text-xs">
-                      <DownloadSimple size={14} /> PDF
+                    <Button size="sm" variant="ghost" onClick={() => handleDescargarContratoPdf(neg)} disabled={descargandoDoc === 'contrato'} className="h-8.5 gap-1 text-xs">
+                      <DownloadSimple size={14} /> Contrato PDF
                     </Button>
                   </div>
                 </div>
@@ -1418,265 +1421,359 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
               </DialogTitle>
             </DialogHeader>
 
-            <div className="space-y-4 py-2 text-sm">
-              {/* Tarjetas de Resumen Financiero */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                <div className="p-2.5 sm:p-3 bg-muted/40 rounded-xl border">
-                  <span className="text-[0.6875rem] text-muted-foreground block">Precio del Lote</span>
+            <div className="space-y-3 py-2 text-sm">
+              {/* Resumen rápido de cabecera */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
+                <div className="p-2 sm:p-2.5 bg-muted/40 rounded-xl border">
+                  <span className="text-[0.625rem] sm:text-[0.6875rem] text-muted-foreground block">Precio del Lote</span>
                   <span className="font-bold text-xs sm:text-sm text-foreground">Q{Number(negociacionSeleccionada.precio_final).toLocaleString()}</span>
                 </div>
-                <div className="p-2.5 sm:p-3 bg-muted/40 rounded-xl border">
-                  <span className="text-[0.6875rem] text-muted-foreground block">Enganche Pagado</span>
+                <div className="p-2 sm:p-2.5 bg-muted/40 rounded-xl border">
+                  <span className="text-[0.625rem] sm:text-[0.6875rem] text-muted-foreground block">Enganche Pagado</span>
                   <span className="font-bold text-xs sm:text-sm text-emerald-600">Q{Number(negociacionSeleccionada.enganche_pagado || 0).toLocaleString()}</span>
                 </div>
-                <div className="p-2.5 sm:p-3 bg-muted/40 rounded-xl border">
-                  <span className="text-[0.6875rem] text-muted-foreground block">Capital Amortizado</span>
+                <div className="p-2 sm:p-2.5 bg-muted/40 rounded-xl border">
+                  <span className="text-[0.625rem] sm:text-[0.6875rem] text-muted-foreground block">Capital Amortizado</span>
                   <span className="font-bold text-xs sm:text-sm text-primary">Q{Number(negociacionSeleccionada.total_capital_pagado || 0).toLocaleString()}</span>
                 </div>
-                <div className="p-2.5 sm:p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-                  <span className="text-[0.6875rem] text-amber-700 block font-semibold">Saldo Pendiente</span>
+                <div className="p-2 sm:p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                  <span className="text-[0.625rem] sm:text-[0.6875rem] text-amber-700 block font-semibold">Saldo Pendiente</span>
                   <span className="font-extrabold text-amber-700 text-xs sm:text-base">
                     Q{Number(negociacionSeleccionada.saldo_capital_pendiente).toLocaleString('es-GT', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
 
-              {resumenMoraContrato(negociacionSeleccionada) && (
-                <div className="p-2.5 sm:p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 text-xs">
-                  <span className="font-semibold text-amber-700 dark:text-amber-400">Mora de este contrato: </span>
-                  <span className="text-muted-foreground">{resumenMoraContrato(negociacionSeleccionada)}</span>
-                </div>
-              )}
-              {negociacionSeleccionada.tipo_negociacion === 'credito' && (
-                <div className="p-2.5 sm:p-3 rounded-xl border bg-muted/40 text-xs">
-                  <span className="font-semibold">Sistema de crédito: </span>
-                  <span className="text-muted-foreground">
-                    {etiquetaSistema(negociacionSeleccionada.sistema_amortizacion)}
-                    {negociacionSeleccionada.politica_abono_extra === 'reducir_cuota'
-                      ? ' · Abonos extras reducen la cuota'
-                      : ' · Abonos extras reducen el plazo'}
-                  </span>
-                </div>
-              )}
+              {/* Selector de Pestañas Dedicado */}
+              <Tabs value={tabEstadoCuenta} onValueChange={(v) => setTabEstadoCuenta(v as any)} className="w-full">
+                <TabsList className="grid grid-cols-3 w-full h-11 p-1 bg-muted/70 rounded-xl">
+                  <TabsTrigger value="kardex" className="text-xs sm:text-sm font-semibold gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-xs">
+                    <Printer size={15} className="text-emerald-600" />
+                    <span>Recibos & Kardex</span>
+                    {kardexMovimientos.length > 0 && (
+                      <Badge variant="secondary" className="px-1.5 py-0 text-[0.625rem] ml-0.5">{kardexMovimientos.length}</Badge>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="plan" className="text-xs sm:text-sm font-semibold gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-xs">
+                    <Calendar size={15} />
+                    <span>Plan de Cuotas</span>
+                    {cuotasPlan(negociacionSeleccionada).length > 0 && (
+                      <Badge variant="secondary" className="px-1.5 py-0 text-[0.625rem] ml-0.5">{cuotasPlan(negociacionSeleccionada).length}</Badge>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="resumen" className="text-xs sm:text-sm font-semibold gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-xs">
+                    <Calculator size={15} />
+                    <span>Condiciones</span>
+                  </TabsTrigger>
+                </TabsList>
 
-              {/* Plan de Pagos / Cronograma de Cuotas */}
-              <div>
-                <div className="mb-2 flex flex-wrap items-center gap-1.5 sm:gap-2">
-                  <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">
-                    Cronograma de Cuotas & Amortización
-                  </h4>
-                  <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato('pagada')}`}>Pagada</span>
-                  <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato('pendiente')}`}>Pendiente</span>
-                  <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato('vencida')}`}>Vencida</span>
-                </div>
-
-                {cargandoEstadoCuenta ? (
-                  <div className="p-6 text-center text-xs text-muted-foreground border rounded-xl">
-                    Cargando plan de pagos...
-                  </div>
-                ) : cuotasPlan(negociacionSeleccionada).length === 0 ? (
-                  <div className="p-6 text-center text-xs text-muted-foreground border rounded-xl">
-                    {negociacionSeleccionada.tipo_negociacion === 'credito' && Number(negociacionSeleccionada.enganche_pagado || 0) + 0.009 < Number(negociacionSeleccionada.enganche_pactado || 0)
-                      ? 'El cronograma se genera al completar el enganche pactado.'
-                      : 'Aún no hay cuotas registradas para esta negociación.'}
-                  </div>
-                ) : (
-                  <>
-                    {/* Vista móvil: Cards compactos legibles sin scroll horizontal */}
-                    <div className="md:hidden max-h-[44vh] overflow-y-auto space-y-2 pr-1">
-                      {cuotasPlan(negociacionSeleccionada).map((cuota: any) => {
-                        const cargos = Number(cuota.otros_cargos || 0)
-                        const cargosPagados = Number(cuota.otros_cargos_pagados || 0)
-                        const marca = marcaCuotaContrato(cuota)
-                        return (
-                          <div key={cuota.id || cuota.numero_cuota} className={`p-2.5 rounded-lg border text-xs space-y-1.5 ${claseCuotaContrato(marca)}`}>
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-foreground">
-                                Cuota #{cuota.numero_cuota}
-                                <span className="ml-2 font-normal text-muted-foreground">{formatFechaCorta(cuota.fecha_vencimiento)}</span>
-                              </span>
-                              <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato(marca)}`}>
-                                {textoCuotaContrato(marca)}
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[0.7rem] pt-1 border-t border-border/40">
-                              <div>
-                                <span className="text-muted-foreground">Capital: </span>
-                                <span className="font-medium text-foreground">Q{Number(cuota.cuota_capital).toLocaleString()}</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">Interés: </span>
-                                <span className="font-medium text-foreground">Q{Number(cuota.cuota_interes || 0).toLocaleString()}</span>
-                              </div>
-                              {cargos > 0 && (
-                                <div className="col-span-2">
-                                  <span className="text-muted-foreground">Cargos/Mora: </span>
-                                  <span className="font-medium text-foreground">Q{cargos.toLocaleString()}</span>
-                                  {cargosPagados + 0.009 >= cargos ? (
-                                    <Badge className="ml-1 bg-emerald-500/20 text-emerald-600 text-[0.5rem]">PAGADO</Badge>
-                                  ) : cargosPagados > 0 ? (
-                                    <Badge variant="outline" className="ml-1 text-[0.5rem]">PARCIAL</Badge>
-                                  ) : null}
-                                </div>
-                              )}
-                              <div>
-                                <span className="text-muted-foreground">Cuota Total: </span>
-                                <span className="font-bold text-foreground">Q{Number(cuota.cuota_monto_total).toLocaleString()}</span>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">Saldo: </span>
-                                <span className="font-medium text-foreground">Q{Number(cuota.saldo_capital_restante).toLocaleString()}</span>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
+                {/* TAB 1: KARDEX DE MOVIMIENTOS & REIMPRESIÓN DE COMPROBANTES */}
+                <TabsContent value="kardex" className="space-y-3 mt-3 focus-visible:outline-none">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+                        Kardex de pagos y comprobantes
+                      </h4>
+                      <p className="text-[0.6875rem] text-muted-foreground">
+                        Imprime tickets térmicos de 80 mm o recibos en PDF directamente desde el teléfono.
+                      </p>
                     </div>
+                    <span className="text-xs font-semibold text-foreground bg-muted/60 px-2 py-0.5 rounded-md">
+                      {kardexMovimientos.length} {kardexMovimientos.length === 1 ? 'registro' : 'registros'}
+                    </span>
+                  </div>
 
-                    {/* Vista Desktop / Tablet: Tabla completa con scroll */}
-                    <div className="hidden md:block max-h-[42vh] overflow-auto border rounded-xl">
-                      <table className="w-full text-left text-xs min-w-[640px]">
-                        <thead className="bg-muted/60 sticky top-0 border-b">
-                          <tr>
-                            <th className="p-2">No.</th>
-                            <th className="p-2">Vencimiento</th>
-                            <th className="p-2">Capital</th>
-                            <th className="p-2">Interés</th>
-                            <th className="p-2">Cargos</th>
-                            <th className="p-2">Cuota Total</th>
-                            <th className="p-2">Saldo</th>
-                            <th className="p-2">Estado</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {cuotasPlan(negociacionSeleccionada).map((cuota: any) => {
-                            const cargos = Number(cuota.otros_cargos || 0)
-                            const cargosPagados = Number(cuota.otros_cargos_pagados || 0)
-                            const marca = marcaCuotaContrato(cuota)
-                            return (
-                              <tr key={cuota.id || cuota.numero_cuota} className={claseCuotaContrato(marca)}>
-                                <td className="p-2 font-mono">{cuota.numero_cuota}</td>
-                                <td className="p-2 whitespace-nowrap">{formatFechaCorta(cuota.fecha_vencimiento)}</td>
-                                <td className="p-2">Q{Number(cuota.cuota_capital).toLocaleString()}</td>
-                                <td className="p-2">Q{Number(cuota.cuota_interes || 0).toLocaleString()}</td>
-                                <td className="p-2">
-                                  {cargos > 0 ? (
-                                    <span title={`Pagado Q${cargosPagados.toLocaleString()}`}>
-                                      Q{cargos.toLocaleString()}
-                                      {cargosPagados + 0.009 >= cargos ? (
-                                        <Badge className="ml-1 bg-emerald-500/20 text-emerald-600 text-[0.5rem]">PAGADO</Badge>
-                                      ) : cargosPagados > 0 ? (
-                                        <Badge variant="outline" className="ml-1 text-[0.5rem]">PARCIAL</Badge>
-                                      ) : null}
-                                    </span>
-                                  ) : '—'}
-                                </td>
-                                <td className="p-2 font-bold">Q{Number(cuota.cuota_monto_total).toLocaleString()}</td>
-                                <td className="p-2">Q{Number(cuota.saldo_capital_restante).toLocaleString()}</td>
-                                <td className="p-2">
-                                  <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato(marca)}`}>{textoCuotaContrato(marca)}</span>
+                  {cargandoEstadoCuenta ? (
+                    <div className="p-8 text-center text-xs text-muted-foreground border rounded-xl">
+                      Cargando historial de pagos...
+                    </div>
+                  ) : kardexMovimientos.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-muted-foreground border rounded-xl">
+                      No hay pagos ni movimientos registrados aún para esta negociación.
+                    </div>
+                  ) : (
+                    <>
+                      {/* Vista Móvil: Tarjetas táctiles y botones grandes de impresión */}
+                      <div className="md:hidden space-y-2.5 max-h-[52vh] overflow-y-auto pr-1">
+                        {kardexMovimientos.map((mov, idx) => (
+                          <div key={`${mov.documento || 'mov'}-${idx}`} className="p-3 rounded-xl border bg-card text-xs space-y-2.5 shadow-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-mono font-bold text-foreground text-sm">{mov.documento || '—'}</span>
+                              <Badge variant="outline" className="text-[0.6875rem]">{formatFechaCorta(mov.fecha)}</Badge>
+                            </div>
+                            <p className="text-muted-foreground text-xs leading-relaxed">{mov.concepto}</p>
+                            <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/40 text-xs">
+                              <div>
+                                <span className="text-[0.6875rem] text-muted-foreground block font-medium">Abono</span>
+                                <span className="font-bold text-emerald-600 text-sm">Q{Number(mov.abono || 0).toLocaleString()}</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-[0.6875rem] text-muted-foreground block font-medium">Saldo después del pago</span>
+                                <span className="font-bold text-foreground text-sm">Q{Number(mov.saldo || 0).toLocaleString()}</span>
+                              </div>
+                            </div>
+                            {mov.pago_id ? (
+                              <div className="flex flex-wrap items-center gap-2 pt-1">
+                                {mov.anulado && <Badge variant="destructive" className="w-full justify-center text-[0.6875rem] py-1">PAGO ANULADO</Badge>}
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  onClick={() => handleDescargarTicketPdf(mov.pago_id, mov.documento)}
+                                  disabled={descargandoDoc === 'ticket'}
+                                  className="h-9 flex-1 gap-1.5 px-3 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                                  title="Imprimir ticket de 80 mm para impresora térmica portátil"
+                                >
+                                  <Printer size={16} />
+                                  <span>{descargandoDoc === 'ticket' ? 'Generando...' : 'Ticket 80mm'}</span>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDescargarReciboPdf(mov.pago_id, mov.documento)}
+                                  disabled={descargandoDoc === 'recibo'}
+                                  className="h-9 flex-1 gap-1.5 px-3 text-xs font-medium"
+                                  title="Recibo tamaño carta en PDF"
+                                >
+                                  <DownloadSimple size={16} />
+                                  <span>{descargandoDoc === 'recibo' ? 'Generando...' : 'Recibo Carta'}</span>
+                                </Button>
+                                {!mov.anulado && puedeAnularRecibo && Number(mov.pago_id) === ultimoPagoVigente && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => { setReciboAnular({ pagoId: Number(mov.pago_id), documento: mov.documento, abono: Number(mov.abono || 0) }); setMotivoAnulacion('') }}
+                                    className="h-9 px-3 text-xs text-destructive hover:bg-destructive/10 border-destructive/30"
+                                  >
+                                    Anular
+                                  </Button>
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Vista Desktop / Tablet para Kardex */}
+                      <div className="hidden md:block max-h-[44vh] overflow-auto border rounded-xl">
+                        <table className="w-full text-left text-xs min-w-[560px]">
+                          <thead className="bg-muted/60 sticky top-0 border-b">
+                            <tr>
+                              <th className="p-2.5">Fecha</th>
+                              <th className="p-2.5">Documento</th>
+                              <th className="p-2.5">Concepto</th>
+                              <th className="p-2.5">Abono</th>
+                              <th className="p-2.5">Saldo</th>
+                              <th className="p-2.5 text-center">Acciones / Reimpresión</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {kardexMovimientos.map((mov, idx) => (
+                              <tr key={`${mov.documento || 'mov'}-${idx}`}>
+                                <td className="p-2.5 whitespace-nowrap">{formatFechaCorta(mov.fecha)}</td>
+                                <td className="p-2.5 font-mono font-medium">{mov.documento || '—'}</td>
+                                <td className="p-2.5">{mov.concepto}</td>
+                                <td className="p-2.5 font-bold text-emerald-600">Q{Number(mov.abono || 0).toLocaleString()}</td>
+                                <td className="p-2.5 font-semibold">Q{Number(mov.saldo || 0).toLocaleString()}</td>
+                                <td className="p-2.5 text-center">
+                                  {mov.pago_id ? (
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      {mov.anulado && <Badge variant="outline" className="text-[0.625rem]">Anulado</Badge>}
+                                      <Button size="sm" variant="default" onClick={() => handleDescargarTicketPdf(mov.pago_id, mov.documento)} disabled={descargandoDoc === 'ticket'} className="h-7.5 gap-1 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" title="Ticket de 80 mm para impresora térmica">
+                                        <Printer size={13} /> Ticket 80mm
+                                      </Button>
+                                      <Button size="sm" variant="outline" onClick={() => handleDescargarReciboPdf(mov.pago_id, mov.documento)} disabled={descargandoDoc === 'recibo'} className="h-7.5 gap-1 px-2.5 text-xs" title="Recibo en hoja carta">
+                                        <DownloadSimple size={13} /> Recibo Carta
+                                      </Button>
+                                      {!mov.anulado && puedeAnularRecibo && Number(mov.pago_id) === ultimoPagoVigente && (
+                                        <Button size="sm" variant="outline" onClick={() => { setReciboAnular({ pagoId: Number(mov.pago_id), documento: mov.documento, abono: Number(mov.abono || 0) }); setMotivoAnulacion('') }} className="aviso-caja-cerrada h-7.5 border-0 px-2 text-xs">
+                                          Anular
+                                        </Button>
+                                      )}
+                                    </div>
+                                  ) : null}
                                 </td>
                               </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {kardexMovimientos.length > 0 && (
-                <div>
-                  <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground mb-2">
-                    Kardex de movimientos
-                  </h4>
-
-                  {/* Vista móvil para Kardex */}
-                  <div className="md:hidden max-h-[35vh] overflow-y-auto space-y-2 pr-1">
-                    {kardexMovimientos.map((mov, idx) => (
-                      <div key={`${mov.documento || 'mov'}-${idx}`} className="p-2.5 rounded-lg border bg-muted/20 text-xs space-y-1.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono font-bold text-foreground">{mov.documento || '—'}</span>
-                          <span className="text-muted-foreground text-[0.7rem]">{formatFechaCorta(mov.fecha)}</span>
-                        </div>
-                        <p className="text-muted-foreground text-[0.75rem]">{mov.concepto}</p>
-                        <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[0.75rem]">
-                          <div>
-                            <span className="text-muted-foreground">Abono: </span>
-                            <span className="font-bold text-emerald-600">Q{Number(mov.abono || 0).toLocaleString()}</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Saldo: </span>
-                            <span className="font-bold text-foreground">Q{Number(mov.saldo || 0).toLocaleString()}</span>
-                          </div>
-                        </div>
-                        {mov.pago_id && (
-                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                            {mov.anulado && <Badge variant="outline" className="text-[0.625rem]">Anulado</Badge>}
-                            <Button size="sm" variant="outline" onClick={() => handleDescargarReciboPdf(mov.pago_id, mov.documento)} disabled={descargandoDoc === 'recibo'} className="h-7 flex-1 gap-1 px-2 text-[0.6875rem]">
-                              <DownloadSimple size={12} /> Recibo
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => handleDescargarTicketPdf(mov.pago_id, mov.documento)} disabled={descargandoDoc === 'ticket'} className="h-7 flex-1 gap-1 px-2 text-[0.6875rem]">
-                              <Printer size={12} /> Ticket
-                            </Button>
-                            {!mov.anulado && puedeAnularRecibo && Number(mov.pago_id) === ultimoPagoVigente && (
-                              <Button size="sm" variant="outline" onClick={() => { setReciboAnular({ pagoId: Number(mov.pago_id), documento: mov.documento, abono: Number(mov.abono || 0) }); setMotivoAnulacion('') }} className="aviso-caja-cerrada h-7 border-0 px-2 text-[0.6875rem]">
-                                Anular
-                              </Button>
-                            )}
-                          </div>
-                        )}
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
-                    ))}
+                    </>
+                  )}
+                </TabsContent>
+
+                {/* TAB 2: CRONOGRAMA DE CUOTAS */}
+                <TabsContent value="plan" className="space-y-3 mt-3 focus-visible:outline-none">
+                  <div className="flex flex-wrap items-center justify-between gap-1.5">
+                    <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+                      Cronograma de Cuotas & Amortización
+                    </h4>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato('pagada')}`}>Pagada</span>
+                      <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato('pendiente')}`}>Pendiente</span>
+                      <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato('vencida')}`}>Vencida</span>
+                    </div>
                   </div>
 
-                  {/* Vista Desktop para Kardex */}
-                  <div className="hidden md:block max-h-[28vh] overflow-auto border rounded-xl">
-                    <table className="w-full text-left text-xs min-w-[520px]">
-                      <thead className="bg-muted/60 sticky top-0 border-b">
-                        <tr>
-                          <th className="p-2">Fecha</th>
-                          <th className="p-2">Documento</th>
-                          <th className="p-2">Concepto</th>
-                          <th className="p-2">Abono</th>
-                          <th className="p-2">Saldo</th>
-                          <th className="p-2">Recibo</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {kardexMovimientos.map((mov, idx) => (
-                          <tr key={`${mov.documento || 'mov'}-${idx}`}>
-                            <td className="p-2 whitespace-nowrap">{formatFechaCorta(mov.fecha)}</td>
-                            <td className="p-2 font-mono">{mov.documento || '—'}</td>
-                            <td className="p-2">{mov.concepto}</td>
-                            <td className="p-2">Q{Number(mov.abono || 0).toLocaleString()}</td>
-                            <td className="p-2">Q{Number(mov.saldo || 0).toLocaleString()}</td>
-                            <td className="p-2">
-                              {mov.pago_id ? (
-                                <div className="flex flex-wrap items-center gap-1">
-                                  {mov.anulado && <Badge variant="outline" className="text-[0.625rem]">Anulado</Badge>}
-                                  <Button size="sm" variant="outline" onClick={() => handleDescargarReciboPdf(mov.pago_id, mov.documento)} disabled={descargandoDoc === 'recibo'} className="h-7 gap-1 px-2 text-[0.625rem]" title="Recibo en hoja carta">
-                                    <DownloadSimple size={12} /> Recibo
-                                  </Button>
-                                  <Button size="sm" variant="outline" onClick={() => handleDescargarTicketPdf(mov.pago_id, mov.documento)} disabled={descargandoDoc === 'ticket'} className="h-7 gap-1 px-2 text-[0.625rem]" title="Ticket de 80 mm para impresora térmica">
-                                    <Printer size={12} /> Ticket
-                                  </Button>
-                                  {!mov.anulado && puedeAnularRecibo && Number(mov.pago_id) === ultimoPagoVigente && (
-                                    <Button size="sm" variant="outline" onClick={() => { setReciboAnular({ pagoId: Number(mov.pago_id), documento: mov.documento, abono: Number(mov.abono || 0) }); setMotivoAnulacion('') }} className="aviso-caja-cerrada h-7 border-0 px-2 text-[0.625rem]">
-                                      Anular
-                                    </Button>
-                                  )}
+                  {cargandoEstadoCuenta ? (
+                    <div className="p-6 text-center text-xs text-muted-foreground border rounded-xl">
+                      Cargando plan de pagos...
+                    </div>
+                  ) : cuotasPlan(negociacionSeleccionada).length === 0 ? (
+                    <div className="p-6 text-center text-xs text-muted-foreground border rounded-xl">
+                      {negociacionSeleccionada.tipo_negociacion === 'credito' && Number(negociacionSeleccionada.enganche_pagado || 0) + 0.009 < Number(negociacionSeleccionada.enganche_pactado || 0)
+                        ? 'El cronograma se genera al completar el enganche pactado.'
+                        : 'Aún no hay cuotas registradas para esta negociación.'}
+                    </div>
+                  ) : (
+                    <>
+                      {/* Vista móvil: Cards compactos legibles sin scroll horizontal */}
+                      <div className="md:hidden max-h-[52vh] overflow-y-auto space-y-2 pr-1">
+                        {cuotasPlan(negociacionSeleccionada).map((cuota: any) => {
+                          const cargos = Number(cuota.otros_cargos || 0)
+                          const cargosPagados = Number(cuota.otros_cargos_pagados || 0)
+                          const marca = marcaCuotaContrato(cuota)
+                          return (
+                            <div key={cuota.id || cuota.numero_cuota} className={`p-2.5 rounded-lg border text-xs space-y-1.5 ${claseCuotaContrato(marca)}`}>
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-foreground">
+                                  Cuota #{cuota.numero_cuota}
+                                  <span className="ml-2 font-normal text-muted-foreground">{formatFechaCorta(cuota.fecha_vencimiento)}</span>
+                                </span>
+                                <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato(marca)}`}>
+                                  {textoCuotaContrato(marca)}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[0.7rem] pt-1 border-t border-border/40">
+                                <div>
+                                  <span className="text-muted-foreground">Capital: </span>
+                                  <span className="font-medium text-foreground">Q{Number(cuota.cuota_capital).toLocaleString()}</span>
                                 </div>
-                              ) : null}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                                <div>
+                                  <span className="text-muted-foreground">Interés: </span>
+                                  <span className="font-medium text-foreground">Q{Number(cuota.cuota_interes || 0).toLocaleString()}</span>
+                                </div>
+                                {cargos > 0 && (
+                                  <div className="col-span-2">
+                                    <span className="text-muted-foreground">Cargos/Mora: </span>
+                                    <span className="font-medium text-foreground">Q{cargos.toLocaleString()}</span>
+                                    {cargosPagados + 0.009 >= cargos ? (
+                                      <Badge className="ml-1 bg-emerald-500/20 text-emerald-600 text-[0.5rem]">PAGADO</Badge>
+                                    ) : cargosPagados > 0 ? (
+                                      <Badge variant="outline" className="ml-1 text-[0.5rem]">PARCIAL</Badge>
+                                    ) : null}
+                                  </div>
+                                )}
+                                <div>
+                                  <span className="text-muted-foreground">Cuota Total: </span>
+                                  <span className="font-bold text-foreground">Q{Number(cuota.cuota_monto_total).toLocaleString()}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Saldo: </span>
+                                  <span className="font-medium text-foreground">Q{Number(cuota.saldo_capital_restante).toLocaleString()}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* Vista Desktop / Tablet: Tabla completa con scroll */}
+                      <div className="hidden md:block max-h-[44vh] overflow-auto border rounded-xl">
+                        <table className="w-full text-left text-xs min-w-[640px]">
+                          <thead className="bg-muted/60 sticky top-0 border-b">
+                            <tr>
+                              <th className="p-2">No.</th>
+                              <th className="p-2">Vencimiento</th>
+                              <th className="p-2">Capital</th>
+                              <th className="p-2">Interés</th>
+                              <th className="p-2">Cargos</th>
+                              <th className="p-2">Cuota Total</th>
+                              <th className="p-2">Saldo</th>
+                              <th className="p-2">Estado</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {cuotasPlan(negociacionSeleccionada).map((cuota: any) => {
+                              const cargos = Number(cuota.otros_cargos || 0)
+                              const cargosPagados = Number(cuota.otros_cargos_pagados || 0)
+                              const marca = marcaCuotaContrato(cuota)
+                              return (
+                                <tr key={cuota.id || cuota.numero_cuota} className={claseCuotaContrato(marca)}>
+                                  <td className="p-2 font-mono">{cuota.numero_cuota}</td>
+                                  <td className="p-2 whitespace-nowrap">{formatFechaCorta(cuota.fecha_vencimiento)}</td>
+                                  <td className="p-2">Q{Number(cuota.cuota_capital).toLocaleString()}</td>
+                                  <td className="p-2">Q{Number(cuota.cuota_interes || 0).toLocaleString()}</td>
+                                  <td className="p-2">
+                                    {cargos > 0 ? (
+                                      <span title={`Pagado Q${cargosPagados.toLocaleString()}`}>
+                                        Q{cargos.toLocaleString()}
+                                        {cargosPagados + 0.009 >= cargos ? (
+                                          <Badge className="ml-1 bg-emerald-500/20 text-emerald-600 text-[0.5rem]">PAGADO</Badge>
+                                        ) : cargosPagados > 0 ? (
+                                          <Badge variant="outline" className="ml-1 text-[0.5rem]">PARCIAL</Badge>
+                                        ) : null}
+                                      </span>
+                                    ) : '—'}
+                                  </td>
+                                  <td className="p-2 font-bold">Q{Number(cuota.cuota_monto_total).toLocaleString()}</td>
+                                  <td className="p-2">Q{Number(cuota.saldo_capital_restante).toLocaleString()}</td>
+                                  <td className="p-2">
+                                    <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato(marca)}`}>{textoCuotaContrato(marca)}</span>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                </TabsContent>
+
+                {/* TAB 3: CONDICIONES FINANCIERAS */}
+                <TabsContent value="resumen" className="space-y-3 mt-3 focus-visible:outline-none">
+                  {resumenMoraContrato(negociacionSeleccionada) && (
+                    <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 text-xs">
+                      <span className="font-semibold text-amber-700 dark:text-amber-400 block mb-0.5">Mora de este contrato:</span>
+                      <span className="text-muted-foreground">{resumenMoraContrato(negociacionSeleccionada)}</span>
+                    </div>
+                  )}
+
+                  {negociacionSeleccionada.tipo_negociacion === 'credito' && (
+                    <div className="p-3 rounded-xl border bg-muted/40 text-xs space-y-1">
+                      <span className="font-semibold block">Sistema de amortización:</span>
+                      <p className="text-muted-foreground">
+                        {etiquetaSistema(negociacionSeleccionada.sistema_amortizacion)}
+                        {negociacionSeleccionada.politica_abono_extra === 'reducir_cuota'
+                          ? ' · Los abonos extras reducen el valor de las cuotas futuras'
+                          : ' · Los abonos extras reducen el plazo total'}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="p-3 rounded-xl border bg-card text-xs space-y-2">
+                    <span className="font-semibold block text-foreground">Detalle del Contrato</span>
+                    <div className="grid grid-cols-2 gap-2 text-muted-foreground">
+                      <div>
+                        <span className="block text-[0.6875rem]">Comprador</span>
+                        <strong className="text-foreground">{negociacionSeleccionada.cliente?.nombre || negociacionSeleccionada.comprador?.nombre || '—'}</strong>
+                      </div>
+                      <div>
+                        <span className="block text-[0.6875rem]">DPI / Identificación</span>
+                        <strong className="text-foreground">{negociacionSeleccionada.cliente?.dpi || negociacionSeleccionada.comprador?.dpi || '—'}</strong>
+                      </div>
+                      <div>
+                        <span className="block text-[0.6875rem]">Lote</span>
+                        <strong className="text-foreground">{negociacionSeleccionada.lote?.numero_lote || '—'}</strong>
+                      </div>
+                      <div>
+                        <span className="block text-[0.6875rem]">Plazo</span>
+                        <strong className="text-foreground">{negociacionSeleccionada.plazo_meses ? `${negociacionSeleccionada.plazo_meses} meses` : 'Contado'}</strong>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
+                </TabsContent>
+              </Tabs>
             </div>
 
             <DialogFooter className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 w-full pt-3 border-t">

@@ -4,6 +4,11 @@ namespace App\Services\Inmobiliario;
 
 class AmlTerrenoService
 {
+    public function estaActivo(): bool
+    {
+        return (bool) config('inmobiliario.aml.activo', false);
+    }
+
     public function umbralQuetzales(): float
     {
         $usd = (float) config('inmobiliario.aml.umbral_usd', 10000);
@@ -14,6 +19,10 @@ class AmlTerrenoService
 
     public function esEfectivoReportable(string $metodoPago, float $monto): bool
     {
+        if (! $this->estaActivo()) {
+            return false;
+        }
+
         return $metodoPago === 'efectivo' && $monto >= $this->umbralQuetzales();
     }
 
@@ -23,6 +32,16 @@ class AmlTerrenoService
     public function validarContadoEfectivo(string $metodoPago, float $monto, ?string $dpi, ?string $origenFondos): array
     {
         $umbral = $this->umbralQuetzales();
+
+        // Desactivado temporalmente según solicitud
+        if (! $this->estaActivo()) {
+            return [
+                'ok' => true,
+                'reportable' => false,
+                'umbral_gtq' => $umbral,
+            ];
+        }
+
         $reportable = $this->esEfectivoReportable($metodoPago, $monto);
 
         if ($reportable && (empty($dpi) || empty($origenFondos))) {

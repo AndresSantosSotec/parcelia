@@ -23,6 +23,7 @@ class StorePagoTerrenoRequest extends FormRequest
             'origen_fondos' => 'nullable|string|max:255',
             'caja_apertura_cierre_id' => 'nullable|exists:caja_apertura_cierres,id',
             'idempotency_key' => 'nullable|string|max:64',
+            'fecha_pago' => 'nullable|date',
         ];
     }
 }

@@ -5,7 +5,8 @@ import * as FileSystem from 'expo-file-system'
 import * as Sharing from 'expo-sharing'
 import { StatusBar } from 'expo-status-bar'
 
-const APP_URL = 'https://terra.stockgenius-sotecpro.com'
+const APP_URL = 'https://kottaninmobiliaria.stockgenius-sotecpro.com/'
+const APP_NOMBRE = 'Kottan'
 
 export default function App() {
   const web = useRef<WebView>(null)
@@ -72,7 +73,7 @@ export default function App() {
       {cargando ? (
         <View style={estilos.carga}>
           <ActivityIndicator size="large" color="#047857" />
-          <Text style={estilos.texto}>Abriendo TerraCloud</Text>
+          <Text style={estilos.texto}>Abriendo {APP_NOMBRE}</Text>
         </View>
       ) : null}
     </View>

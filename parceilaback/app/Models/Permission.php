@@ -24,12 +24,18 @@ class Permission extends Model
         return $this->belongsToMany(User::class, 'user_permissions');
     }
 
+    private static bool $definitionsEnsured = false;
+
     /**
      * Crea en BD cualquier par (módulo, acción) definido en $permisosPorModulo que aún no exista.
      * syncPermissions() solo enlaza IDs existentes; sin esto, permisos nuevos se ignoraban en silencio.
      */
     public static function ensureDefinitionsInDatabase(): void
     {
+        if (self::$definitionsEnsured) {
+            return;
+        }
+
         foreach (self::$permisosPorModulo as $modulo => $acciones) {
             foreach ($acciones as $accion) {
                 $descripcion = match ("{$modulo}.{$accion}") {
@@ -58,6 +64,8 @@ class Permission extends Model
                 );
             }
         }
+
+        self::$definitionsEnsured = true;
     }
 
     /**
@@ -109,16 +117,20 @@ class Permission extends Model
         'administrador' => '*', // Operación completa (incluye contabilidad); la UI oculta auditoría/migración de soporte
         'cajero' => [
             'dashboard' => ['ver'],
-            'clientes' => ['ver', 'crear'],
+            'clientes' => ['ver', 'crear', 'editar'],
             'creditos' => ['ver', 'crear'],
             'refrendos' => ['ver', 'validar', 'calcular', 'procesar'],
             'compras' => ['ver', 'crear'],
             'caja' => ['abrir', 'cerrar', 'ver_movimientos'],
+            'boveda' => ['ver', 'movimientos', 'reportes'],
             'fincas' => ['ver'],
+            'compra_fincas' => ['ver', 'editar', 'reportes'],
+            'financistas' => ['ver', 'pagar', 'reportes'],
+            'comisionistas' => ['ver', 'pagar', 'reportes'],
             'lotes' => ['ver'],
-            'negociaciones' => ['ver'],
+            'negociaciones' => ['ver', 'contrato'],
             'pagos_terreno' => ['ver', 'cobrar'],
-            'reportes_inmobiliarios' => ['generar'],
+            'reportes_inmobiliarios' => ['generar', 'exportar'],
             'prendas' => ['ver'],
             'gastos' => ['ver', 'asignar_credito'],
             'cobros' => ['realizar', 'ver', 'imprimir_recibo'],
@@ -135,11 +147,16 @@ class Permission extends Model
             'ventas' => ['ver', 'tasar'],
             'compras' => ['ver', 'crear'],
             'planes_interes' => ['ver'],
+            'fincas' => ['ver'],
+            'lotes' => ['ver'],
         ],
         'vendedor' => [
             'dashboard' => ['ver'],
-            'clientes' => ['ver', 'crear'],
+            'clientes' => ['ver', 'crear', 'editar'],
             'fincas' => ['ver', 'crear', 'editar'],
+            'compra_fincas' => ['ver', 'crear', 'editar', 'reportes'],
+            'financistas' => ['ver', 'reportes'],
+            'comisionistas' => ['ver', 'editar', 'reportes'],
             'lotes' => ['ver', 'crear', 'editar', 'eliminar', 'servicios', 'imagenes'],
             'negociaciones' => ['ver', 'crear', 'contrato'],
             'pagos_terreno' => ['ver', 'cobrar'],
@@ -158,7 +175,16 @@ class Permission extends Model
         ],
         'supervisor' => [
             'dashboard' => ['ver'],
-            'clientes' => ['ver'],
+            'clientes' => ['ver', 'crear', 'editar'],
+            'fincas' => ['ver', 'crear', 'editar', 'desactivar'],
+            'compra_fincas' => ['ver', 'crear', 'editar', 'eliminar', 'reportes'],
+            'financistas' => ['ver', 'editar', 'pagar', 'reportes'],
+            'comisionistas' => ['ver', 'editar', 'pagar', 'reglas', 'reportes'],
+            'lotes' => ['ver', 'crear', 'editar', 'eliminar', 'servicios', 'imagenes'],
+            'negociaciones' => ['ver', 'crear', 'ajustar_condiciones', 'rescindir', 'contrato'],
+            'pagos_terreno' => ['ver', 'cobrar', 'anular'],
+            'tasas_inmobiliarias' => ['ver', 'crear', 'editar', 'desactivar'],
+            'reportes_inmobiliarios' => ['generar', 'exportar'],
             'refrendos' => ['ver', 'validar', 'calcular', 'procesar'],
             'creditos' => ['ver', 'renovar'],
             'compras' => ['ver', 'crear', 'editar'],
@@ -166,7 +192,8 @@ class Permission extends Model
             'ventas' => ['ver', 'modificar_precio', 'aplicar_descuento'],
             'reportes' => ['generar', 'exportar'],
             'remates' => ['ver'],
-            'caja' => ['ver_movimientos'],
+            'caja' => ['abrir', 'cerrar', 'ver_movimientos', 'gestionar_cajas'],
+            'boveda' => ['ver', 'movimientos', 'aprobar', 'reportes'],
             'categorias_productos' => ['ver', 'crear', 'editar'],
             'gastos' => ['ver', 'crear', 'editar', 'asignar_credito'],
             'cobros' => ['realizar', 'ver', 'imprimir_recibo'],
@@ -175,7 +202,7 @@ class Permission extends Model
             'otros_gastos' => ['ver', 'crear', 'anular'],
             'cotizaciones' => ['ver', 'crear', 'editar', 'eliminar', 'convertir'],
             'planes_interes' => ['ver'],
-            'transferencias' => ['ver'],
+            'transferencias' => ['ver', 'crear', 'aprobar', 'anular'],
         ],
     ];
 }

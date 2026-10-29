@@ -425,7 +425,9 @@ class NegociacionController extends Controller
                         'Venta de contado',
                         $validated['observaciones'] ?? null,
                         null,
-                        $validated['origen_fondos'] ?? null
+                        $validated['origen_fondos'] ?? null,
+                        null,
+                        $fechaNegociacion->toDateString()
                     );
                 } else {
                     $loteEstado->transicionar($lote, 'en_negociacion');
@@ -440,6 +442,96 @@ class NegociacionController extends Controller
                         : 'Operación registrada.',
                 ], 201);
             });
+        } catch (\InvalidArgumentException|\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+    }
+
+    /**
+     * Actualizar fechas de una negociación / contrato existente (permite fechas anteriores y recalcula cronograma).
+     */
+    public function actualizarFechas(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'fecha_negociacion' => 'required|date',
+            'fecha_primer_pago' => 'nullable|date|after_or_equal:fecha_negociacion',
+            'sincronizar_pagos_iniciales' => 'nullable|boolean',
+        ]);
+
+        try {
+            $negociacion = DB::transaction(function () use ($validated, $request, $id) {
+                $negociacion = Negociacion::lockForUpdate()->findOrFail($id);
+
+                if ($negociacion->estado === 'rescindida') {
+                    throw new \InvalidArgumentException('No se pueden modificar las fechas de una negociación rescindida.');
+                }
+
+                $fechaNegociacion = Carbon::parse($validated['fecha_negociacion']);
+                $periodoPago = FinancingService::normalizarPeriodo($negociacion->periodo_pago ?? 'mensual');
+                $pasoPago = FinancingService::mesesDePeriodo($periodoPago);
+                $plazoMeses = max(1, (int) ($negociacion->plazo_meses ?: 1));
+                $numeroCuotas = $negociacion->tipo_negociacion === 'credito'
+                    ? FinancingService::numeroCuotas($plazoMeses, $periodoPago)
+                    : 0;
+
+                $fechaPrimerPago = !empty($validated['fecha_primer_pago'])
+                    ? Carbon::parse($validated['fecha_primer_pago'])
+                    : $fechaNegociacion->copy()->addMonths($pasoPago);
+
+                $fechaVencimientoContrato = $pasoPago === 1
+                    ? $fechaPrimerPago->copy()->addMonths($plazoMeses)
+                    : $fechaPrimerPago->copy()->addMonths(max(0, $numeroCuotas - 1) * $pasoPago);
+
+                $negociacion->fecha_negociacion = $fechaNegociacion->toDateString();
+                $negociacion->fecha_primer_pago = $fechaPrimerPago->toDateString();
+                $negociacion->fecha_vencimiento_contrato = $fechaVencimientoContrato->toDateString();
+                $negociacion->save();
+
+                // Recalcular fechas de vencimiento de las cuotas del plan de pagos si existen
+                $cuotas = PlanPagoTerreno::where('negociacion_id', $negociacion->id)
+                    ->orderBy('numero_cuota')
+                    ->lockForUpdate()
+                    ->get();
+
+                if ($cuotas->isNotEmpty()) {
+                    foreach ($cuotas as $idx => $cuota) {
+                        $num = max(1, (int) ($cuota->numero_cuota ?: ($idx + 1)));
+                        $nuevaFechaVenc = $fechaPrimerPago->copy()->addMonths(($num - 1) * $pasoPago)->format('Y-m-d');
+                        $cuota->fecha_vencimiento = $nuevaFechaVenc;
+                        $cuota->save();
+                    }
+
+                    app(\App\Services\Inmobiliario\MoraTerrenoService::class)
+                        ->recargarNegociacion($negociacion->fresh());
+                }
+
+                // Si se solicita sincronizar la fecha de pagos iniciales (contado o enganche) con la fecha de venta
+                $sincronizarPagos = $request->boolean('sincronizar_pagos_iniciales', true);
+                if ($sincronizarPagos) {
+                    $pagosIniciales = PagoTerreno::where('negociacion_id', $negociacion->id)
+                        ->whereIn('tipo_pago', ['pago_total', 'enganche'])
+                        ->get();
+
+                    foreach ($pagosIniciales as $pago) {
+                        $pago->fecha_pago = $fechaNegociacion->copy()->setTimeFrom(Carbon::parse($pago->fecha_pago ?? now()));
+                        $pago->save();
+
+                        if ($pago->recibo_id) {
+                            \App\Models\Recibo::where('id', $pago->recibo_id)->update([
+                                'fecha' => $fechaNegociacion->copy()->startOfDay(),
+                            ]);
+                        }
+                    }
+                }
+
+                return $negociacion->fresh()->load(['comprador', 'lote.parcela.finca', 'planPagos', 'pagos', 'gastos', 'parametrizacionMora']);
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $negociacion,
+                'message' => 'Fechas de la venta y cronograma actualizados correctamente.',
+            ]);
         } catch (\InvalidArgumentException|\RuntimeException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
         }

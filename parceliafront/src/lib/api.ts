@@ -1805,6 +1805,16 @@ export const negociacionService = {
   create: (data: any) => {
     return api.post<Negociacion>('/negociaciones', data)
   },
+  actualizarFechas: (
+    id: number,
+    data: {
+      fecha_negociacion: string
+      fecha_primer_pago?: string
+      sincronizar_pagos_iniciales?: boolean
+    }
+  ) => {
+    return api.put<Negociacion>(`/negociaciones/${id}/fechas`, data)
+  },
   rescindir: (id: number, motivo: string) => {
     return api.post<Negociacion>(`/negociaciones/${id}/rescindir`, { motivo })
   },
@@ -1825,6 +1835,7 @@ export const pagoTerrenoService = {
     referencia_bancaria?: string
     observaciones?: string
     caja_apertura_cierre_id?: number
+    fecha_pago?: string
   }) => {
     return api.post<any>('/pagos-terrenos', data)
   },

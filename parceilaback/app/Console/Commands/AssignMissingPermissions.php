@@ -15,6 +15,8 @@ class AssignMissingPermissions extends Command
      */
     protected $signature = 'permissions:assign-missing
                             {--force : Reasignar permisos incluso si el usuario ya tiene algunos}
+                            {--reset : Reemplazar permisos personalizados por los exactos del rol}
+                            {--all : Asignar TODOS los permisos del sistema a todos los usuarios}
                             {--rol= : Solo asignar a usuarios con un rol específico}';
 
     /**
@@ -22,19 +24,20 @@ class AssignMissingPermissions extends Command
      *
      * @var string
      */
-    protected $description = 'Asignar permisos por defecto a usuarios que no tienen permisos o reasignar según su rol';
+    protected $description = 'Sincronizar y asignar automáticamente todos los permisos de cada rol a los usuarios existentes en base de datos';
 
     /**
      * Execute the console command.
      */
     public function handle(): int
     {
-        $this->info('🔐 Asignando permisos a usuarios...');
+        $this->info('🔐 Sincronizando catálogo de permisos y asignando por rol a usuarios...');
         $this->newLine();
 
         // Asegurar que todos los permisos estén en la base de datos
         Permission::ensureDefinitionsInDatabase();
-        $this->info('✅ Permisos verificados en base de datos');
+        $allPermissionIds = Permission::all()->pluck('id')->toArray();
+        $this->info('✅ Catálogo verificado: ' . count($allPermissionIds) . ' permisos en base de datos');
         $this->newLine();
 
         $query = User::with('permissions');
@@ -49,7 +52,7 @@ class AssignMissingPermissions extends Command
         $totalUsuarios = $usuarios->count();
 
         if ($totalUsuarios === 0) {
-            $this->warn('⚠️  No se encontraron usuarios');
+            $this->warn('⚠️  No se encontraron usuarios en la base de datos');
             return 0;
         }
 
@@ -58,28 +61,30 @@ class AssignMissingPermissions extends Command
 
         $procesados = 0;
         $actualizados = 0;
-        $omitidos = 0;
+        $rolesValidos = ['superadmin', 'administrador', 'cajero', 'tasador', 'supervisor', 'vendedor'];
 
         foreach ($usuarios as $usuario) {
             $procesados++;
-            $tienePermisos = $usuario->permissions->count() > 0;
-            $force = $this->option('force');
-
             $prefix = "[{$procesados}/{$totalUsuarios}]";
 
-            // Si tiene permisos y no se forzó, omitir
-            if ($tienePermisos && !$force) {
-                $this->line("{$prefix} ⏭️  {$usuario->name} ({$usuario->rol}) - Ya tiene permisos");
-                $omitidos++;
-                continue;
+            // Normalizar el rol en BD si tenía alias (ej. admin, gerente, asesor) o mayúsculas
+            $rolNormalizado = $usuario->normalizedRole();
+            if ($usuario->rol !== $rolNormalizado && in_array($rolNormalizado, $rolesValidos, true)) {
+                $usuario->rol = $rolNormalizado;
+                $usuario->saveQuietly();
             }
 
-            // Asignar permisos por defecto según el rol
-            $usuario->assignDefaultPermissions();
-            $actualizados++;
+            if ($this->option('all')) {
+                $usuario->permissions()->sync($allPermissionIds);
+            } else {
+                // Asignar todos los permisos correspondientes a su rol (conservando extras salvo --reset)
+                $preserveCustom = !$this->option('reset');
+                $usuario->assignDefaultPermissions($preserveCustom);
+            }
 
+            $actualizados++;
             $permisos = $usuario->permissions()->count();
-            $this->info("{$prefix} ✅ {$usuario->name} ({$usuario->rol}) - {$permisos} permisos asignados");
+            $this->info("{$prefix} ✅ {$usuario->name} ({$usuario->username} | rol: {$usuario->rol}) -> {$permisos} permisos activos");
         }
 
         $this->newLine();
@@ -87,17 +92,10 @@ class AssignMissingPermissions extends Command
         $this->info('                     RESUMEN                           ');
         $this->info('═══════════════════════════════════════════════════════');
         $this->info("📊 Total usuarios:      {$totalUsuarios}");
-        $this->info("✅ Actualizados:        {$actualizados}");
-        $this->info("⏭️  Omitidos:            {$omitidos}");
+        $this->info("✅ Sincronizados:       {$actualizados}");
         $this->info('═══════════════════════════════════════════════════════');
         $this->newLine();
-
-        if ($actualizados > 0) {
-            $this->info('🎉 Permisos asignados exitosamente');
-        } else {
-            $this->warn('⚠️  No se asignaron permisos (todos los usuarios ya tenían permisos)');
-            $this->info('💡 Usa --force para reasignar permisos según el rol actual');
-        }
+        $this->info('🎉 Todos los usuarios tienen los permisos completos de su rol.');
 
         return 0;
     }

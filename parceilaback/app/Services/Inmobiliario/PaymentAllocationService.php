@@ -33,7 +33,8 @@ class PaymentAllocationService
         ?string $observaciones = null,
         ?int $cajaAperturaId = null,
         ?string $origenFondos = null,
-        ?string $idempotencyKey = null
+        ?string $idempotencyKey = null,
+        ?string $fechaPago = null
     ): PagoTerreno {
         if ($montoTotal <= 0) {
             throw new InvalidArgumentException('El monto a pagar debe ser mayor a cero.');
@@ -54,8 +55,12 @@ class PaymentAllocationService
             $observaciones,
             $cajaAperturaId,
             $origenFondos,
-            $idempotencyKey
+            $idempotencyKey,
+            $fechaPago
         ) {
+            $fechaEfectiva = !empty($fechaPago)
+                ? Carbon::parse($fechaPago)
+                : Carbon::now();
             $negociacion = Negociacion::lockForUpdate()->findOrFail($negociacion->id);
             $negociacion->loadMissing(['lote', 'comprador', 'planPagos']);
 
@@ -104,20 +109,21 @@ class PaymentAllocationService
             if ($tipoPago === 'enganche') {
                 [$distCapital, $saldoPosterior] = $this->aplicarEnganche($negociacion, $montoTotal, $saldoAnterior);
             } elseif ($tipoPago === 'abono_capital') {
-                [$distCapital, $saldoPosterior] = $this->aplicarAbonoCapital($negociacion, $montoTotal, $saldoAnterior);
+                [$distCapital, $saldoPosterior] = $this->aplicarAbonoCapital($negociacion, $montoTotal, $saldoAnterior, $fechaEfectiva);
             } else {
                 [$distMora, $distInteres, $distGastos, $distCapital, $saldoPosterior] = $this->aplicarPrelacion(
                     $negociacion,
                     $montoTotal,
                     $saldoAnterior,
-                    $configMora
+                    $configMora,
+                    $fechaEfectiva
                 );
             }
 
             $this->actualizarEstadoTrasPago($negociacion, $saldoPosterior);
 
             $numeroRecibo = $this->siguienteNumeroRecibo();
-            $reciboId = $this->emitirReciboCaja($negociacion, $cajaId, $userId, $numeroRecibo, $montoTotal, $tipoPago);
+            $reciboId = $this->emitirReciboCaja($negociacion, $cajaId, $userId, $numeroRecibo, $montoTotal, $tipoPago, $fechaEfectiva);
 
             $pago = PagoTerreno::create([
                 'numero_recibo' => $numeroRecibo,
@@ -137,7 +143,7 @@ class PaymentAllocationService
                 'saldo_posterior' => round($saldoPosterior, 2),
                 'metodo_pago' => $metodoPago,
                 'referencia_bancaria' => $referenciaBancaria,
-                'fecha_pago' => Carbon::now(),
+                'fecha_pago' => $fechaEfectiva,
                 'concepto' => $concepto ?? "Pago {$tipoPago} lote {$negociacion->lote->codigo_unico}",
                 'observaciones' => $observaciones,
                 'origen_fondos' => $origenFondos,
@@ -195,7 +201,7 @@ class PaymentAllocationService
         return [$distCapital, $saldoPosterior];
     }
 
-    private function aplicarAbonoCapital(Negociacion $negociacion, float $monto, float $saldoAnterior): array
+    private function aplicarAbonoCapital(Negociacion $negociacion, float $monto, float $saldoAnterior, ?Carbon $fechaEfectiva = null): array
     {
         $distCapital = min($monto, $saldoAnterior);
         $saldoPosterior = max(0.0, round($saldoAnterior - $distCapital, 2));
@@ -203,7 +209,7 @@ class PaymentAllocationService
         $negociacion->total_capital_pagado = round((float) $negociacion->total_capital_pagado + $distCapital, 2);
         $negociacion->save();
 
-        $this->reprogramarPorAbono($negociacion, $distCapital);
+        $this->reprogramarPorAbono($negociacion, $distCapital, $fechaEfectiva);
 
         return [$distCapital, $saldoPosterior];
     }
@@ -211,7 +217,7 @@ class PaymentAllocationService
     /**
      * Prelación: mora → interés → otros cargos → capital.
      */
-    private function aplicarPrelacion(Negociacion $negociacion, float $monto, float $saldoAnterior, $configMora = null): array
+    private function aplicarPrelacion(Negociacion $negociacion, float $monto, float $saldoAnterior, $configMora = null, ?Carbon $fechaEfectiva = null): array
     {
         $restante = $monto;
         $distMora = $distInteres = $distGastos = $distCapital = 0.0;
@@ -269,7 +275,7 @@ class PaymentAllocationService
                 && ((float) ($cuota->otros_cargos_pagados ?? 0) + 0.009 >= (float) ($cuota->otros_cargos ?? 0));
             if ($completa) {
                 $cuota->estado = 'pagada';
-                $cuota->fecha_pagado = Carbon::now()->format('Y-m-d');
+                $cuota->fecha_pagado = ($fechaEfectiva ?? Carbon::now())->format('Y-m-d');
             } else {
                 $cuota->estado = 'parcial';
             }
@@ -278,7 +284,7 @@ class PaymentAllocationService
 
         if ($restante > 0) {
             $distCapital += $restante;
-            $this->reprogramarPorAbono($negociacion, $restante);
+            $this->reprogramarPorAbono($negociacion, $restante, $fechaEfectiva);
             $restante = 0;
         }
 
@@ -295,7 +301,7 @@ class PaymentAllocationService
         return [$distMora, $distInteres, $distGastos, $distCapital, $saldoPosterior];
     }
 
-    private function reprogramarPorAbono(Negociacion $negociacion, float $abonoCapital): void
+    private function reprogramarPorAbono(Negociacion $negociacion, float $abonoCapital, ?Carbon $fechaEfectiva = null): void
     {
         if ($abonoCapital <= 0) {
             return;
@@ -340,7 +346,7 @@ class PaymentAllocationService
             if ((float) $cuota->capital_pagado + 0.009 >= (float) $cuota->cuota_capital
                 && (float) $cuota->interes_pagado + 0.009 >= (float) $cuota->cuota_interes) {
                 $cuota->estado = 'pagada';
-                $cuota->fecha_pagado = Carbon::now()->format('Y-m-d');
+                $cuota->fecha_pagado = ($fechaEfectiva ?? Carbon::now())->format('Y-m-d');
             }
             $cuota->save();
         }
@@ -379,7 +385,7 @@ class PaymentAllocationService
         return sprintf('REC-TER-%s-%05d', $anio, $n);
     }
 
-    private function emitirReciboCaja(Negociacion $negociacion, int $cajaId, ?int $userId, string $numero, float $monto, string $tipoPago): ?int
+    private function emitirReciboCaja(Negociacion $negociacion, int $cajaId, ?int $userId, string $numero, float $monto, string $tipoPago, ?Carbon $fechaEfectiva = null): ?int
     {
         $sucursalId = $negociacion->sucursal_id ?: Auth::user()?->sucursal_id;
         if (!$sucursalId || !$userId) {
@@ -389,7 +395,7 @@ class PaymentAllocationService
         $recibo = Recibo::create([
             'numero_recibo' => $numero,
             'tipo' => 'ingreso',
-            'fecha' => Carbon::today(),
+            'fecha' => ($fechaEfectiva ?? Carbon::today())->copy()->startOfDay(),
             'serie' => 'TER',
             'cliente_id' => $negociacion->cliente_id,
             'caja_id' => $cajaId,

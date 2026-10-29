@@ -298,12 +298,21 @@ class AuthController extends Controller
      */
     private function formatUser(User $user): array
     {
+        // Si el usuario no tiene permisos cargados en BD, auto-asignar los permisos de su rol
+        try {
+            if ($user->permissions()->count() === 0) {
+                $user->assignDefaultPermissions(false);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('No se pudieron sincronizar permisos en formatUser: ' . $e->getMessage());
+        }
+
         $data = [
             'id' => (string) $user->id,
             'nombre' => $user->name,
             'username' => $user->username,
             'email' => $user->email,
-            'rol' => $user->rol,
+            'rol' => $user->normalizedRole(),
             'activo' => $user->activo,
             'sucursal_id' => $user->sucursal_id,
         ];

@@ -88,7 +88,7 @@ android {
 
     namespace 'com.terracloud.app'
     defaultConfig {
-        applicationId 'com.terracloud.app'
+        applicationId 'com.kottaninmobiliaria.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

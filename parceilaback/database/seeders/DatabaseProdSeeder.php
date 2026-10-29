@@ -83,6 +83,7 @@ class DatabaseProdSeeder extends Seeder
             ParametrizacionCuentasContablesSeeder::class,
             PlanesInteresCategoriaSeeder::class,
             VentaCreditoParametrizacionSeeder::class,
+            GuatemalaUbicacionSeeder::class,
         ]);
         $this->command->newLine();
 

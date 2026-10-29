@@ -31,9 +31,23 @@ function normalizarNegociacion(neg: any): Negociacion {
 
 function formatFechaCorta(valor?: string | null) {
   if (!valor) return '—'
+  const soloFecha = String(valor).slice(0, 10)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(soloFecha)) {
+    const [anio, mes, dia] = soloFecha.split('-').map(Number)
+    const dLocal = new Date(anio, mes - 1, dia)
+    if (!Number.isNaN(dLocal.getTime())) {
+      return dLocal.toLocaleDateString('es-GT')
+    }
+  }
   const d = new Date(valor)
-  if (Number.isNaN(d.getTime())) return String(valor).slice(0, 10)
+  if (Number.isNaN(d.getTime())) return soloFecha
   return d.toLocaleDateString('es-GT')
+}
+
+function normalizarInputFecha(valor?: string | null) {
+  if (!valor) return ''
+  const soloFecha = String(valor).slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(soloFecha) ? soloFecha : ''
 }
 
 const PERIODOS_PAGO = [
@@ -170,6 +184,13 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
   const [modalEstadoCuenta, setModalEstadoCuenta] = useState(false)
   const [modalRegistrarPago, setModalRegistrarPago] = useState(false)
   const [modalRescision, setModalRescision] = useState(false)
+  const [modalEditarFecha, setModalEditarFecha] = useState(false)
+  const [guardandoFecha, setGuardandoFecha] = useState(false)
+  const [formFecha, setFormFecha] = useState({
+    fecha_negociacion: '',
+    fecha_primer_pago: '',
+    sincronizar_pagos_iniciales: true,
+  })
   const [motivoRescision, setMotivoRescision] = useState('')
   const [negociacionSeleccionada, setNegociacionSeleccionada] = useState<Negociacion | null>(null)
   const [cargandoEstadoCuenta, setCargandoEstadoCuenta] = useState(false)
@@ -199,7 +220,8 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
     tasa_interes_anual: 6.0,
     sistema_amortizacion: 'frances',
     politica_abono_extra: 'reducir_plazo',
-    fecha_negociacion: new Date().toISOString().split('T')[0],
+    fecha_negociacion: fechaLocalHoy(),
+    fecha_primer_pago: '',
     observaciones: '',
     gas_ids: [] as number[],
     parametrizacion_mora_id: '',
@@ -222,7 +244,8 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
     monto: 0,
     metodo_pago: 'efectivo',
     referencia_bancaria: '',
-    observaciones: ''
+    observaciones: '',
+    fecha_pago: fechaLocalHoy(),
   })
   const [cajaPagoId, setCajaPagoId] = useState<number | null>(null)
   const [cajaPagoAbierta, setCajaPagoAbierta] = useState<boolean | null>(null)
@@ -339,7 +362,8 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
   const abrirNuevaNegociacion = () => {
     setFormVenta((prev) => ({
       ...formVentaInicial,
-      fecha_negociacion: new Date().toISOString().split('T')[0],
+      fecha_negociacion: fechaLocalHoy(),
+      fecha_primer_pago: '',
       parametrizacion_mora_id: prev.parametrizacion_mora_id,
     }))
     setFincaVentaId('')
@@ -384,11 +408,12 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
         periodo_pago: formVenta.periodo_pago,
         tasa_interes_anual: formVenta.tasa_interes_anual,
         metodo: formVenta.sistema_amortizacion as 'frances' | 'aleman' | 'americano' | 'plano',
+        fecha_primer_pago: formVenta.fecha_primer_pago || undefined,
       }).then(res => {
         if (res.success && res.data) setSimulacion(res.data)
       }).catch(console.error)
     }
-  }, [formVenta.tipo_negociacion, formVenta.precio_original, formVenta.descuento, formVenta.gastos_escrituracion, formVenta.enganche_pactado, formVenta.plazo_meses, formVenta.periodo_pago, formVenta.tasa_interes_anual, formVenta.sistema_amortizacion])
+  }, [formVenta.tipo_negociacion, formVenta.precio_original, formVenta.descuento, formVenta.gastos_escrituracion, formVenta.enganche_pactado, formVenta.plazo_meses, formVenta.periodo_pago, formVenta.tasa_interes_anual, formVenta.sistema_amortizacion, formVenta.fecha_primer_pago])
 
   const handleSeleccionarLote = (loteId: string) => {
     const lote = lotesDisponibles.find(l => l.id.toString() === loteId)
@@ -428,14 +453,18 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
     }
 
     try {
-      const res = await negociacionService.create({
+      const payload: Record<string, any> = {
         ...formVenta,
         cliente_id: parseInt(formVenta.cliente_id),
         lote_id: parseInt(formVenta.lote_id),
         parametrizacion_mora_id: formVenta.parametrizacion_mora_id
           ? parseInt(formVenta.parametrizacion_mora_id)
           : undefined,
-      })
+      }
+      if (!formVenta.fecha_primer_pago) {
+        delete payload.fecha_primer_pago
+      }
+      const res = await negociacionService.create(payload)
 
       if (res.success) {
         toast.success('Contrato de negociación y plan de pagos creados con éxito')
@@ -443,7 +472,7 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
         cargarDatos()
       }
     } catch (e: any) {
-      toast.error(e.response?.data?.message || 'Error al procesar la negociación')
+      toast.error(e?.message || e.response?.data?.message || 'Error al procesar la negociación')
     }
   }
 
@@ -465,6 +494,7 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
         referencia_bancaria: formPago.referencia_bancaria,
         observaciones: formPago.observaciones,
         caja_apertura_cierre_id: cajaPagoId,
+        fecha_pago: formPago.fecha_pago || undefined,
       })
 
       if (res.success) {
@@ -475,7 +505,14 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
           })
         }
         setModalRegistrarPago(false)
-        setFormPago({ tipo_pago: 'cuota_normal', monto: 0, metodo_pago: 'efectivo', referencia_bancaria: '', observaciones: '' })
+        setFormPago({
+          tipo_pago: 'cuota_normal',
+          monto: 0,
+          metodo_pago: 'efectivo',
+          referencia_bancaria: '',
+          observaciones: '',
+          fecha_pago: fechaLocalHoy(),
+        })
         cargarDatos()
       }
     } catch (e: any) {
@@ -637,10 +674,56 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
       monto: cuotaSugerida,
       metodo_pago: 'efectivo',
       referencia_bancaria: '',
-      observaciones: ''
+      observaciones: '',
+      fecha_pago: normalizarInputFecha(neg.fecha_negociacion) || fechaLocalHoy(),
     })
     setModalRegistrarPago(true)
     void verificarCajaParaPago()
+  }
+
+  const abrirEditarFecha = (neg: Negociacion) => {
+    setNegociacionSeleccionada(neg)
+    setFormFecha({
+      fecha_negociacion: normalizarInputFecha(neg.fecha_negociacion) || fechaLocalHoy(),
+      fecha_primer_pago: normalizarInputFecha(neg.fecha_primer_pago),
+      sincronizar_pagos_iniciales: true,
+    })
+    setModalEditarFecha(true)
+  }
+
+  const handleActualizarFechas = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!negociacionSeleccionada || !formFecha.fecha_negociacion) {
+      toast.error('Selecciona la fecha de la venta / contrato')
+      return
+    }
+    if (formFecha.fecha_primer_pago && formFecha.fecha_primer_pago < formFecha.fecha_negociacion) {
+      toast.error('La fecha del primer pago no puede ser anterior a la fecha de la venta')
+      return
+    }
+    setGuardandoFecha(true)
+    try {
+      const res = await negociacionService.actualizarFechas(negociacionSeleccionada.id, {
+        fecha_negociacion: formFecha.fecha_negociacion,
+        fecha_primer_pago: formFecha.fecha_primer_pago || undefined,
+        sincronizar_pagos_iniciales: formFecha.sincronizar_pagos_iniciales,
+      })
+      if (res.success) {
+        toast.success(res.message || 'Fechas de la venta actualizadas correctamente')
+        setModalEditarFecha(false)
+        if (res.data) {
+          setNegociacionSeleccionada(normalizarNegociacion(res.data))
+        }
+        await cargarDatos()
+        if (modalEstadoCuenta && negociacionSeleccionada) {
+          await abrirEstadoCuenta(res.data || negociacionSeleccionada)
+        }
+      }
+    } catch (err: any) {
+      toast.error(err?.message || err?.response?.data?.message || 'No se pudo actualizar la fecha de la venta')
+    } finally {
+      setGuardandoFecha(false)
+    }
   }
 
   const abrirRescision = (neg: Negociacion) => {
@@ -769,6 +852,9 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                       <p className="text-xs text-muted-foreground">
                         {neg.lote?.numero_lote || neg.lote?.codigo_unico || 'Lote'} · {neg.plazo_meses} meses
                       </p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <Calendar size={12} className="text-primary" /> Fecha venta: <span className="font-medium text-foreground">{formatFechaCorta(neg.fecha_negociacion)}</span>
+                      </p>
                     </div>
                     {neg.estado === 'activa' && <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 shrink-0">Al Día</Badge>}
                     {neg.estado === 'en_mora' && <Badge className="bg-red-500/15 text-red-600 border-red-500/30 shrink-0">En mora</Badge>}
@@ -802,6 +888,11 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                     {neg.estado !== 'rescindida' && (
                       <Button size="sm" onClick={() => abrirPago(neg)} className="h-8 gap-1 text-xs flex-1">
                         <Wallet size={14} /> Cobrar
+                      </Button>
+                    )}
+                    {neg.estado !== 'rescindida' && (
+                      <Button size="sm" variant="outline" onClick={() => abrirEditarFecha(neg)} className="h-8 gap-1 text-xs" title="Cambiar fecha de venta / contrato">
+                        <Calendar size={14} /> Fecha
                       </Button>
                     )}
                     <Button size="sm" variant="ghost" onClick={() => handleDescargarContratoPdf(neg)} className="h-8 gap-1 text-xs">
@@ -847,6 +938,9 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                             ? ` · ${etiquetaPeriodo(neg.periodo_pago).toLowerCase()}`
                             : ''}
                           {neg.tipo_negociacion === 'credito' ? ` · ${etiquetaSistema(neg.sistema_amortizacion)}` : ''}
+                        </span>
+                        <span className="block text-[0.6875rem] text-muted-foreground font-normal mt-0.5">
+                          Fecha venta: <strong className="text-foreground">{formatFechaCorta(neg.fecha_negociacion)}</strong>
                         </span>
                         {resumenMoraContrato(neg) && (
                           <span className="block text-[0.625rem] text-amber-700 dark:text-amber-400 font-normal mt-0.5">
@@ -904,6 +998,11 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                           <Button size="sm" variant="outline" onClick={() => abrirEstadoCuenta(neg)} className="h-8 gap-1 text-xs">
                             <Receipt size={14} /> Estado Cuenta
                           </Button>
+                          {neg.estado !== 'rescindida' && (
+                            <Button size="sm" variant="outline" onClick={() => abrirEditarFecha(neg)} className="h-8 gap-1 text-xs" title="Cambiar fecha de venta y recalcular cronograma">
+                              <Calendar size={14} /> Cambiar fecha
+                            </Button>
+                          )}
                           <Button size="sm" variant="ghost" onClick={() => handleDescargarPlanPagosPdf(neg)} className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground" disabled={descargandoDoc === 'plan'}>
                             <DownloadSimple size={14} /> Plan
                           </Button>
@@ -1014,18 +1113,54 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                 <Calculator size={18} className="text-primary" /> Condiciones Comerciales & Financiamiento
               </h4>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs">Tipo de operación *</Label>
-                <select
-                  value={formVenta.tipo_negociacion}
-                  onChange={(e) => setFormVenta({ ...formVenta, tipo_negociacion: e.target.value as 'contado' | 'credito' | 'reserva' })}
-                  className="w-full bg-background border rounded-lg p-2.5 text-sm"
-                >
-                  <option value="credito">A Plazo / Financiamiento</option>
-                  <option value="contado">Contado</option>
-                  <option value="reserva">Reserva</option>
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Tipo de operación *</Label>
+                  <select
+                    value={formVenta.tipo_negociacion}
+                    onChange={(e) => setFormVenta({ ...formVenta, tipo_negociacion: e.target.value as 'contado' | 'credito' | 'reserva' })}
+                    className="w-full bg-background border rounded-lg p-2.5 text-sm"
+                  >
+                    <option value="credito">A Plazo / Financiamiento</option>
+                    <option value="contado">Contado</option>
+                    <option value="reserva">Reserva</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-primary flex items-center gap-1">
+                    <Calendar size={14} /> Fecha de Venta / Contrato *
+                  </Label>
+                  <Input
+                    required
+                    type="date"
+                    value={formVenta.fecha_negociacion}
+                    onChange={(e) => setFormVenta({ ...formVenta, fecha_negociacion: e.target.value })}
+                    className="bg-background"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Puedes elegir hoy o cualquier fecha anterior para registrar ventas pasadas.
+                  </p>
+                </div>
               </div>
+
+              {formVenta.tipo_negociacion === 'credito' && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1">
+                    <Calendar size={14} /> Fecha del 1er Pago (opcional)
+                  </Label>
+                  <Input
+                    type="date"
+                    min={formVenta.fecha_negociacion || undefined}
+                    value={formVenta.fecha_primer_pago}
+                    onChange={(e) => setFormVenta({ ...formVenta, fecha_primer_pago: e.target.value })}
+                    className="bg-background"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Si lo dejas vacío, el 1er pago se programa automáticamente un periodo después de la fecha de venta ({formatFechaCorta(formVenta.fecha_negociacion)}).
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1.5">
@@ -1240,9 +1375,24 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
         <Dialog open={modalEstadoCuenta} onOpenChange={setModalEstadoCuenta}>
           <DialogContent className="!w-[min(96vw,1200px)] !max-w-[min(96vw,1200px)] max-h-[94vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="flex items-center justify-between">
-                <span>Estado de Cuenta: {negociacionSeleccionada.codigo_negociacion}</span>
-                <Badge variant="outline" className="text-primary">{negociacionSeleccionada.estado.toUpperCase()}</Badge>
+              <DialogTitle className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <span>Estado de Cuenta: {negociacionSeleccionada.codigo_negociacion}</span>
+                  <span className="block text-xs font-normal text-muted-foreground mt-0.5">
+                    Fecha de venta: <strong className="text-foreground">{formatFechaCorta(negociacionSeleccionada.fecha_negociacion)}</strong>
+                    {negociacionSeleccionada.fecha_primer_pago ? (
+                      <> · 1er pago: <strong className="text-foreground">{formatFechaCorta(negociacionSeleccionada.fecha_primer_pago)}</strong></>
+                    ) : null}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {negociacionSeleccionada.estado !== 'rescindida' && (
+                    <Button size="sm" variant="outline" onClick={() => abrirEditarFecha(negociacionSeleccionada)} className="h-8 gap-1 text-xs">
+                      <Calendar size={14} /> Cambiar fecha de venta
+                    </Button>
+                  )}
+                  <Badge variant="outline" className="text-primary">{negociacionSeleccionada.estado.toUpperCase()}</Badge>
+                </div>
               </DialogTitle>
             </DialogHeader>
 
@@ -1479,19 +1629,37 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                 </div>
               ) : null}
 
-              <div className="space-y-2">
-                <Label>Tipo de Pago *</Label>
-                <select
-                  value={formPago.tipo_pago}
-                  onChange={(e) => setFormPago({ ...formPago, tipo_pago: e.target.value })}
-                  className="w-full rounded-lg border border-border bg-background p-2.5 text-sm text-foreground"
-                >
-                  <option value="cuota_normal">Pago de Cuota Ordinaria</option>
-                  <option value="enganche">Pago de Enganche</option>
-                  <option value="abono_capital">Abono Extraordinario a Capital</option>
-                  <option value="pago_total">Liquidación Total de Saldo</option>
-                  <option value="gastos_escritura">Gastos de Escrituración</option>
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Tipo de Pago *</Label>
+                  <select
+                    value={formPago.tipo_pago}
+                    onChange={(e) => setFormPago({ ...formPago, tipo_pago: e.target.value })}
+                    className="w-full rounded-lg border border-border bg-background p-2.5 text-sm text-foreground"
+                  >
+                    <option value="cuota_normal">Pago de Cuota Ordinaria</option>
+                    <option value="enganche">Pago de Enganche</option>
+                    <option value="abono_capital">Abono Extraordinario a Capital</option>
+                    <option value="pago_total">Liquidación Total de Saldo</option>
+                    <option value="gastos_escritura">Gastos de Escrituración</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1">
+                    <Calendar size={14} className="text-primary" /> Fecha del Pago *
+                  </Label>
+                  <Input
+                    required
+                    type="date"
+                    value={formPago.fecha_pago}
+                    onChange={(e) => setFormPago({ ...formPago, fecha_pago: e.target.value })}
+                    className="bg-background"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Puedes seleccionar una fecha anterior si el cobro se realizó en otra fecha.
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -1574,6 +1742,70 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
               </Button>
             </DialogFooter>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={modalEditarFecha} onOpenChange={setModalEditarFecha}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="text-primary" size={22} weight="duotone" />
+              Cambiar fecha de venta · {negociacionSeleccionada?.codigo_negociacion}
+            </DialogTitle>
+            <DialogDescription>
+              Permite asignar fechas anteriores a ventas ya registradas. Si el contrato tiene cuotas, las fechas de vencimiento se ajustan automáticamente a partir de la nueva fecha.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleActualizarFechas} className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <Label>Fecha real de la venta / contrato *</Label>
+              <Input
+                required
+                type="date"
+                value={formFecha.fecha_negociacion}
+                onChange={(e) => setFormFecha({ ...formFecha, fecha_negociacion: e.target.value })}
+              />
+            </div>
+
+            {negociacionSeleccionada?.tipo_negociacion === 'credito' && (
+              <div className="space-y-1.5">
+                <Label>Fecha del 1er pago (opcional)</Label>
+                <Input
+                  type="date"
+                  min={formFecha.fecha_negociacion || undefined}
+                  value={formFecha.fecha_primer_pago}
+                  onChange={(e) => setFormFecha({ ...formFecha, fecha_primer_pago: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Si lo dejas en blanco, el sistema colocará el 1er pago automáticamente un periodo después de la nueva fecha de venta y recalculará el resto de cuotas.
+                </p>
+              </div>
+            )}
+
+            <label className="flex items-start gap-2.5 rounded-lg border p-3 text-xs cursor-pointer bg-muted/30">
+              <input
+                type="checkbox"
+                checked={formFecha.sincronizar_pagos_iniciales}
+                onChange={(e) => setFormFecha({ ...formFecha, sincronizar_pagos_iniciales: e.target.checked })}
+                className="mt-0.5"
+              />
+              <span>
+                <strong className="block text-foreground">Actualizar también la fecha del enganche / pago de contado</strong>
+                <span className="text-muted-foreground">
+                  Ajusta la fecha del recibo de enganche o pago de contado inicial para que coincida con la nueva fecha de venta.
+                </span>
+              </span>
+            </label>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setModalEditarFecha(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={guardandoFecha}>
+                {guardandoFecha ? 'Guardando...' : 'Guardar nueva fecha'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

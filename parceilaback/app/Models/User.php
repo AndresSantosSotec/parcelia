@@ -28,6 +28,30 @@ class User extends Authenticatable
     public static bool $auditarDeshabilitado = false;
 
     /**
+     * Asignar permisos automáticamente al crear un usuario o cambiar su rol
+     */
+    protected static function booted(): void
+    {
+        static::created(function (User $user) {
+            try {
+                $user->assignDefaultPermissions(false);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('No se pudieron asignar permisos al crear usuario: ' . $e->getMessage());
+            }
+        });
+
+        static::updated(function (User $user) {
+            if ($user->wasChanged('rol')) {
+                try {
+                    $user->assignDefaultPermissions(false);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('No se pudieron reasignar permisos al cambiar rol: ' . $e->getMessage());
+                }
+            }
+        });
+    }
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
@@ -89,13 +113,34 @@ class User extends Authenticatable
     }
 
     /**
+     * Rol normalizado en minúsculas y con alias resueltos
+     */
+    public function normalizedRole(): string
+    {
+        $rol = strtolower(trim((string) $this->rol));
+
+        return match ($rol) {
+            'admin', 'gerente', 'manager' => 'administrador',
+            'cashier' => 'cajero',
+            'seller', 'asesor' => 'vendedor',
+            default => $rol,
+        };
+    }
+
+    /**
      * Verificar si el usuario tiene un permiso específico
      */
     public function hasPermission(string $modulo, string $accion): bool
     {
+        $rol = $this->normalizedRole();
+
         // superadmin y administrador tienen acceso total sin depender de la tabla user_permissions
-        if (in_array($this->rol, ['superadmin', 'administrador'])) {
+        if (in_array($rol, ['superadmin', 'administrador'], true)) {
             return true;
+        }
+
+        if ($this->permissions()->count() === 0 && isset(Permission::$permisosPorRol[$rol])) {
+            $this->assignDefaultPermissions(true);
         }
 
         return $this->permissions()
@@ -109,9 +154,15 @@ class User extends Authenticatable
      */
     public function hasModuleAccess(string $modulo): bool
     {
+        $rol = $this->normalizedRole();
+
         // superadmin y administrador tienen acceso total
-        if (in_array($this->rol, ['superadmin', 'administrador'])) {
+        if (in_array($rol, ['superadmin', 'administrador'], true)) {
             return true;
+        }
+
+        if ($this->permissions()->count() === 0 && isset(Permission::$permisosPorRol[$rol])) {
+            $this->assignDefaultPermissions(true);
         }
 
         return $this->permissions()
@@ -124,7 +175,9 @@ class User extends Authenticatable
      */
     public function getFormattedPermissions(): array
     {
-        if (in_array($this->rol, ['superadmin', 'administrador'])) {
+        $rol = $this->normalizedRole();
+
+        if (in_array($rol, ['superadmin', 'administrador'], true)) {
             $permisos = [];
             foreach (Permission::$permisosPorModulo as $modulo => $acciones) {
                 $permisos[] = [
@@ -134,6 +187,10 @@ class User extends Authenticatable
             }
 
             return $permisos;
+        }
+
+        if ($this->permissions()->count() === 0 && isset(Permission::$permisosPorRol[$rol])) {
+            $this->assignDefaultPermissions(true);
         }
 
         $permisos = $this->permissions()->get()->groupBy('modulo');
@@ -179,14 +236,14 @@ class User extends Authenticatable
     /**
      * Asignar permisos por defecto según el rol
      */
-    public function assignDefaultPermissions(): void
+    public function assignDefaultPermissions(bool $preserveCustom = false): void
     {
         Permission::ensureDefinitionsInDatabase();
 
-        $rol = $this->rol;
+        $rol = $this->normalizedRole();
         $permisosRol = Permission::$permisosPorRol[$rol] ?? [];
 
-        // Si es administrador, asignar todos
+        // Si es superadmin o administrador, asignar todos
         if ($permisosRol === '*') {
             $allPermissions = Permission::all()->pluck('id')->toArray();
             $this->permissions()->sync($allPermissions);
@@ -206,7 +263,11 @@ class User extends Authenticatable
             }
         }
 
-        $this->permissions()->sync($permissionIds);
+        if ($preserveCustom) {
+            $this->permissions()->syncWithoutDetaching($permissionIds);
+        } else {
+            $this->permissions()->sync($permissionIds);
+        }
     }
 
     /**

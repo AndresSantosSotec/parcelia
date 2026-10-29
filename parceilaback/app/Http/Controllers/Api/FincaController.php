@@ -70,12 +70,14 @@ class FincaController extends Controller
             'ubicacion' => 'nullable|string|max:255',
             'municipio' => 'required|string|max:100',
             'departamento' => 'required|string|max:100',
-            'area_total_m2' => 'nullable|numeric|min:0.01',
+            'area_total_m2' => 'nullable|numeric|min:0',
             'numero_finca' => 'nullable|string|max:100',
             'folio' => 'nullable|string|max:100',
             'libro' => 'nullable|string|max:100',
             'descripcion' => 'nullable|string',
         ]);
+
+        $validated['area_total_m2'] = (float) ($validated['area_total_m2'] ?? 0);
 
         if (empty($validated['codigo'])) {
             $validated['codigo'] = $this->siguienteCodigoFinca();
@@ -103,13 +105,17 @@ class FincaController extends Controller
             'ubicacion' => 'nullable|string|max:255',
             'municipio' => 'sometimes|required|string|max:100',
             'departamento' => 'sometimes|required|string|max:100',
-            'area_total_m2' => 'nullable|numeric|min:0.01',
+            'area_total_m2' => 'nullable|numeric|min:0',
             'numero_finca' => 'nullable|string|max:100',
             'folio' => 'nullable|string|max:100',
             'libro' => 'nullable|string|max:100',
             'descripcion' => 'nullable|string',
             'activo' => 'nullable|boolean',
         ]);
+
+        if (array_key_exists('area_total_m2', $validated) && $validated['area_total_m2'] === null) {
+            $validated['area_total_m2'] = (float) ($finca->area_total_m2 ?? 0);
+        }
 
         $finca->update($validated);
 

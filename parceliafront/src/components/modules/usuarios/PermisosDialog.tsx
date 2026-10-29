@@ -25,17 +25,30 @@ const MODULOS_NUEVOS: Modulo[] = ['compra_fincas', 'financistas', 'comisionistas
 
 // Permisos por defecto según el rol (copia de seguridad local)
 const PERMISOS_POR_ROL: Record<string, Permiso[]> = {
+  superadmin: MODULOS_VISIBLES.map(modulo => ({
+    modulo,
+    acciones: ACCIONES_POR_MODULO[modulo],
+  })),
   administrador: MODULOS_VISIBLES.map(modulo => ({
     modulo,
     acciones: ACCIONES_POR_MODULO[modulo],
   })),
   cajero: [
     { modulo: 'dashboard', acciones: ['ver'] },
-    { modulo: 'clientes', acciones: ['ver', 'crear'] },
+    { modulo: 'clientes', acciones: ['ver', 'crear', 'editar'] },
     { modulo: 'creditos', acciones: ['ver', 'crear'] },
     { modulo: 'refrendos', acciones: ['ver', 'validar', 'calcular', 'procesar'] },
     { modulo: 'compras', acciones: ['ver', 'crear'] },
     { modulo: 'caja', acciones: ['abrir', 'cerrar', 'ver_movimientos'] },
+    { modulo: 'boveda', acciones: ['ver', 'movimientos', 'reportes'] },
+    { modulo: 'fincas', acciones: ['ver'] },
+    { modulo: 'compra_fincas', acciones: ['ver', 'editar', 'reportes'] },
+    { modulo: 'financistas', acciones: ['ver', 'pagar', 'reportes'] },
+    { modulo: 'comisionistas', acciones: ['ver', 'pagar', 'reportes'] },
+    { modulo: 'lotes', acciones: ['ver'] },
+    { modulo: 'negociaciones', acciones: ['ver', 'contrato'] },
+    { modulo: 'pagos_terreno', acciones: ['ver', 'cobrar'] },
+    { modulo: 'reportes_inmobiliarios', acciones: ['generar', 'exportar'] },
     { modulo: 'prendas', acciones: ['ver'] },
     { modulo: 'gastos', acciones: ['ver', 'asignar_credito'] },
     { modulo: 'cobros', acciones: ['realizar', 'ver', 'imprimir_recibo'] },
@@ -43,9 +56,6 @@ const PERMISOS_POR_ROL: Record<string, Permiso[]> = {
     { modulo: 'historial', acciones: ['ver'] },
     { modulo: 'otros_gastos', acciones: ['ver', 'crear'] },
     { modulo: 'planes_interes', acciones: ['ver'] },
-    { modulo: 'fincas', acciones: ['ver'] },
-    { modulo: 'negociaciones', acciones: ['ver'] },
-    { modulo: 'pagos_terreno', acciones: ['ver', 'cobrar'] },
   ],
   tasador: [
     { modulo: 'dashboard', acciones: ['ver'] },
@@ -55,11 +65,22 @@ const PERMISOS_POR_ROL: Record<string, Permiso[]> = {
     { modulo: 'ventas', acciones: ['ver', 'tasar'] },
     { modulo: 'compras', acciones: ['ver', 'crear'] },
     { modulo: 'planes_interes', acciones: ['ver'] },
+    { modulo: 'fincas', acciones: ['ver'] },
+    { modulo: 'lotes', acciones: ['ver'] },
     { modulo: 'historial', acciones: ['ver'] },
   ],
   vendedor: [
     { modulo: 'dashboard', acciones: ['ver'] },
-    { modulo: 'clientes', acciones: ['ver', 'crear'] },
+    { modulo: 'clientes', acciones: ['ver', 'crear', 'editar'] },
+    { modulo: 'fincas', acciones: ['ver', 'crear', 'editar'] },
+    { modulo: 'compra_fincas', acciones: ['ver', 'crear', 'editar', 'reportes'] },
+    { modulo: 'financistas', acciones: ['ver', 'reportes'] },
+    { modulo: 'comisionistas', acciones: ['ver', 'editar', 'reportes'] },
+    { modulo: 'lotes', acciones: ['ver', 'crear', 'editar', 'eliminar', 'servicios', 'imagenes'] },
+    { modulo: 'negociaciones', acciones: ['ver', 'crear', 'contrato'] },
+    { modulo: 'pagos_terreno', acciones: ['ver', 'cobrar'] },
+    { modulo: 'tasas_inmobiliarias', acciones: ['ver'] },
+    { modulo: 'reportes_inmobiliarios', acciones: ['generar', 'exportar'] },
     { modulo: 'ventas', acciones: ['ver', 'vender', 'apartar', 'crear_plan_pago', 'aplicar_descuento'] },
     { modulo: 'compras', acciones: ['ver'] },
     { modulo: 'prendas', acciones: ['ver'] },
@@ -68,15 +89,21 @@ const PERMISOS_POR_ROL: Record<string, Permiso[]> = {
     { modulo: 'cobros', acciones: ['realizar', 'ver', 'imprimir_recibo'] },
     { modulo: 'recibos', acciones: ['ver', 'crear', 'imprimir'] },
     { modulo: 'historial', acciones: ['ver'] },
-    { modulo: 'fincas', acciones: ['ver', 'crear', 'editar'] },
-    { modulo: 'negociaciones', acciones: ['ver', 'crear', 'contrato'] },
-    { modulo: 'pagos_terreno', acciones: ['ver', 'cobrar'] },
     { modulo: 'gastos', acciones: ['ver'] },
     { modulo: 'otros_gastos', acciones: ['ver', 'crear'] },
   ],
   supervisor: [
     { modulo: 'dashboard', acciones: ['ver'] },
-    { modulo: 'clientes', acciones: ['ver'] },
+    { modulo: 'clientes', acciones: ['ver', 'crear', 'editar'] },
+    { modulo: 'fincas', acciones: ['ver', 'crear', 'editar', 'desactivar'] },
+    { modulo: 'compra_fincas', acciones: ['ver', 'crear', 'editar', 'eliminar', 'reportes'] },
+    { modulo: 'financistas', acciones: ['ver', 'editar', 'pagar', 'reportes'] },
+    { modulo: 'comisionistas', acciones: ['ver', 'editar', 'pagar', 'reglas', 'reportes'] },
+    { modulo: 'lotes', acciones: ['ver', 'crear', 'editar', 'eliminar', 'servicios', 'imagenes'] },
+    { modulo: 'negociaciones', acciones: ['ver', 'crear', 'ajustar_condiciones', 'rescindir', 'contrato'] },
+    { modulo: 'pagos_terreno', acciones: ['ver', 'cobrar', 'anular'] },
+    { modulo: 'tasas_inmobiliarias', acciones: ['ver', 'crear', 'editar', 'desactivar'] },
+    { modulo: 'reportes_inmobiliarios', acciones: ['generar', 'exportar'] },
     { modulo: 'refrendos', acciones: ['ver', 'validar', 'calcular', 'procesar'] },
     { modulo: 'creditos', acciones: ['ver', 'renovar'] },
     { modulo: 'compras', acciones: ['ver', 'crear', 'editar'] },
@@ -84,7 +111,8 @@ const PERMISOS_POR_ROL: Record<string, Permiso[]> = {
     { modulo: 'ventas', acciones: ['ver', 'modificar_precio', 'aplicar_descuento'] },
     { modulo: 'reportes', acciones: ['generar', 'exportar'] },
     { modulo: 'remates', acciones: ['ver'] },
-    { modulo: 'caja', acciones: ['ver_movimientos'] },
+    { modulo: 'caja', acciones: ['abrir', 'cerrar', 'ver_movimientos', 'gestionar_cajas'] },
+    { modulo: 'boveda', acciones: ['ver', 'movimientos', 'aprobar', 'reportes'] },
     { modulo: 'categorias_productos', acciones: ['ver', 'crear', 'editar'] },
     { modulo: 'gastos', acciones: ['ver', 'crear', 'editar', 'asignar_credito'] },
     { modulo: 'cobros', acciones: ['realizar', 'ver', 'imprimir_recibo'] },
@@ -93,7 +121,7 @@ const PERMISOS_POR_ROL: Record<string, Permiso[]> = {
     { modulo: 'otros_gastos', acciones: ['ver', 'crear', 'anular'] },
     { modulo: 'cotizaciones', acciones: ['ver', 'crear', 'editar', 'eliminar', 'convertir'] },
     { modulo: 'planes_interes', acciones: ['ver'] },
-    { modulo: 'transferencias', acciones: ['ver'] },
+    { modulo: 'transferencias', acciones: ['ver', 'crear', 'aprobar', 'anular'] },
   ],
 }
 
@@ -134,14 +162,15 @@ export function PermisosDialog({
     }
   }, [abierto, usuario])
 
-  const cargarPermisosLocales = () => {
+  const cargarPermisosLocales = (marcarSinGuardar = false) => {
     if (!usuario) return
     // Cargar permisos por defecto del rol desde la definición local
-    const permisosRol = PERMISOS_POR_ROL[usuario.rol] || PERMISOS_POR_ROL['cajero']
+    const rolKey = (usuario.rol || '').toLowerCase()
+    const permisosRol = PERMISOS_POR_ROL[rolKey] || PERMISOS_POR_ROL['cajero']
     setPermisos(JSON.parse(JSON.stringify(permisosRol)))
-    setPermisosOriginales(JSON.parse(JSON.stringify(permisosRol)))
+    setPermisosOriginales(marcarSinGuardar ? [] : JSON.parse(JSON.stringify(permisosRol)))
     setPermisosEmpenoConservados([])
-    setUsandoLocal(true)
+    setUsandoLocal(false)
   }
 
   const cargarPermisos = async () => {
@@ -165,20 +194,14 @@ export function PermisosDialog({
           setPermisosOriginales(JSON.parse(JSON.stringify(visibles)))
           setPermisosEmpenoConservados(ocultos)
         } else {
-          // Si no hay permisos asignados, cargar los por defecto del rol
-          cargarPermisosLocales()
+          // Si el usuario tenía 0 permisos en BD, pre-cargar los de su rol listos para guardar en BD
+          cargarPermisosLocales(true)
         }
       }
     } catch (error: any) {
       console.error('Error cargando permisos:', error)
-      // Si hay error (ej: tabla no existe), usar permisos locales
-      if (error.message?.includes('doesn\'t exist') || error.message?.includes('not found')) {
-        setError('La tabla de permisos no está configurada. Se muestran los permisos por defecto del rol.')
-        cargarPermisosLocales()
-      } else {
-        setError(error.message || 'Error al cargar permisos')
-        cargarPermisosLocales()
-      }
+      setError(error.message || 'Error al cargar permisos desde el servidor. Puedes guardar para sincronizarlos.')
+      cargarPermisosLocales(true)
     } finally {
       setLoading(false)
     }

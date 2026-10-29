@@ -19,7 +19,7 @@
       "supportsTablet": true
     },
     "extra": {
-      "appUrl": "https://terra.stockgenius-sotecpro.com"
+      "appUrl": "https://terracloud.stockgenius-sotecpro.com/"
     },
     "plugins": [
       "expo-asset"

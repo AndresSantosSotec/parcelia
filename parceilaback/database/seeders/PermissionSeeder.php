@@ -13,23 +13,16 @@ class PermissionSeeder extends Seeder
      */
     public function run(): void
     {
-        // Crear todos los permisos disponibles
-        foreach (Permission::$permisosPorModulo as $modulo => $acciones) {
-            foreach ($acciones as $accion) {
-                Permission::firstOrCreate(
-                    ['modulo' => $modulo, 'accion' => $accion],
-                    ['descripcion' => ucfirst($accion) . ' en ' . ucfirst($modulo)]
-                );
-            }
-        }
+        // Crear y asegurar todos los permisos disponibles en la base de datos
+        Permission::ensureDefinitionsInDatabase();
 
         $this->command->info('Permisos base creados correctamente.');
 
-        // Asignar permisos por defecto a todos los usuarios existentes
+        // Asignar permisos por defecto a todos los usuarios existentes (conservando extras personalizados)
         $users = User::all();
         foreach ($users as $user) {
-            $user->assignDefaultPermissions();
-            $this->command->info("Permisos asignados a: {$user->name} ({$user->rol})");
+            $user->assignDefaultPermissions(true);
+            $this->command->info("Permisos sincronizados para: {$user->name} ({$user->rol}) -> {$user->permissions()->count()} permisos");
         }
     }
 }

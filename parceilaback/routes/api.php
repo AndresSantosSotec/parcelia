@@ -207,6 +207,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/negociaciones', [NegociacionController::class, 'index'])->middleware('permiso:negociaciones,ver');
             Route::post('/negociaciones', [NegociacionController::class, 'store'])->middleware('permiso:negociaciones,crear');
             Route::get('/negociaciones/{id}', [NegociacionController::class, 'show'])->middleware('permiso:negociaciones,ver');
+            Route::put('/negociaciones/{id}/fechas', [NegociacionController::class, 'actualizarFechas'])->middleware('permiso:negociaciones,crear');
             Route::post('/negociaciones/{id}/cancelar-reserva', [NegociacionController::class, 'cancelarReserva'])->middleware('permiso:negociaciones,rescindir');
             Route::post('/negociaciones/{id}/rescindir', [NegociacionController::class, 'rescindir'])->middleware('permiso:negociaciones,rescindir');
 

@@ -4,7 +4,7 @@ import { LoginScreen } from './components/LoginScreen'
 import { TerrenoPublicoPage } from './components/modules/fincas/TerrenoPublicoPage'
 import { Toaster } from '@/components/ui/sonner'
 import { useKV } from '@/hooks/use-kv'
-import { authService, api, resetAuthFlag } from '@/lib/api'
+import { authService, api, resetAuthFlag, STANDALONE_MODE } from '@/lib/api'
 import { toast } from 'sonner'
 
 interface UserSession {
@@ -43,12 +43,16 @@ function App() {
         // Verificar sesión al iniciar
         const checkSession = () => {
             if (session) {
-                // En modo standalone o con sesión activa válida
-                if (api.hasValidToken() || session.username) {
+                if (STANDALONE_MODE) {
                     if (!api.hasValidToken()) {
                         api.setToken('mock-jwt-token-parcelia-standalone-2026')
                     }
                     setIsAuthenticated(true)
+                } else if (api.hasValidToken()) {
+                    setIsAuthenticated(true)
+                    if (api.isTokenExpiringSoon()) {
+                        void api.checkAndRefreshToken()
+                    }
                 } else {
                     console.warn('Token inválido o expirado')
                     setSession(null)
@@ -62,6 +66,17 @@ function App() {
         
         checkSession()
     }, [session, setSession])
+
+    // Refresco periódico del token en segundo plano para mantener la sesión viva mientras el usuario esté activo
+    useEffect(() => {
+        if (!isAuthenticated || STANDALONE_MODE) return
+        const interval = setInterval(() => {
+            if (api.hasValidToken() && api.isTokenExpiringSoon()) {
+                void api.checkAndRefreshToken()
+            }
+        }, 10 * 60 * 1000) // cada 10 minutos
+        return () => clearInterval(interval)
+    }, [isAuthenticated])
 
     // Escuchar evento de autenticación fallida
     useEffect(() => {

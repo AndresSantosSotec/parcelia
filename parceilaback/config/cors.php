@@ -36,6 +36,9 @@ return [
         '/^http:\/\/127\.0\.0\.1:\d+$/',
         '/^https:\/\/.*\.stockgenius-sotecpro\.com$/',
         '/^https:\/\/.*\.inniserver\.net$/',
+        '/kottan/i',
+        '/kotan/i',
+        '/parcelia/i',
     ],
 
     'allowed_headers' => ['*'],

@@ -38,7 +38,10 @@ class HandleCors
             preg_match('/^http:\/\/localhost:\d+$/', $origin) ||
             preg_match('/^http:\/\/127\.0\.0\.1:\d+$/', $origin) ||
             preg_match('/^https:\/\/.*\.stockgenius-sotecpro\.com$/', $origin) ||
-            preg_match('/^https:\/\/.*\.inniserver\.net$/', $origin)
+            preg_match('/^https:\/\/.*\.inniserver\.net$/', $origin) ||
+            preg_match('/kottan/i', $origin) ||
+            preg_match('/kotan/i', $origin) ||
+            preg_match('/parcelia/i', $origin)
         );
 
         $isAllowed = $origin && (in_array($origin, $allowedOrigins) || $isLocalhost);

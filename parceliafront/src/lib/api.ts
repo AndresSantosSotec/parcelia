@@ -91,6 +91,7 @@ class ApiClient {
     this.token = token
     if (token && typeof window !== 'undefined') {
       localStorage.setItem(TOKEN_KEY, token)
+      localStorage.setItem('token', token) // alias de compatibilidad
       // Guardar tiempo de expiración (actual + expiresIn en segundos)
       const expiryTime = Date.now() + (expiresIn * 1000)
       localStorage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString())
@@ -106,8 +107,41 @@ class ApiClient {
     this.token = null
     if (typeof window !== 'undefined') {
       localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem('token')
       localStorage.removeItem(TOKEN_EXPIRY_KEY)
     }
+  }
+
+  private isRefreshingToken = false
+  private refreshTokenPromise: Promise<any> | null = null
+
+  /**
+   * Refrescar el token automáticamente si está por expirar
+   */
+  async checkAndRefreshToken(): Promise<void> {
+    if (STANDALONE_MODE || !this.token) return
+    if (!this.isTokenExpiringSoon()) return
+    if (this.isRefreshingToken) {
+      if (this.refreshTokenPromise) await this.refreshTokenPromise
+      return
+    }
+
+    this.isRefreshingToken = true
+    this.refreshTokenPromise = (async () => {
+      try {
+        const response = await this.post<{ token: string; expires_in: number }>('/auth/refresh-token')
+        if (response.success && response.data?.token) {
+          this.setToken(response.data.token, response.data.expires_in)
+        }
+      } catch (e) {
+        console.warn('No se pudo refrescar el token automáticamente:', e)
+      } finally {
+        this.isRefreshingToken = false
+        this.refreshTokenPromise = null
+      }
+    })()
+
+    await this.refreshTokenPromise
   }
 
   /**
@@ -147,6 +181,11 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
     this.loadToken()
+
+    // Si el token está por expirar y no es un endpoint de auth, refrescarlo proactivamente
+    if (!STANDALONE_MODE && this.token && !endpoint.startsWith('/auth/') && this.isTokenExpiringSoon()) {
+      await this.checkAndRefreshToken()
+    }
 
     // Si está en modo standalone / sin backend, procesar directo con mockDatabase
     if (STANDALONE_MODE) {

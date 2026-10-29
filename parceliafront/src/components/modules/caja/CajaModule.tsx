@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { api } from '@/lib/api'
 import { cajaService, Caja, MovimientoCaja } from '@/lib/services/caja.service'
 import { denominacionService, Denominacion, DenominacionesResponse } from '@/lib/services/denominacion.service'
 import { bovedaService, Boveda } from '@/lib/services/boveda.service'
@@ -786,23 +787,18 @@ export function CajaModule({ userSession }: CajaModuleProps) {
                 onCheckedChange={async (checked) => {
                   setToggling(true)
                   try {
-                    const res = await fetch(
-                      `${import.meta.env.VITE_API_BASE_URL || '/api/v1'}/configuraciones-sistema/cash-vault-integration/toggle`,
-                      {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-                        body: JSON.stringify({ activo: checked }),
-                      }
+                    const res = await api.post<any>(
+                      '/configuraciones-sistema/cash-vault-integration/toggle',
+                      { activo: checked }
                     )
-                    const data = await res.json()
-                    if (data.success) {
+                    if (res.success) {
                       setCashVaultIntegrationEnabled(checked)
-                      toast.success(data.message)
+                      toast.success(res.message || 'Configuración actualizada')
                     } else {
-                      toast.error(data.error || 'Error al cambiar configuración')
+                      toast.error(res.message || 'Error al cambiar configuración')
                     }
-                  } catch {
-                    toast.error('Error de conexión')
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Error de conexión')
                   } finally {
                     setToggling(false)
                   }

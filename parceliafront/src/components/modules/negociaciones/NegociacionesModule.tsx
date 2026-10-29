@@ -1395,11 +1395,11 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
       {/* Modal Estado de Cuenta Detallado */}
       {negociacionSeleccionada && (
         <Dialog open={modalEstadoCuenta} onOpenChange={setModalEstadoCuenta}>
-          <DialogContent className="!w-[min(96vw,1200px)] !max-w-[min(96vw,1200px)] max-h-[94vh] overflow-y-auto">
+          <DialogContent className="w-[98vw] sm:w-[94vw] max-w-[1200px] max-h-[92vh] sm:max-h-[90vh] p-3 sm:p-6 overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="flex items-center justify-between flex-wrap gap-2">
+              <DialogTitle className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <span>Estado de Cuenta: {negociacionSeleccionada.codigo_negociacion}</span>
+                  <span className="text-base sm:text-lg font-bold">Estado de Cuenta: {negociacionSeleccionada.codigo_negociacion}</span>
                   <span className="block text-xs font-normal text-muted-foreground mt-0.5">
                     Fecha de venta: <strong className="text-foreground">{formatFechaCorta(negociacionSeleccionada.fecha_negociacion)}</strong>
                     {negociacionSeleccionada.fecha_primer_pago ? (
@@ -1407,10 +1407,10 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                     ) : null}
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   {puedeEditarFecha && negociacionSeleccionada.estado !== 'rescindida' && (
                     <Button size="sm" variant="outline" onClick={() => abrirEditarFecha(negociacionSeleccionada)} className="h-8 gap-1 text-xs">
-                      <Calendar size={14} /> Cambiar fecha de venta
+                      <Calendar size={14} /> Cambiar fecha
                     </Button>
                   )}
                   <Badge variant="outline" className="text-primary">{negociacionSeleccionada.estado.toUpperCase()}</Badge>
@@ -1420,35 +1420,35 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
 
             <div className="space-y-4 py-2 text-sm">
               {/* Tarjetas de Resumen Financiero */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-3 bg-muted/40 rounded-xl border">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                <div className="p-2.5 sm:p-3 bg-muted/40 rounded-xl border">
                   <span className="text-[0.6875rem] text-muted-foreground block">Precio del Lote</span>
-                  <span className="font-bold text-foreground">Q{Number(negociacionSeleccionada.precio_final).toLocaleString()}</span>
+                  <span className="font-bold text-xs sm:text-sm text-foreground">Q{Number(negociacionSeleccionada.precio_final).toLocaleString()}</span>
                 </div>
-                <div className="p-3 bg-muted/40 rounded-xl border">
+                <div className="p-2.5 sm:p-3 bg-muted/40 rounded-xl border">
                   <span className="text-[0.6875rem] text-muted-foreground block">Enganche Pagado</span>
-                  <span className="font-bold text-emerald-600">Q{Number(negociacionSeleccionada.enganche_pagado || 0).toLocaleString()}</span>
+                  <span className="font-bold text-xs sm:text-sm text-emerald-600">Q{Number(negociacionSeleccionada.enganche_pagado || 0).toLocaleString()}</span>
                 </div>
-                <div className="p-3 bg-muted/40 rounded-xl border">
+                <div className="p-2.5 sm:p-3 bg-muted/40 rounded-xl border">
                   <span className="text-[0.6875rem] text-muted-foreground block">Capital Amortizado</span>
-                  <span className="font-bold text-primary">Q{Number(negociacionSeleccionada.total_capital_pagado || 0).toLocaleString()}</span>
+                  <span className="font-bold text-xs sm:text-sm text-primary">Q{Number(negociacionSeleccionada.total_capital_pagado || 0).toLocaleString()}</span>
                 </div>
-                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                <div className="p-2.5 sm:p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
                   <span className="text-[0.6875rem] text-amber-700 block font-semibold">Saldo Pendiente</span>
-                  <span className="font-extrabold text-amber-700 text-base">
+                  <span className="font-extrabold text-amber-700 text-xs sm:text-base">
                     Q{Number(negociacionSeleccionada.saldo_capital_pendiente).toLocaleString('es-GT', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
 
               {resumenMoraContrato(negociacionSeleccionada) && (
-                <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 text-xs">
+                <div className="p-2.5 sm:p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 text-xs">
                   <span className="font-semibold text-amber-700 dark:text-amber-400">Mora de este contrato: </span>
                   <span className="text-muted-foreground">{resumenMoraContrato(negociacionSeleccionada)}</span>
                 </div>
               )}
               {negociacionSeleccionada.tipo_negociacion === 'credito' && (
-                <div className="p-3 rounded-xl border bg-muted/40 text-xs">
+                <div className="p-2.5 sm:p-3 rounded-xl border bg-muted/40 text-xs">
                   <span className="font-semibold">Sistema de crédito: </span>
                   <span className="text-muted-foreground">
                     {etiquetaSistema(negociacionSeleccionada.sistema_amortizacion)}
@@ -1461,7 +1461,7 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
 
               {/* Plan de Pagos / Cronograma de Cuotas */}
               <div>
-                <div className="mb-2 flex flex-wrap items-center gap-2">
+                <div className="mb-2 flex flex-wrap items-center gap-1.5 sm:gap-2">
                   <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">
                     Cronograma de Cuotas & Amortización
                   </h4>
@@ -1469,70 +1469,121 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                   <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato('pendiente')}`}>Pendiente</span>
                   <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato('vencida')}`}>Vencida</span>
                 </div>
-                <div className="max-h-[42vh] overflow-auto border rounded-xl">
-                  <table className="w-full text-left text-xs min-w-[640px]">
-                    <thead className="bg-muted/60 sticky top-0 border-b">
-                      <tr>
-                        <th className="p-2">No.</th>
-                        <th className="p-2">Vencimiento</th>
-                        <th className="p-2">Capital</th>
-                        <th className="p-2">Interés</th>
-                        <th className="p-2">Cargos</th>
-                        <th className="p-2">Cuota Total</th>
-                        <th className="p-2">Saldo</th>
-                        <th className="p-2">Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {cargandoEstadoCuenta ? (
-                        <tr>
-                          <td colSpan={8} className="p-6 text-center text-muted-foreground">
-                            Cargando plan de pagos...
-                          </td>
-                        </tr>
-                      ) : cuotasPlan(negociacionSeleccionada).length === 0 ? (
-                        <tr>
-                          <td colSpan={8} className="p-6 text-center text-muted-foreground">
-                            {negociacionSeleccionada.tipo_negociacion === 'credito' && Number(negociacionSeleccionada.enganche_pagado || 0) + 0.009 < Number(negociacionSeleccionada.enganche_pactado || 0)
-                              ? 'El cronograma se genera al completar el enganche pactado.'
-                              : 'Aún no hay cuotas registradas para esta negociación.'}
-                          </td>
-                        </tr>
-                      ) : (
-                        cuotasPlan(negociacionSeleccionada).map((cuota: any) => {
+
+                {cargandoEstadoCuenta ? (
+                  <div className="p-6 text-center text-xs text-muted-foreground border rounded-xl">
+                    Cargando plan de pagos...
+                  </div>
+                ) : cuotasPlan(negociacionSeleccionada).length === 0 ? (
+                  <div className="p-6 text-center text-xs text-muted-foreground border rounded-xl">
+                    {negociacionSeleccionada.tipo_negociacion === 'credito' && Number(negociacionSeleccionada.enganche_pagado || 0) + 0.009 < Number(negociacionSeleccionada.enganche_pactado || 0)
+                      ? 'El cronograma se genera al completar el enganche pactado.'
+                      : 'Aún no hay cuotas registradas para esta negociación.'}
+                  </div>
+                ) : (
+                  <>
+                    {/* Vista móvil: Cards compactos legibles sin scroll horizontal */}
+                    <div className="md:hidden max-h-[44vh] overflow-y-auto space-y-2 pr-1">
+                      {cuotasPlan(negociacionSeleccionada).map((cuota: any) => {
                         const cargos = Number(cuota.otros_cargos || 0)
                         const cargosPagados = Number(cuota.otros_cargos_pagados || 0)
                         const marca = marcaCuotaContrato(cuota)
                         return (
-                        <tr key={cuota.id || cuota.numero_cuota} className={claseCuotaContrato(marca)}>
-                          <td className="p-2 font-mono">{cuota.numero_cuota}</td>
-                          <td className="p-2 whitespace-nowrap">{formatFechaCorta(cuota.fecha_vencimiento)}</td>
-                          <td className="p-2">Q{Number(cuota.cuota_capital).toLocaleString()}</td>
-                          <td className="p-2">Q{Number(cuota.cuota_interes || 0).toLocaleString()}</td>
-                          <td className="p-2">
-                            {cargos > 0 ? (
-                              <span title={`Pagado Q${cargosPagados.toLocaleString()}`}>
-                                Q{cargos.toLocaleString()}
-                                {cargosPagados + 0.009 >= cargos ? (
-                                  <Badge className="ml-1 bg-emerald-500/20 text-emerald-600 text-[0.5rem]">PAGADO</Badge>
-                                ) : cargosPagados > 0 ? (
-                                  <Badge variant="outline" className="ml-1 text-[0.5rem]">PARCIAL</Badge>
-                                ) : null}
+                          <div key={cuota.id || cuota.numero_cuota} className={`p-2.5 rounded-lg border text-xs space-y-1.5 ${claseCuotaContrato(marca)}`}>
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-foreground">
+                                Cuota #{cuota.numero_cuota}
+                                <span className="ml-2 font-normal text-muted-foreground">{formatFechaCorta(cuota.fecha_vencimiento)}</span>
                               </span>
-                            ) : '—'}
-                          </td>
-                          <td className="p-2 font-bold">Q{Number(cuota.cuota_monto_total).toLocaleString()}</td>
-                          <td className="p-2">Q{Number(cuota.saldo_capital_restante).toLocaleString()}</td>
-                          <td className="p-2">
-                            <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato(marca)}`}>{textoCuotaContrato(marca)}</span>
-                          </td>
-                        </tr>
+                              <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato(marca)}`}>
+                                {textoCuotaContrato(marca)}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[0.7rem] pt-1 border-t border-border/40">
+                              <div>
+                                <span className="text-muted-foreground">Capital: </span>
+                                <span className="font-medium text-foreground">Q{Number(cuota.cuota_capital).toLocaleString()}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Interés: </span>
+                                <span className="font-medium text-foreground">Q{Number(cuota.cuota_interes || 0).toLocaleString()}</span>
+                              </div>
+                              {cargos > 0 && (
+                                <div className="col-span-2">
+                                  <span className="text-muted-foreground">Cargos/Mora: </span>
+                                  <span className="font-medium text-foreground">Q{cargos.toLocaleString()}</span>
+                                  {cargosPagados + 0.009 >= cargos ? (
+                                    <Badge className="ml-1 bg-emerald-500/20 text-emerald-600 text-[0.5rem]">PAGADO</Badge>
+                                  ) : cargosPagados > 0 ? (
+                                    <Badge variant="outline" className="ml-1 text-[0.5rem]">PARCIAL</Badge>
+                                  ) : null}
+                                </div>
+                              )}
+                              <div>
+                                <span className="text-muted-foreground">Cuota Total: </span>
+                                <span className="font-bold text-foreground">Q{Number(cuota.cuota_monto_total).toLocaleString()}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Saldo: </span>
+                                <span className="font-medium text-foreground">Q{Number(cuota.saldo_capital_restante).toLocaleString()}</span>
+                              </div>
+                            </div>
+                          </div>
                         )
-                      })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                      })}
+                    </div>
+
+                    {/* Vista Desktop / Tablet: Tabla completa con scroll */}
+                    <div className="hidden md:block max-h-[42vh] overflow-auto border rounded-xl">
+                      <table className="w-full text-left text-xs min-w-[640px]">
+                        <thead className="bg-muted/60 sticky top-0 border-b">
+                          <tr>
+                            <th className="p-2">No.</th>
+                            <th className="p-2">Vencimiento</th>
+                            <th className="p-2">Capital</th>
+                            <th className="p-2">Interés</th>
+                            <th className="p-2">Cargos</th>
+                            <th className="p-2">Cuota Total</th>
+                            <th className="p-2">Saldo</th>
+                            <th className="p-2">Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {cuotasPlan(negociacionSeleccionada).map((cuota: any) => {
+                            const cargos = Number(cuota.otros_cargos || 0)
+                            const cargosPagados = Number(cuota.otros_cargos_pagados || 0)
+                            const marca = marcaCuotaContrato(cuota)
+                            return (
+                              <tr key={cuota.id || cuota.numero_cuota} className={claseCuotaContrato(marca)}>
+                                <td className="p-2 font-mono">{cuota.numero_cuota}</td>
+                                <td className="p-2 whitespace-nowrap">{formatFechaCorta(cuota.fecha_vencimiento)}</td>
+                                <td className="p-2">Q{Number(cuota.cuota_capital).toLocaleString()}</td>
+                                <td className="p-2">Q{Number(cuota.cuota_interes || 0).toLocaleString()}</td>
+                                <td className="p-2">
+                                  {cargos > 0 ? (
+                                    <span title={`Pagado Q${cargosPagados.toLocaleString()}`}>
+                                      Q{cargos.toLocaleString()}
+                                      {cargosPagados + 0.009 >= cargos ? (
+                                        <Badge className="ml-1 bg-emerald-500/20 text-emerald-600 text-[0.5rem]">PAGADO</Badge>
+                                      ) : cargosPagados > 0 ? (
+                                        <Badge variant="outline" className="ml-1 text-[0.5rem]">PARCIAL</Badge>
+                                      ) : null}
+                                    </span>
+                                  ) : '—'}
+                                </td>
+                                <td className="p-2 font-bold">Q{Number(cuota.cuota_monto_total).toLocaleString()}</td>
+                                <td className="p-2">Q{Number(cuota.saldo_capital_restante).toLocaleString()}</td>
+                                <td className="p-2">
+                                  <span className={`rounded px-2 py-0.5 text-[0.625rem] font-semibold ${chipCuotaContrato(marca)}`}>{textoCuotaContrato(marca)}</span>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
               </div>
 
               {kardexMovimientos.length > 0 && (
@@ -1540,7 +1591,48 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                   <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground mb-2">
                     Kardex de movimientos
                   </h4>
-                  <div className="max-h-[28vh] overflow-auto border rounded-xl">
+
+                  {/* Vista móvil para Kardex */}
+                  <div className="md:hidden max-h-[35vh] overflow-y-auto space-y-2 pr-1">
+                    {kardexMovimientos.map((mov, idx) => (
+                      <div key={`${mov.documento || 'mov'}-${idx}`} className="p-2.5 rounded-lg border bg-muted/20 text-xs space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono font-bold text-foreground">{mov.documento || '—'}</span>
+                          <span className="text-muted-foreground text-[0.7rem]">{formatFechaCorta(mov.fecha)}</span>
+                        </div>
+                        <p className="text-muted-foreground text-[0.75rem]">{mov.concepto}</p>
+                        <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[0.75rem]">
+                          <div>
+                            <span className="text-muted-foreground">Abono: </span>
+                            <span className="font-bold text-emerald-600">Q{Number(mov.abono || 0).toLocaleString()}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Saldo: </span>
+                            <span className="font-bold text-foreground">Q{Number(mov.saldo || 0).toLocaleString()}</span>
+                          </div>
+                        </div>
+                        {mov.pago_id && (
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                            {mov.anulado && <Badge variant="outline" className="text-[0.625rem]">Anulado</Badge>}
+                            <Button size="sm" variant="outline" onClick={() => handleDescargarReciboPdf(mov.pago_id, mov.documento)} disabled={descargandoDoc === 'recibo'} className="h-7 flex-1 gap-1 px-2 text-[0.6875rem]">
+                              <DownloadSimple size={12} /> Recibo
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => handleDescargarTicketPdf(mov.pago_id, mov.documento)} disabled={descargandoDoc === 'ticket'} className="h-7 flex-1 gap-1 px-2 text-[0.6875rem]">
+                              <Printer size={12} /> Ticket
+                            </Button>
+                            {!mov.anulado && puedeAnularRecibo && Number(mov.pago_id) === ultimoPagoVigente && (
+                              <Button size="sm" variant="outline" onClick={() => { setReciboAnular({ pagoId: Number(mov.pago_id), documento: mov.documento, abono: Number(mov.abono || 0) }); setMotivoAnulacion('') }} className="aviso-caja-cerrada h-7 border-0 px-2 text-[0.6875rem]">
+                                Anular
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Vista Desktop para Kardex */}
+                  <div className="hidden md:block max-h-[28vh] overflow-auto border rounded-xl">
                     <table className="w-full text-left text-xs min-w-[520px]">
                       <thead className="bg-muted/60 sticky top-0 border-b">
                         <tr>
@@ -1587,23 +1679,25 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
               )}
             </div>
 
-            <DialogFooter className="flex items-center justify-between sm:justify-between w-full gap-2 flex-wrap">
-              <div className="flex gap-2 flex-wrap">
-                <span className="self-center text-xs font-semibold text-muted-foreground">Documentos</span>
-                <Button variant="outline" onClick={() => handleDescargarEstadoCuentaPdf(negociacionSeleccionada)} disabled={descargandoDoc === 'estado'} className="gap-1.5 text-xs">
-                  <DownloadSimple size={16} /> {descargandoDoc === 'estado' ? 'Descargando...' : 'Estado de cuenta PDF'}
-                </Button>
-                <Button variant="outline" onClick={() => negociacionService.descargarEstadoCuentaExcel(negociacionSeleccionada.id, negociacionSeleccionada.codigo_negociacion)} className="gap-1.5 text-xs">
-                  Excel
-                </Button>
-                <Button variant="outline" onClick={() => handleDescargarPlanPagosPdf(negociacionSeleccionada)} disabled={descargandoDoc === 'plan'} className="gap-1.5 text-xs">
-                  <DownloadSimple size={16} /> {descargandoDoc === 'plan' ? 'Descargando...' : 'Plan de pagos PDF'}
-                </Button>
-                <Button variant="outline" onClick={() => handleDescargarContratoPdf(negociacionSeleccionada)} disabled={descargandoDoc === 'contrato'} className="gap-1.5 text-xs">
-                  <DownloadSimple size={16} /> {descargandoDoc === 'contrato' ? 'Descargando...' : 'Contrato PDF'}
-                </Button>
+            <DialogFooter className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 w-full pt-3 border-t">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground">Documentos:</span>
+                <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-2">
+                  <Button variant="outline" size="sm" onClick={() => handleDescargarEstadoCuentaPdf(negociacionSeleccionada)} disabled={descargandoDoc === 'estado'} className="gap-1.5 text-xs h-8">
+                    <DownloadSimple size={14} /> {descargandoDoc === 'estado' ? 'Descargando...' : 'Estado cuenta PDF'}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => negociacionService.descargarEstadoCuentaExcel(negociacionSeleccionada.id, negociacionSeleccionada.codigo_negociacion)} className="gap-1.5 text-xs h-8">
+                    Excel
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleDescargarPlanPagosPdf(negociacionSeleccionada)} disabled={descargandoDoc === 'plan'} className="gap-1.5 text-xs h-8">
+                    <DownloadSimple size={14} /> {descargandoDoc === 'plan' ? 'Descargando...' : 'Plan pagos PDF'}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleDescargarContratoPdf(negociacionSeleccionada)} disabled={descargandoDoc === 'contrato'} className="gap-1.5 text-xs h-8">
+                    <DownloadSimple size={14} /> {descargandoDoc === 'contrato' ? 'Descargando...' : 'Contrato PDF'}
+                  </Button>
+                </div>
               </div>
-              <Button onClick={() => setModalEstadoCuenta(false)}>Cerrar</Button>
+              <Button onClick={() => setModalEstadoCuenta(false)} className="w-full sm:w-auto">Cerrar</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

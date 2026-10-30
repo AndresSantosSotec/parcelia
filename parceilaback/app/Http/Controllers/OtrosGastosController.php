@@ -290,6 +290,78 @@ class OtrosGastosController extends Controller
         }
     }
 
+    /** PUT /otros-gastos/movimientos/{id} */
+    public function updateMovimiento(Request $request, $id)
+    {
+        $user = Auth::user();
+        $esAdmin = in_array($user->normalizedRole(), ['superadmin', 'administrador'], true);
+        if (!$esAdmin && !$user->hasPermission('otros_gastos', 'editar')) {
+            return response()->json(['success' => false, 'message' => 'Solo administradores o usuarios con permiso pueden editar gastos o ingresos'], 403);
+        }
+
+        $movimiento = OtroGastoMovimiento::findOrFail($id);
+
+        if ($movimiento->estado === 'anulado') {
+            return response()->json(['success' => false, 'message' => 'No se puede editar un movimiento que ya está anulado'], 422);
+        }
+
+        $validated = $request->validate([
+            'otro_gasto_tipo_id' => 'required|exists:otro_gasto_tipos,id',
+            'monto'              => 'required|numeric|min:0.01',
+            'concepto'           => 'required|string|max:255',
+            'descripcion'        => 'nullable|string',
+            'fecha'              => 'nullable|date',
+            'numero_recibo'      => 'nullable|string|max:80',
+            'forma_pago'         => 'nullable|in:efectivo,transferencia,cheque,otro',
+        ]);
+
+        $tipo = OtroGastoTipo::findOrFail($validated['otro_gasto_tipo_id']);
+        $fecha = Carbon::parse($validated['fecha'] ?? $movimiento->fecha)->toDateString();
+
+        DB::beginTransaction();
+        try {
+            $movimiento->otro_gasto_tipo_id = $tipo->id;
+            $movimiento->tipo = $tipo->tipo;
+            $movimiento->monto = $validated['monto'];
+            $movimiento->concepto = $validated['concepto'];
+            $movimiento->descripcion = $validated['descripcion'] ?? null;
+            $movimiento->fecha = $fecha;
+            $movimiento->numero_recibo = $validated['numero_recibo'] ?? null;
+            $movimiento->forma_pago = $validated['forma_pago'] ?? 'efectivo';
+            $movimiento->save();
+
+            // Si tiene movimiento de caja asociado, actualizarlo también
+            if ($movimiento->movimiento_caja_id) {
+                $movCaja = MovimientoCaja::find($movimiento->movimiento_caja_id);
+                if ($movCaja) {
+                    $movCaja->monto = $validated['monto'];
+                    $movCaja->concepto = 'Otro gasto: ' . ($validated['concepto'] ?: $tipo->nombre);
+                    $movCaja->tipo = $tipo->tipo === 'ingreso' ? 'incremento' : 'decremento';
+                    $detalles = json_decode($movCaja->detalles_movimiento, true) ?? [];
+                    $detalles['tipo_gasto'] = $tipo->nombre;
+                    $detalles['forma_pago'] = $validated['forma_pago'] ?? 'efectivo';
+                    $detalles['numero_recibo'] = $validated['numero_recibo'] ?? null;
+                    $movCaja->detalles_movimiento = json_encode($detalles);
+                    $movCaja->save();
+                }
+            }
+
+            DB::commit();
+
+            $movimiento->load(['tipo_gasto', 'user']);
+
+            return response()->json([
+                'success' => true,
+                'data'    => $movimiento,
+                'message' => 'Movimiento actualizado correctamente',
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error actualizando otro gasto: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Error al actualizar el movimiento'], 500);
+        }
+    }
+
     /** POST /otros-gastos/movimientos/{id}/anular */
     public function anularMovimiento(Request $request, $id)
     {

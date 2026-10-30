@@ -24,6 +24,7 @@ class StorePagoTerrenoRequest extends FormRequest
             'caja_apertura_cierre_id' => 'nullable|exists:caja_apertura_cierres,id',
             'idempotency_key' => 'nullable|string|max:64',
             'fecha_pago' => 'nullable|date',
+            'mora' => 'nullable|numeric|min:0',
         ];
     }
 }

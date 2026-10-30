@@ -590,6 +590,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/cajas/{id}/detalle', [CajaController::class, 'detalleCaja']);
             Route::get('/cajas/{id}/movimientos', [CajaController::class, 'getMovimientos']);
             Route::post('/cajas/movimientos', [CajaController::class, 'registrarMovimiento']);
+            Route::put('/cajas/movimientos/{id}', [CajaController::class, 'updateMovimiento']);
 
             // Integración Caja-Bóveda: aprobación de movimientos pendientes (modo integrado)
             Route::get('/boveda/movimientos-caja-pendientes', [BovedaController::class, 'movimientosCajaPendientes']);
@@ -603,6 +604,7 @@ Route::prefix('v1')->group(function () {
             Route::delete('/otros-gastos/tipos/{id}', [OtrosGastosController::class, 'destroyTipo']);
             Route::get('/otros-gastos/movimientos', [OtrosGastosController::class, 'indexMovimientos']);
             Route::post('/otros-gastos/movimientos', [OtrosGastosController::class, 'storeMovimiento']);
+            Route::put('/otros-gastos/movimientos/{id}', [OtrosGastosController::class, 'updateMovimiento']);
             Route::post('/otros-gastos/movimientos/{id}/anular', [OtrosGastosController::class, 'anularMovimiento']);
             Route::get('/otros-gastos/resumen-mes', [OtrosGastosController::class, 'resumenMes']);
             Route::put('/cajas/{id}', [CajaController::class, 'update']);

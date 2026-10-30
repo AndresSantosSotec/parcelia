@@ -58,7 +58,8 @@ class PagoTerrenoController extends Controller
                     $validated['caja_apertura_cierre_id'] ?? null,
                     $validated['origen_fondos'] ?? null,
                     $validated['idempotency_key'] ?? null,
-                    $validated['fecha_pago'] ?? null
+                    $validated['fecha_pago'] ?? null,
+                    array_key_exists('mora', $validated) && $validated['mora'] !== null ? (float) $validated['mora'] : null
                 );
             });
 

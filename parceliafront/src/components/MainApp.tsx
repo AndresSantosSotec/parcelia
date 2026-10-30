@@ -331,7 +331,7 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
       case 'gastos':
         return <CatalogoGastos />
       case 'otros_gastos':
-        return <OtrosGastosModule />
+        return <OtrosGastosModule userSession={userSession} />
       case 'cotizaciones':
         return <CotizacionesModule />
       case 'boveda':

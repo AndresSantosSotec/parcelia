@@ -83,7 +83,7 @@ const MESES = [
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function OtrosGastosModule() {
+export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
   const { abierta: cajaAbierta } = useCajaOperable()
   const now = new Date()
   const [tab, setTab] = useState<'movimientos' | 'catalogo'>('movimientos')
@@ -137,6 +137,81 @@ export function OtrosGastosModule() {
     numero_recibo: '',
     forma_pago: 'efectivo',
   })
+
+  // ── Editar movimiento (Admin) ───────────────────────────────────────────
+  const [movEditando, setMovEditando] = useState<OtroGastoMovimiento | null>(null)
+  const [guardandoEditMov, setGuardandoEditMov] = useState(false)
+  const [formEditMov, setFormEditMov] = useState<{
+    otro_gasto_tipo_id: string
+    monto: string
+    concepto: string
+    descripcion: string
+    fecha: string
+    numero_recibo: string
+    forma_pago: string
+  }>({
+    otro_gasto_tipo_id: '',
+    monto: '',
+    concepto: '',
+    descripcion: '',
+    fecha: '',
+    numero_recibo: '',
+    forma_pago: 'efectivo',
+  })
+
+  const abrirEditarMov = (mov: OtroGastoMovimiento) => {
+    setMovEditando(mov)
+    const fechaLimpia = mov.fecha
+      ? (typeof mov.fecha === 'string' && mov.fecha.includes('T') ? mov.fecha.split('T')[0] : String(mov.fecha))
+      : format(new Date(), 'yyyy-MM-dd')
+    setFormEditMov({
+      otro_gasto_tipo_id: String(mov.otro_gasto_tipo_id || mov.tipo_gasto?.id || ''),
+      monto: String(mov.monto || ''),
+      concepto: mov.concepto || '',
+      descripcion: mov.descripcion || '',
+      fecha: fechaLimpia,
+      numero_recibo: mov.numero_recibo || '',
+      forma_pago: mov.forma_pago || 'efectivo',
+    })
+  }
+
+  const handleGuardarEditMov = async () => {
+    if (!movEditando) return
+    if (!formEditMov.otro_gasto_tipo_id) {
+      toast.error('Selecciona una categoría / tipo')
+      return
+    }
+    const monto = parseFloat(formEditMov.monto)
+    if (!monto || monto <= 0) {
+      toast.error('El monto debe ser mayor a 0')
+      return
+    }
+    if (!formEditMov.concepto.trim()) {
+      toast.error('El concepto es obligatorio')
+      return
+    }
+
+    setGuardandoEditMov(true)
+    try {
+      await otrosGastosService.actualizarMovimiento(movEditando.id, {
+        otro_gasto_tipo_id: Number(formEditMov.otro_gasto_tipo_id),
+        monto,
+        concepto: formEditMov.concepto.trim(),
+        descripcion: formEditMov.descripcion.trim() || undefined,
+        fecha: formEditMov.fecha || undefined,
+        numero_recibo: formEditMov.numero_recibo.trim() || undefined,
+        forma_pago: formEditMov.forma_pago as any,
+      })
+      toast.success('Movimiento actualizado correctamente')
+      setMovEditando(null)
+      cargarMovimientos()
+      cargarResumen()
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al actualizar el movimiento')
+    } finally {
+      setGuardandoEditMov(false)
+    }
+  }
 
   // Cuando se selecciona un tipo, auto-completar concepto
   const tipoMovSeleccionado = useMemo(
@@ -442,7 +517,96 @@ export function OtrosGastosModule() {
                 {totalMovs} movimiento{totalMovs !== 1 ? 's' : ''} en {MESES[mes - 1]} {anio}
               </CardTitle>
             </CardHeader>
-            <div className="overflow-x-auto">
+            {/* ── Vista Móvil: Cards compactos y legibles ── */}
+            <div className="md:hidden divide-y">
+              {loadingMovs ? (
+                <div className="p-4 space-y-3">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-20 bg-muted/50 rounded-xl animate-pulse" />
+                  ))}
+                </div>
+              ) : movsFiltrados.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground text-sm">
+                  <CalendarBlank className="mx-auto h-8 w-8 mb-2 opacity-30" />
+                  <p>Sin movimientos para {MESES[mes - 1]} {anio}</p>
+                </div>
+              ) : (
+                movsFiltrados.map((mov) => {
+                  const fechaVal = mov.fecha ? (mov.fecha.includes('T') ? mov.fecha : mov.fecha + 'T00:00:00') : null
+                  const fechaDate = fechaVal ? new Date(fechaVal) : null
+                  const fechaFormateada = fechaDate && !Number.isNaN(fechaDate.getTime())
+                    ? format(fechaDate, 'dd/MM/yyyy', { locale: es })
+                    : '—'
+                  const esIngreso = mov.tipo === 'ingreso'
+                  return (
+                    <div key={mov.id} className={`p-3.5 space-y-2 ${mov.estado === 'anulado' ? 'opacity-50 bg-muted/10' : ''}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="text-[11px] font-mono text-muted-foreground block">{fechaFormateada}</span>
+                          <p className="font-semibold text-sm text-foreground truncate">{mov.concepto}</p>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">
+                              {mov.tipo_gasto?.nombre || 'General'}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground capitalize">
+                              {mov.forma_pago}
+                            </span>
+                            {mov.numero_recibo && (
+                              <span className="text-[10px] font-mono text-muted-foreground">
+                                · Doc: {mov.numero_recibo}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className={`text-base font-bold ${esIngreso ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                            {esIngreso ? '+' : '-'} {formatMoneda(mov.monto)}
+                          </p>
+                          <div className="mt-1">
+                            {mov.estado === 'aplicado' ? (
+                              <Badge variant="outline" className="border-green-500/40 text-green-600 text-[10px] py-0 px-1.5">
+                                Aplicado
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="border-red-400/40 text-red-500 text-[10px] py-0 px-1.5">
+                                Anulado
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Botones de acción móvil */}
+                      <div className="flex items-center justify-end gap-1 pt-1 border-t border-border/50">
+                        {mov.estado !== 'anulado' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs gap-1"
+                            onClick={() => abrirEditarMov(mov)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" /> Editar
+                          </Button>
+                        )}
+                        {mov.estado === 'aplicado' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-destructive hover:bg-destructive/10 gap-1"
+                            onClick={() => { setAnulando(mov); setMotivoAnulacion('') }}
+                          >
+                            <Trash className="h-3.5 w-3.5" /> Anular
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+
+            {/* ── Vista Desktop / Tablet: Tabla completa ── */}
+            <div className="hidden md:block overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/40">
@@ -453,7 +617,7 @@ export function OtrosGastosModule() {
                     <TableHead className="text-right">Ingreso</TableHead>
                     <TableHead className="text-right">Egreso</TableHead>
                     <TableHead>Estado</TableHead>
-                    <TableHead className="w-[80px]">Acciones</TableHead>
+                    <TableHead className="w-[100px] text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -509,17 +673,31 @@ export function OtrosGastosModule() {
                             </Badge>
                           )}
                         </TableCell>
-                        <TableCell>
-                          {mov.estado === 'aplicado' && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => { setAnulando(mov); setMotivoAnulacion('') }}
-                            >
-                              <Trash className="h-4 w-4" />
-                            </Button>
-                          )}
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {mov.estado !== 'anulado' && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                title="Editar movimiento"
+                                onClick={() => abrirEditarMov(mov)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            )}
+                            {mov.estado === 'aplicado' && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                title="Anular movimiento"
+                                onClick={() => { setAnulando(mov); setMotivoAnulacion('') }}
+                              >
+                                <Trash className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     )})
@@ -847,6 +1025,119 @@ export function OtrosGastosModule() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {/* ── DIÁLOGO: EDITAR MOVIMIENTO ────────────────────────────────────────── */}
+      <Dialog open={movEditando !== null} onOpenChange={(open) => { if (!open) setMovEditando(null) }}>
+        <DialogContent className="w-[min(95vw,520px)] max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Pencil className="h-5 w-5 text-primary" />
+              Editar Movimiento de {movEditando?.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3.5 py-1">
+            <div className="space-y-1.5">
+              <Label>Categoría / Tipo *</Label>
+              <Select
+                value={formEditMov.otro_gasto_tipo_id}
+                onValueChange={(val) => setFormEditMov(f => ({ ...f, otro_gasto_tipo_id: val }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar categoría..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {tipos.map(t => (
+                    <SelectItem key={t.id} value={String(t.id)}>
+                      {t.nombre} ({t.tipo})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Monto (Q) *</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={formEditMov.monto}
+                  onChange={(e) => setFormEditMov(f => ({ ...f, monto: e.target.value }))}
+                  placeholder="0.00"
+                  className="font-bold text-base"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Fecha</Label>
+                <Input
+                  type="date"
+                  value={formEditMov.fecha}
+                  onChange={(e) => setFormEditMov(f => ({ ...f, fecha: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Concepto *</Label>
+              <Input
+                value={formEditMov.concepto}
+                onChange={(e) => setFormEditMov(f => ({ ...f, concepto: e.target.value }))}
+                placeholder="Descripción del movimiento..."
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Forma de Pago</Label>
+                <Select
+                  value={formEditMov.forma_pago}
+                  onValueChange={(val) => setFormEditMov(f => ({ ...f, forma_pago: val }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="efectivo">Efectivo</SelectItem>
+                    <SelectItem value="transferencia">Transferencia</SelectItem>
+                    <SelectItem value="cheque">Cheque</SelectItem>
+                    <SelectItem value="otro">Otro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>No. Recibo / Referencia</Label>
+                <Input
+                  value={formEditMov.numero_recibo}
+                  onChange={(e) => setFormEditMov(f => ({ ...f, numero_recibo: e.target.value }))}
+                  placeholder="Ej. REC-001 o Boleta"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Descripción Adicional</Label>
+              <Textarea
+                value={formEditMov.descripcion}
+                onChange={(e) => setFormEditMov(f => ({ ...f, descripcion: e.target.value }))}
+                placeholder="Detalles u observaciones..."
+                rows={2}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
+            <Button variant="outline" onClick={() => setMovEditando(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleGuardarEditMov} disabled={guardandoEditMov}>
+              {guardandoEditMov ? 'Guardando...' : 'Guardar Cambios'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

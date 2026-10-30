@@ -655,4 +655,46 @@ class CajaController extends Controller
 
        return response()->json($movimientos);
     }
+
+    /**
+     * Actualizar movimiento manual de caja (incremento / decremento)
+     * Solo para administradores o usuarios con permiso
+     */
+    public function updateMovimiento(Request $request, $id)
+    {
+        $user = Auth::user();
+        $esAdmin = in_array($user->normalizedRole(), ['superadmin', 'administrador'], true);
+        if (!$esAdmin && !$user->hasPermission('caja', 'gestionar_cajas') && !$user->hasPermission('caja', 'editar')) {
+            return response()->json(['error' => 'Solo administradores pueden editar movimientos de caja.'], 403);
+        }
+
+        $mov = MovimientoCaja::findOrFail($id);
+
+        if ($mov->estado === 'anulado') {
+            return response()->json(['error' => 'No se puede editar un movimiento anulado.'], 422);
+        }
+
+        if (!in_array($mov->tipo, ['incremento', 'decremento'], true)) {
+            return response()->json(['error' => 'Solo se pueden editar ingresos y egresos manuales de caja.'], 422);
+        }
+
+        $validated = $request->validate([
+            'monto' => 'required|numeric|min:0.01',
+            'concepto' => 'required|string|max:255',
+            'tipo' => 'sometimes|in:incremento,decremento',
+        ]);
+
+        $mov->monto = $validated['monto'];
+        $mov->concepto = $validated['concepto'];
+        if (isset($validated['tipo'])) {
+            $mov->tipo = $validated['tipo'];
+        }
+        $mov->save();
+
+        return response()->json([
+            'success' => true,
+            'data' => $mov->load('user'),
+            'message' => 'Movimiento de caja actualizado correctamente.',
+        ]);
+    }
 }

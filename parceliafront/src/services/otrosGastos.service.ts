@@ -106,6 +106,14 @@ class OtrosGastosService {
     }>('/otros-gastos/movimientos', { method: 'POST', body: JSON.stringify(data) })
   }
 
+  async actualizarMovimiento(id: number, data: Partial<CrearMovimientoDTO>) {
+    return this.request<{
+      success: boolean
+      data: OtroGastoMovimiento
+      message: string
+    }>(/otros-gastos/movimientos/, { method: 'PUT', body: JSON.stringify(data) })
+  }
+
   async anularMovimiento(id: number, motivo: string) {
     return this.request<{ success: boolean; message: string }>(
       `/otros-gastos/movimientos/${id}/anular`,

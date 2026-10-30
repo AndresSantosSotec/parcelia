@@ -250,6 +250,10 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
     observaciones: '',
     fecha_pago: fechaLocalHoy(),
   })
+  const [moraCalculada, setMoraCalculada] = useState(0)
+  const [moraEditada, setMoraEditada] = useState(0)
+  const [cuotaBaseSugerida, setCuotaBaseSugerida] = useState(0)
+  const [cargandoMoraPago, setCargandoMoraPago] = useState(false)
   const [cajaPagoId, setCajaPagoId] = useState<number | null>(null)
   const [cajaPagoAbierta, setCajaPagoAbierta] = useState<boolean | null>(null)
   const [verificandoCajaPago, setVerificandoCajaPago] = useState(false)
@@ -498,6 +502,7 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
         observaciones: formPago.observaciones,
         caja_apertura_cierre_id: cajaPagoId,
         fecha_pago: formPago.fecha_pago || undefined,
+        mora: formPago.tipo_pago === 'cuota_normal' ? moraEditada : undefined,
       })
 
       if (res.success) {
@@ -670,11 +675,19 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
     navigate('caja')
   }
 
-  const abrirPago = (neg: Negociacion) => {
+  const abrirPago = async (neg: Negociacion) => {
     setNegociacionSeleccionada(neg)
     const cuotaSugerida = neg.saldo_capital_pendiente > 0 ? (neg.cuota_mensual || neg.saldo_capital_pendiente) : 0
+    const esEnganche = neg.enganche_pagado < neg.enganche_pactado
+    const tipoInicial = esEnganche ? 'enganche' : 'cuota_normal'
+
+    setCuotaBaseSugerida(cuotaSugerida)
+    setMoraCalculada(0)
+    setMoraEditada(0)
+    setCargandoMoraPago(true)
+
     setFormPago({
-      tipo_pago: neg.enganche_pagado < neg.enganche_pactado ? 'enganche' : 'cuota_normal',
+      tipo_pago: tipoInicial,
       monto: cuotaSugerida,
       metodo_pago: 'efectivo',
       referencia_bancaria: '',
@@ -683,6 +696,28 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
     })
     setModalRegistrarPago(true)
     void verificarCajaParaPago()
+
+    try {
+      const resEstado = await negociacionService.getEstadoCuenta(neg.id)
+      if (resEstado?.data?.plan_pagos && Array.isArray(resEstado.data.plan_pagos)) {
+        const moraPend = resEstado.data.plan_pagos
+          .filter((cuota: any) => ['pendiente', 'parcial', 'vencida', 'pagada_parcial'].includes(cuota.estado))
+          .reduce((sum: number, cuota: any) => sum + Math.max(0, (Number(cuota.mora_proyectada) || 0) - (Number(cuota.mora_pagada) || 0)), 0)
+        const moraRedondeada = Math.round(moraPend * 100) / 100
+        setMoraCalculada(moraRedondeada)
+        setMoraEditada(moraRedondeada)
+        if (moraRedondeada > 0 && tipoInicial === 'cuota_normal') {
+          setFormPago((prev) => ({
+            ...prev,
+            monto: Math.round((cuotaSugerida + moraRedondeada) * 100) / 100,
+          }))
+        }
+      }
+    } catch (err) {
+      console.warn('No se pudo precargar mora:', err)
+    } finally {
+      setCargandoMoraPago(false)
+    }
   }
 
   const abrirEditarFecha = (neg: Negociacion) => {
@@ -1874,6 +1909,82 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                   </p>
                 </div>
               </div>
+
+              {formPago.tipo_pago === 'cuota_normal' && (
+                <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Label className="text-xs font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                      <WarningCircle size={15} weight="fill" className="text-amber-600" />
+                      Mora de este Contrato / Cuota
+                    </Label>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[11px] px-2.5 text-amber-800 dark:text-amber-200 border-amber-400/50 hover:bg-amber-500/10"
+                        onClick={() => {
+                          setMoraEditada(0)
+                          setFormPago((prev) => ({
+                            ...prev,
+                            monto: Math.round(cuotaBaseSugerida * 100) / 100,
+                          }))
+                        }}
+                      >
+                        Condonar (Q0.00)
+                      </Button>
+                      {moraCalculada > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground"
+                          onClick={() => {
+                            setMoraEditada(moraCalculada)
+                            setFormPago((prev) => ({
+                              ...prev,
+                              monto: Math.round((cuotaBaseSugerida + moraCalculada) * 100) / 100,
+                            }))
+                          }}
+                        >
+                          Restablecer (Q{moraCalculada})
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-2 rounded-lg bg-background/60 border text-xs">
+                      <span className="text-[11px] text-muted-foreground block">Mora calculada por sistema:</span>
+                      <strong className="text-sm font-semibold text-foreground">
+                        {cargandoMoraPago ? 'Calculando...' : `Q${moraCalculada.toLocaleString('es-GT', { minimumFractionDigits: 2 })}`}
+                      </strong>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[11px] font-medium text-foreground block">Mora a Cobrar (Editable) *</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={moraEditada}
+                        onChange={(e) => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0)
+                          setMoraEditada(val)
+                          setFormPago((prev) => ({
+                            ...prev,
+                            monto: Math.round((cuotaBaseSugerida + val) * 100) / 100,
+                          }))
+                        }}
+                        className="h-9 bg-background font-semibold"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-tight">
+                    Puedes cambiar o poner en Q0 la mora si se autorizó descuento o condonación. Este monto saldrá reflejado en el recibo.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label>Monto a Cobrar (Q) *</Label>

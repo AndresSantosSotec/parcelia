@@ -1876,6 +1876,7 @@ export const pagoTerrenoService = {
     observaciones?: string
     caja_apertura_cierre_id?: number
     fecha_pago?: string
+    mora?: number | null
   }) => {
     return api.post<any>('/pagos-terrenos', data)
   },

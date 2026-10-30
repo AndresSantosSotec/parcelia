@@ -34,7 +34,8 @@ class PaymentAllocationService
         ?int $cajaAperturaId = null,
         ?string $origenFondos = null,
         ?string $idempotencyKey = null,
-        ?string $fechaPago = null
+        ?string $fechaPago = null,
+        ?float $moraPersonalizada = null
     ): PagoTerreno {
         if ($montoTotal <= 0) {
             throw new InvalidArgumentException('El monto a pagar debe ser mayor a cero.');
@@ -56,7 +57,8 @@ class PaymentAllocationService
             $cajaAperturaId,
             $origenFondos,
             $idempotencyKey,
-            $fechaPago
+            $fechaPago,
+            $moraPersonalizada
         ) {
             $fechaEfectiva = !empty($fechaPago)
                 ? Carbon::parse($fechaPago)
@@ -116,7 +118,8 @@ class PaymentAllocationService
                     $montoTotal,
                     $saldoAnterior,
                     $configMora,
-                    $fechaEfectiva
+                    $fechaEfectiva,
+                    $moraPersonalizada
                 );
             }
 
@@ -217,8 +220,14 @@ class PaymentAllocationService
     /**
      * Prelación: mora → interés → otros cargos → capital.
      */
-    private function aplicarPrelacion(Negociacion $negociacion, float $monto, float $saldoAnterior, $configMora = null, ?Carbon $fechaEfectiva = null): array
-    {
+    private function aplicarPrelacion(
+        Negociacion $negociacion,
+        float $monto,
+        float $saldoAnterior,
+        $configMora = null,
+        ?Carbon $fechaEfectiva = null,
+        ?float $moraPersonalizada = null
+    ): array {
         $restante = $monto;
         $distMora = $distInteres = $distGastos = $distCapital = 0.0;
 
@@ -228,17 +237,36 @@ class PaymentAllocationService
             ->lockForUpdate()
             ->get();
 
+        // Si se especificó mora personalizada (por ejemplo 0 para condonarla o un monto acordado)
+        $moraRestanteACobrar = $moraPersonalizada !== null ? max(0.0, round($moraPersonalizada, 2)) : null;
+
         foreach ($cuotas as $cuota) {
             if ($restante <= 0) {
                 break;
             }
 
-            $moraPend = $this->moraService->moraPendiente($cuota, $configMora);
-            if ($moraPend > 0) {
-                $pago = min($restante, $moraPend);
-                $cuota->mora_pagada = round((float) $cuota->mora_pagada + $pago, 2);
-                $distMora += $pago;
-                $restante -= $pago;
+            if ($moraRestanteACobrar !== null) {
+                // Modo mora personalizada / condonación
+                if ($moraRestanteACobrar > 0 && $restante > 0) {
+                    $pago = min($restante, $moraRestanteACobrar);
+                    $cuota->mora_pagada = round((float) $cuota->mora_pagada + $pago, 2);
+                    $distMora += $pago;
+                    $restante -= $pago;
+                    $moraRestanteACobrar -= $pago;
+                }
+                // Si la mora fue condonada o reducida, ajustar mora_proyectada para no bloquear la cuota
+                if ((float) $cuota->mora_proyectada > (float) $cuota->mora_pagada) {
+                    $cuota->mora_proyectada = (float) $cuota->mora_pagada;
+                }
+            } else {
+                // Modo estándar (cálculo automático)
+                $moraPend = $this->moraService->moraPendiente($cuota, $configMora);
+                if ($moraPend > 0) {
+                    $pago = min($restante, $moraPend);
+                    $cuota->mora_pagada = round((float) $cuota->mora_pagada + $pago, 2);
+                    $distMora += $pago;
+                    $restante -= $pago;
+                }
             }
 
             $interesPend = max(0.0, (float) $cuota->cuota_interes - (float) $cuota->interes_pagado);

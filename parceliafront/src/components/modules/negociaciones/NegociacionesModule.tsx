@@ -9,7 +9,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { usePermissions } from '@/hooks/use-permissions'
 import { AvisoCaja, useCajaOperable } from '@/components/shared/AvisoCaja'
-import { Plus, Handshake, Calculator, Receipt, User, Package, Calendar, CurrencyDollar, CheckCircle, Clock, ArrowRight, Eye, ShieldCheck, Wallet, Printer, FileText, XCircle, DownloadSimple, WarningCircle, MagnifyingGlass } from '@phosphor-icons/react'
+import { Plus, Handshake, Calculator, Receipt, User, Package, Calendar, CurrencyDollar, CheckCircle, Clock, ArrowRight, Eye, ShieldCheck, Wallet, Printer, FileText, XCircle, DownloadSimple, WarningCircle, MagnifyingGlass, ArrowUp, ArrowDown, CaretDown, Funnel } from '@phosphor-icons/react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import { api, negociacionService, loteService, clienteService, pagoTerrenoService, moraInmobiliariaService, Negociacion, Lote, SimuladorResponse, ParametrizacionMoraInmo } from '@/lib/api'
 import type { Cliente } from '@/lib/types'
@@ -235,6 +241,9 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
   const [ventasDesde, setVentasDesde] = useState('')
   const [ventasHasta, setVentasHasta] = useState('')
   const [filtroTipoVenta, setFiltroTipoVenta] = useState<'' | 'contado' | 'credito' | 'reserva'>('')
+  const [filtroEstadoVenta, setFiltroEstadoVenta] = useState<string>('')
+  const [busquedaContrato, setBusquedaContrato] = useState('')
+  const [ordenContratos, setOrdenContratos] = useState<'recientes' | 'primeras' | 'cliente' | 'saldo' | 'precio'>('recientes')
   const [totalVentas, setTotalVentas] = useState<{ contratos: number; monto: number } | null>(null)
   const [totalIntervalo, setTotalIntervalo] = useState<{ contratos: number; monto: number } | null>(null)
 
@@ -258,11 +267,14 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
   const [cajaPagoAbierta, setCajaPagoAbierta] = useState<boolean | null>(null)
   const [verificandoCajaPago, setVerificandoCajaPago] = useState(false)
 
-  const cargarDatos = async () => {
+  const cargarDatos = async (busquedaExtra?: string) => {
     setCargando(true)
     try {
       const [resNeg, resLotes, resCli, resMora] = await Promise.all([
-        negociacionService.getAll(),
+        negociacionService.getAll({
+          per_page: 250,
+          busqueda: busquedaExtra !== undefined ? busquedaExtra : undefined,
+        }),
         loteService.getDisponibles(),
         clienteService.getActivos(),
         moraInmobiliariaService.getAll(true),
@@ -365,6 +377,65 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
       return lote.numero_lote.toLowerCase().includes(q)
     })
   }, [lotesDisponibles, fincaVentaId, busquedaLote])
+
+  const negociacionesFiltradas = useMemo(() => {
+    let lista = [...negociaciones]
+
+    if (filtroTipoVenta) {
+      lista = lista.filter((n) => n.tipo_negociacion === filtroTipoVenta)
+    }
+
+    if (filtroEstadoVenta && filtroEstadoVenta !== 'todos') {
+      lista = lista.filter((n) => n.estado === filtroEstadoVenta)
+    }
+
+    const q = busquedaContrato.trim().toLowerCase()
+    if (q) {
+      lista = lista.filter((n) => {
+        const cod = String(n.codigo_negociacion || '').toLowerCase()
+        const clienteNom = String(
+          n.comprador?.nombre_completo ||
+          (n.comprador ? `${n.comprador.nombres || ''} ${n.comprador.apellidos || ''}` : '') ||
+          (n.cliente ? `${n.cliente.nombres || ''} ${n.cliente.apellidos || ''}` : '')
+        ).toLowerCase()
+        const dpi = String(n.comprador?.dpi || n.cliente?.dpi || '').toLowerCase()
+        const nit = String(n.comprador?.nit || n.cliente?.nit || '').toLowerCase()
+        const tel = String(n.comprador?.telefono || n.cliente?.telefono || '').toLowerCase()
+        const lote = String(n.lote?.numero_lote || n.lote?.codigo_unico || '').toLowerCase()
+        const finca = String(n.lote?.parcela?.finca?.nombre || '').toLowerCase()
+        const obs = String(n.observaciones || '').toLowerCase()
+
+        return cod.includes(q) ||
+          clienteNom.includes(q) ||
+          dpi.includes(q) ||
+          nit.includes(q) ||
+          tel.includes(q) ||
+          lote.includes(q) ||
+          finca.includes(q) ||
+          obs.includes(q)
+      })
+    }
+
+    lista.sort((a, b) => {
+      if (ordenContratos === 'primeras') {
+        return Number(a.id) - Number(b.id)
+      }
+      if (ordenContratos === 'cliente') {
+        const nomA = String(a.comprador?.nombres || a.comprador?.nombre_completo || '').toLowerCase()
+        const nomB = String(b.comprador?.nombres || b.comprador?.nombre_completo || '').toLowerCase()
+        return nomA.localeCompare(nomB, 'es')
+      }
+      if (ordenContratos === 'saldo') {
+        return Number(b.saldo_capital_pendiente || 0) - Number(a.saldo_capital_pendiente || 0)
+      }
+      if (ordenContratos === 'precio') {
+        return Number(b.precio_final || 0) - Number(a.precio_final || 0)
+      }
+      return Number(b.id) - Number(a.id)
+    })
+
+    return lista
+  }, [negociaciones, filtroTipoVenta, filtroEstadoVenta, busquedaContrato, ordenContratos])
 
   const abrirNuevaNegociacion = () => {
     setFormVenta((prev) => ({
@@ -863,19 +934,232 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
 
       {/* Listado de Negociaciones */}
       <Card className="border-border/80 shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Contratos y Negociaciones Activas ({negociaciones.filter((n) => !filtroTipoVenta || n.tipo_negociacion === filtroTipoVenta).length})</CardTitle>
-          <CardDescription className="text-xs">El contado queda en azul y el crédito a plazo en violeta.</CardDescription>
-          <div className="flex flex-wrap gap-2 pt-2">
-            <Button type="button" size="sm" variant={filtroTipoVenta === '' ? 'default' : 'outline'} onClick={() => setFiltroTipoVenta('')}>Todos ({negociaciones.length})</Button>
-            <Button type="button" size="sm" variant={filtroTipoVenta === 'contado' ? 'default' : 'outline'} className={filtroTipoVenta === 'contado' ? 'bg-sky-600 hover:bg-sky-700' : 'border-sky-500/40 text-sky-800 dark:text-sky-200'} onClick={() => setFiltroTipoVenta('contado')}>Contado ({negociaciones.filter((n) => n.tipo_negociacion === 'contado').length})</Button>
-            <Button type="button" size="sm" variant={filtroTipoVenta === 'credito' ? 'default' : 'outline'} className={filtroTipoVenta === 'credito' ? 'bg-violet-600 hover:bg-violet-700' : 'border-violet-500/40 text-violet-800 dark:text-violet-200'} onClick={() => setFiltroTipoVenta('credito')}>A plazo / crédito ({negociaciones.filter((n) => n.tipo_negociacion === 'credito').length})</Button>
-            <Button type="button" size="sm" variant={filtroTipoVenta === 'reserva' ? 'default' : 'outline'} onClick={() => setFiltroTipoVenta('reserva')}>Reserva ({negociaciones.filter((n) => n.tipo_negociacion === 'reserva').length})</Button>
+        <CardHeader className="pb-3 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <CardTitle className="text-lg">
+                Contratos y Negociaciones ({negociacionesFiltradas.length}{negociacionesFiltradas.length !== negociaciones.length ? ` de ${negociaciones.length}` : ''})
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Busca rápidamente por número de contrato, nombre del cliente, DPI, lote o finca.
+              </CardDescription>
+            </div>
+
+            {/* Selector de orden directo */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Button
+                type="button"
+                variant={ordenContratos === 'primeras' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setOrdenContratos((prev) => (prev === 'primeras' ? 'recientes' : 'primeras'))}
+                className="h-9 text-xs gap-1.5 shadow-sm"
+                title={ordenContratos === 'primeras' ? 'Mostrando primera venta arriba' : 'Clic para mostrar las primeras ventas arriba'}
+              >
+                {ordenContratos === 'primeras' ? (
+                  <>
+                    <ArrowUp size={14} weight="bold" /> Primeras Ventas (1º arriba)
+                  </>
+                ) : (
+                  <>
+                    <ArrowDown size={14} weight="bold" /> Recientes primero
+                  </>
+                )}
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="outline" size="sm" className="h-9 text-xs gap-1">
+                    Ordenar <CaretDown size={12} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem
+                    onClick={() => setOrdenContratos('recientes')}
+                    className={ordenContratos === 'recientes' ? 'font-bold bg-muted' : ''}
+                  >
+                    ⬇️ Más recientes primero
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setOrdenContratos('primeras')}
+                    className={ordenContratos === 'primeras' ? 'font-bold bg-muted' : ''}
+                  >
+                    ⬆️ Primeras ventas primero (Antiguos)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setOrdenContratos('cliente')}
+                    className={ordenContratos === 'cliente' ? 'font-bold bg-muted' : ''}
+                  >
+                    👤 Por cliente (A - Z)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setOrdenContratos('saldo')}
+                    className={ordenContratos === 'saldo' ? 'font-bold bg-muted' : ''}
+                  >
+                    💰 Mayor saldo pendiente
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setOrdenContratos('precio')}
+                    className={ordenContratos === 'precio' ? 'font-bold bg-muted' : ''}
+                  >
+                    🏷️ Mayor precio de venta
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+
+          {/* Barra de Búsqueda */}
+          <div className="relative">
+            <MagnifyingGlass
+              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+            />
+            <Input
+              type="text"
+              value={busquedaContrato}
+              onChange={(e) => setBusquedaContrato(e.target.value)}
+              placeholder="Buscar por # contrato (ej: NEG-2026-0001), comprador, DPI, lote, finca..."
+              className="pl-9 pr-9 text-sm h-10 w-full bg-background"
+            />
+            {busquedaContrato && (
+              <button
+                type="button"
+                onClick={() => setBusquedaContrato('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                title="Limpiar búsqueda"
+              >
+                <XCircle size={18} weight="fill" />
+              </button>
+            )}
+          </div>
+
+          {/* Filtros por Tipo y Estado */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <span className="text-xs text-muted-foreground mr-1 hidden sm:inline">Tipo:</span>
+            <Button
+              type="button"
+              size="sm"
+              variant={filtroTipoVenta === '' ? 'default' : 'outline'}
+              className="h-7 text-xs px-2.5"
+              onClick={() => setFiltroTipoVenta('')}
+            >
+              Todos ({negociaciones.length})
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={filtroTipoVenta === 'contado' ? 'default' : 'outline'}
+              className={`h-7 text-xs px-2.5 ${filtroTipoVenta === 'contado' ? 'bg-sky-600 hover:bg-sky-700' : 'border-sky-500/40 text-sky-800 dark:text-sky-200'}`}
+              onClick={() => setFiltroTipoVenta('contado')}
+            >
+              Contado ({negociaciones.filter((n) => n.tipo_negociacion === 'contado').length})
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={filtroTipoVenta === 'credito' ? 'default' : 'outline'}
+              className={`h-7 text-xs px-2.5 ${filtroTipoVenta === 'credito' ? 'bg-violet-600 hover:bg-violet-700' : 'border-violet-500/40 text-violet-800 dark:text-violet-200'}`}
+              onClick={() => setFiltroTipoVenta('credito')}
+            >
+              A plazo ({negociaciones.filter((n) => n.tipo_negociacion === 'credito').length})
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={filtroTipoVenta === 'reserva' ? 'default' : 'outline'}
+              className="h-7 text-xs px-2.5"
+              onClick={() => setFiltroTipoVenta('reserva')}
+            >
+              Reserva ({negociaciones.filter((n) => n.tipo_negociacion === 'reserva').length})
+            </Button>
+
+            <span className="text-muted-foreground/40 mx-1 hidden sm:inline">|</span>
+
+            <span className="text-xs text-muted-foreground mr-1 hidden sm:inline">Estado:</span>
+            <Button
+              type="button"
+              size="sm"
+              variant={filtroEstadoVenta === '' ? 'secondary' : 'ghost'}
+              className="h-7 text-xs px-2"
+              onClick={() => setFiltroEstadoVenta('')}
+            >
+              Cualquiera
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={filtroEstadoVenta === 'activa' ? 'default' : 'ghost'}
+              className={`h-7 text-xs px-2 ${filtroEstadoVenta === 'activa' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'text-emerald-700 dark:text-emerald-400'}`}
+              onClick={() => setFiltroEstadoVenta(filtroEstadoVenta === 'activa' ? '' : 'activa')}
+            >
+              Al Día
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={filtroEstadoVenta === 'en_mora' ? 'default' : 'ghost'}
+              className={`h-7 text-xs px-2 ${filtroEstadoVenta === 'en_mora' ? 'bg-red-600 hover:bg-red-700 text-white' : 'text-red-700 dark:text-red-400'}`}
+              onClick={() => setFiltroEstadoVenta(filtroEstadoVenta === 'en_mora' ? '' : 'en_mora')}
+            >
+              En Mora
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={filtroEstadoVenta === 'pagada_total' ? 'default' : 'ghost'}
+              className={`h-7 text-xs px-2 ${filtroEstadoVenta === 'pagada_total' ? 'bg-teal-600 hover:bg-teal-700 text-white' : 'text-teal-700 dark:text-teal-400'}`}
+              onClick={() => setFiltroEstadoVenta(filtroEstadoVenta === 'pagada_total' ? '' : 'pagada_total')}
+            >
+              Liquidado
+            </Button>
+
+            {(busquedaContrato || filtroTipoVenta || filtroEstadoVenta) && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setBusquedaContrato('')
+                  setFiltroTipoVenta('')
+                  setFiltroEstadoVenta('')
+                }}
+                className="h-7 text-xs px-2 text-muted-foreground hover:text-foreground ml-auto"
+              >
+                Limpiar filtros
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="md:hidden divide-y">
-            {negociaciones.filter((n) => !filtroTipoVenta || n.tipo_negociacion === filtroTipoVenta).map((neg) => {
+          {negociacionesFiltradas.length === 0 ? (
+            <div className="py-12 px-4 text-center space-y-3">
+              <MagnifyingGlass size={38} className="mx-auto text-muted-foreground/40" />
+              <p className="font-semibold text-foreground text-sm">No se encontraron ventas ni contratos</p>
+              <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                {busquedaContrato
+                  ? `No se encontraron coincidencias para "${busquedaContrato}". Prueba buscando por código de contrato, DPI o apellido.`
+                  : 'No hay contratos registrados con los filtros seleccionados.'}
+              </p>
+              {(busquedaContrato || filtroTipoVenta || filtroEstadoVenta) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setBusquedaContrato('')
+                    setFiltroTipoVenta('')
+                    setFiltroEstadoVenta('')
+                  }}
+                  className="mt-2 text-xs"
+                >
+                  Restablecer búsqueda y filtros
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="md:hidden divide-y">
+                {negociacionesFiltradas.map((neg) => {
               const total = Number(neg.precio_final || 1)
               const pagado = Number(neg.total_capital_pagado || 0)
               const porcentaje = Math.min(100, Math.round((pagado / total) * 100))
@@ -970,7 +1254,7 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {negociaciones.filter((n) => !filtroTipoVenta || n.tipo_negociacion === filtroTipoVenta).map((neg) => {
+                {negociacionesFiltradas.map((neg) => {
                   const total = Number(neg.precio_final || 1)
                   const pagado = Number(neg.total_capital_pagado || 0)
                   const porcentaje = Math.min(100, Math.round((pagado / total) * 100))
@@ -1084,6 +1368,8 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
               </tbody>
             </table>
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

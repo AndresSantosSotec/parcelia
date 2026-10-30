@@ -47,14 +47,15 @@ class ClienteController extends Controller
             }
 
             if ($request->has('busqueda') && $request->busqueda !== '') {
-                $busqueda = $request->busqueda;
+                $busqueda = trim($request->busqueda);
                 $query->where(function ($q) use ($busqueda) {
                     $q->where('nombres', 'like', "%{$busqueda}%")
                       ->orWhere('apellidos', 'like', "%{$busqueda}%")
                       ->orWhere('dpi', 'like', "%{$busqueda}%")
                       ->orWhere('nit', 'like', "%{$busqueda}%")
                       ->orWhere('telefono', 'like', "%{$busqueda}%")
-                      ->orWhere('email', 'like', "%{$busqueda}%");
+                      ->orWhere('email', 'like', "%{$busqueda}%")
+                      ->orWhereRaw("CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellidos, '')) LIKE ?", ["%{$busqueda}%"]);
                 });
             }
 

@@ -1805,11 +1805,25 @@ export const negociacionService = {
   simular: (data: SimuladorRequest) => {
     return api.post<SimuladorResponse>('/simulador/calcular', data)
   },
-  getAll: (params?: { estado?: string; cliente_id?: number; per_page?: number }) => {
+  getAll: (params?: {
+    estado?: string
+    tipo_negociacion?: string
+    cliente_id?: number
+    per_page?: number | string
+    page?: number
+    busqueda?: string
+    order_by?: string
+    order_dir?: 'asc' | 'desc'
+  }) => {
     const query = new URLSearchParams()
     if (params?.estado && params.estado !== 'todos') query.append('estado', params.estado)
+    if (params?.tipo_negociacion && params.tipo_negociacion !== '') query.append('tipo_negociacion', params.tipo_negociacion)
     if (params?.cliente_id) query.append('cliente_id', params.cliente_id.toString())
-    if (params?.per_page) query.append('per_page', params.per_page.toString())
+    if (params?.per_page !== undefined) query.append('per_page', params.per_page.toString())
+    if (params?.page) query.append('page', params.page.toString())
+    if (params?.busqueda) query.append('busqueda', params.busqueda.trim())
+    if (params?.order_by) query.append('order_by', params.order_by)
+    if (params?.order_dir) query.append('order_dir', params.order_dir)
     return api.get<Negociacion[]>(`/negociaciones?${query.toString()}`)
   },
   getById: (id: number) => {

@@ -31,8 +31,12 @@ class NegociacionController extends Controller
         $query = Negociacion::with(['comprador', 'lote.parcela.finca', 'asesor', 'planPagos', 'parametrizacionMora'])
             ->withCount('planPagos');
 
-        if ($request->filled('estado')) {
+        if ($request->filled('estado') && $request->estado !== 'todos') {
             $query->where('estado', $request->estado);
+        }
+
+        if ($request->filled('tipo_negociacion') && $request->tipo_negociacion !== '') {
+            $query->where('tipo_negociacion', $request->tipo_negociacion);
         }
 
         if ($request->filled('cliente_id')) {
@@ -41,6 +45,34 @@ class NegociacionController extends Controller
 
         if ($request->filled('_sucursal_scope')) {
             $query->where('sucursal_id', $request->_sucursal_scope);
+        }
+
+        // Búsqueda global en ventas / contratos
+        $busqueda = trim((string) $request->input('busqueda', $request->input('search', '')));
+        if ($busqueda !== '') {
+            $query->where(function ($q) use ($busqueda) {
+                $q->where('codigo_negociacion', 'like', "%{$busqueda}%")
+                    ->orWhere('observaciones', 'like', "%{$busqueda}%")
+                    ->orWhereHas('comprador', function ($cq) use ($busqueda) {
+                        $cq->where('nombres', 'like', "%{$busqueda}%")
+                            ->orWhere('apellidos', 'like', "%{$busqueda}%")
+                            ->orWhere('dpi', 'like', "%{$busqueda}%")
+                            ->orWhere('nit', 'like', "%{$busqueda}%")
+                            ->orWhere('telefono', 'like', "%{$busqueda}%")
+                            ->orWhereRaw("CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellidos, '')) LIKE ?", ["%{$busqueda}%"]);
+                    })
+                    ->orWhereHas('lote', function ($lq) use ($busqueda) {
+                        $lq->where('numero_lote', 'like', "%{$busqueda}%")
+                            ->orWhere('codigo_unico', 'like', "%{$busqueda}%")
+                            ->orWhereHas('parcela', function ($pq) use ($busqueda) {
+                                $pq->where('nombre_identificador', 'like', "%{$busqueda}%")
+                                    ->orWhere('codigo', 'like', "%{$busqueda}%")
+                                    ->orWhereHas('finca', function ($fq) use ($busqueda) {
+                                        $fq->where('nombre', 'like', "%{$busqueda}%");
+                                    });
+                            });
+                    });
+            });
         }
 
         $user = $request->user();
@@ -53,12 +85,32 @@ class NegociacionController extends Controller
             });
         }
 
-        $perPage = min(200, max(10, (int) $request->input('per_page', 50)));
-        $paginator = $query->orderBy('id', 'desc')->paginate($perPage);
+        // Ordenamiento dinámico
+        $orderBy = $request->input('order_by', 'id');
+        $orderDir = strtolower((string) $request->input('order_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $columnasPermitidas = ['id', 'created_at', 'fecha_negociacion', 'codigo_negociacion', 'precio_final', 'saldo_capital_pendiente'];
+        if (in_array($orderBy, $columnasPermitidas, true)) {
+            $query->orderBy($orderBy, $orderDir);
+        } else {
+            $query->orderBy('id', $orderDir);
+        }
+
+        $perPageParam = $request->input('per_page');
+        $perPage = ($perPageParam === 'all' || (int)$perPageParam === -1)
+            ? 500
+            : min(500, max(10, (int) ($perPageParam ?? 50)));
+
+        $paginator = $query->paginate($perPage);
 
         return response()->json([
             'success' => true,
             'data' => array_values($paginator->items()),
+            'pagination' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ],
             'meta' => [
                 'current_page' => $paginator->currentPage(),
                 'last_page' => $paginator->lastPage(),

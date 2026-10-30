@@ -261,6 +261,19 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
 
   const buscando = buscarMov.trim().length > 0
 
+  // Debounce para búsqueda en backend cuando está paginado
+  const [buscarDebounced, setBuscarDebounced] = useState('')
+  useEffect(() => {
+    if (filtroTamanoPagina === 'all') {
+      // En modo 'todos', el filtrado es 100% en memoria instantáneo
+      return
+    }
+    const timer = setTimeout(() => {
+      setBuscarDebounced(buscarMov.trim())
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [buscarMov, filtroTamanoPagina])
+
   const cargarMovimientos = useCallback(async () => {
     setLoadingMovs(true)
     try {
@@ -271,7 +284,7 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
         page: filtroTamanoPagina === 'all' || buscando ? 1 : pagina,
         per_page: perPageVal,
         tipo: filtroTipoMov === 'todos' ? undefined : filtroTipoMov,
-        buscar: buscarMov.trim() || undefined,
+        buscar: filtroTamanoPagina === 'all' ? undefined : (buscarDebounced || undefined),
         all: filtroTamanoPagina === 'all',
       })
       const lista = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
@@ -302,11 +315,14 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
       }
     } catch (e: any) {
       console.warn('Error al cargar movimientos:', e)
-      toast.error(e?.message || 'Error cargando movimientos')
+      // No mostrar toast de error si ya tenemos movimientos cargados o si la petición fue cancelada
+      if (movimientos.length === 0) {
+        toast.error(e?.message || 'Error cargando movimientos')
+      }
     } finally {
       setLoadingMovs(false)
     }
-  }, [mes, anio, pagina, filtroTipoMov, filtroTamanoPagina, buscando, buscarMov])
+  }, [mes, anio, pagina, filtroTipoMov, filtroTamanoPagina, buscando, buscarDebounced])
 
   useEffect(() => { cargarTipos() }, [cargarTipos])
   useEffect(() => { setPagina(1) }, [mes, anio, filtroTipoMov])

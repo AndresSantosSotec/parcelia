@@ -703,13 +703,14 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
                     <Input
                       id="telefono"
                       value={formData.telefono}
-                      onChange={(e) => setFormData({ ...formData, telefono: e.target.value.replace(/\D/g, '').slice(0, 15) })}
-                      placeholder="12345678"
-                      maxLength={15}
-                      inputMode="numeric"
+                      onChange={(e) => setFormData({ ...formData, telefono: e.target.value.replace(/[^\d+\s\-()]/g, '').slice(0, 20) })}
+                      placeholder="+1 (555) 123-4567 o 55554444"
+                      maxLength={20}
+                      inputMode="tel"
                       className={errores.telefono ? 'border-destructive' : ''}
                     />
                     {errores.telefono && <p className="text-xs text-destructive">{errores.telefono}</p>}
+                    <p className="text-[11px] text-muted-foreground">Guatemala (8 dígitos) o Internacional/EE.UU. (+1...)</p>
                   </div>
 
                   <div className="space-y-2">
@@ -717,11 +718,12 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
                     <Input
                       id="telefonoSecundario"
                       value={formData.telefonoSecundario || ''}
-                      onChange={(e) => setFormData({ ...formData, telefonoSecundario: e.target.value.replace(/\D/g, '').slice(0, 15) })}
-                      placeholder="12345678"
-                      maxLength={15}
-                      inputMode="numeric"
+                      onChange={(e) => setFormData({ ...formData, telefonoSecundario: e.target.value.replace(/[^\d+\s\-()]/g, '').slice(0, 20) })}
+                      placeholder="+1 (555) 123-4567 o 55554444"
+                      maxLength={20}
+                      inputMode="tel"
                     />
+                    <p className="text-[11px] text-muted-foreground">Opcional · Nacional o internacional</p>
                   </div>
 
                   <div className="space-y-2">
@@ -924,14 +926,14 @@ export function ClienteDialog({ abierto, onCerrar, onGuardar, cliente, loading }
                               const nuevas = [...(formData.referencias || [])]
                               nuevas[index] = {
                                 ...nuevas[index],
-                                telefono: e.target.value.replace(/\D/g, '').slice(0, 15),
+                                telefono: e.target.value.replace(/[^\d+\s\-()]/g, '').slice(0, 20),
                               }
                               setFormData({ ...formData, referencias: nuevas })
                             }}
-                            maxLength={15}
-                            inputMode="numeric"
+                            maxLength={20}
+                            inputMode="tel"
                             className={errores[`referencia_telefono_${index}`] ? 'border-destructive' : ''}
-                            placeholder="12345678"
+                            placeholder="+1 (555) 123-4567 o 55554444"
                           />
                           {errores[`referencia_telefono_${index}`] && (
                             <p className="text-xs text-destructive">

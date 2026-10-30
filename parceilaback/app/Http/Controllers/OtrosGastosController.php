@@ -202,18 +202,27 @@ class OtrosGastosController extends Controller
             ")
             ->first();
 
+        $totalesData = [
+            'total_ingresos' => (float) ($totales->total_ingresos ?? 0),
+            'total_egresos'  => (float) ($totales->total_egresos ?? 0),
+            'total_registros'=> (int) ($totales->total_registros ?? 0),
+        ];
+
         if ($request->boolean('all', false) || $request->get('per_page') === 'all' || (int) $request->get('per_page') === -1) {
             $todos = $query->orderBy('fecha', 'desc')->orderBy('id', 'desc')->get();
+            $metaData = [
+                'current_page' => 1,
+                'last_page'    => 1,
+                'total'        => $todos->count(),
+                'per_page'     => $todos->count(),
+            ];
+
             return response()->json([
-                'success' => true,
-                'data'    => $todos,
-                'meta'    => [
-                    'current_page' => 1,
-                    'last_page'    => 1,
-                    'total'        => $todos->count(),
-                    'per_page'     => $todos->count(),
-                ],
-                'totales' => $totales,
+                'success'    => true,
+                'data'       => $todos,
+                'meta'       => $metaData,
+                'pagination' => $metaData,
+                'totales'    => $totalesData,
             ]);
         }
 
@@ -221,16 +230,19 @@ class OtrosGastosController extends Controller
         $perPage = ($perPageParam && is_numeric($perPageParam)) ? min(2000, max(10, (int) $perPageParam)) : 500;
         $data = $query->orderBy('fecha', 'desc')->orderBy('id', 'desc')->paginate($perPage);
 
+        $metaPaginado = [
+            'current_page' => $data->currentPage(),
+            'last_page'    => $data->lastPage(),
+            'total'        => $data->total(),
+            'per_page'     => $data->perPage(),
+        ];
+
         return response()->json([
-            'success' => true,
-            'data'    => $data->items(),
-            'meta'    => [
-                'current_page'   => $data->currentPage(),
-                'last_page'      => $data->lastPage(),
-                'total'          => $data->total(),
-                'per_page'       => $data->perPage(),
-            ],
-            'totales' => $totales,
+            'success'    => true,
+            'data'       => $data->items(),
+            'meta'       => $metaPaginado,
+            'pagination' => $metaPaginado,
+            'totales'    => $totalesData,
         ]);
     }
 

@@ -274,12 +274,35 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
         buscar: buscarMov.trim() || undefined,
         all: filtroTamanoPagina === 'all',
       })
-      setMovimientos(res.data)
-      setTotalPaginas(res.meta.last_page)
-      setTotalMovs(res.meta.total)
-      setTotales(res.totales ?? { total_ingresos: 0, total_egresos: 0, total_registros: 0 })
-    } catch {
-      toast.error('Error cargando movimientos')
+      const lista = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : [])
+      setMovimientos(lista)
+
+      const lastPage = (res as any)?.meta?.last_page
+        ?? (res as any)?.last_page
+        ?? (res as any)?.pagination?.last_page
+        ?? 1
+      setTotalPaginas(lastPage)
+
+      const total = (res as any)?.meta?.total
+        ?? (res as any)?.total
+        ?? (res as any)?.pagination?.total
+        ?? lista.length
+      setTotalMovs(total)
+
+      if (res?.totales) {
+        setTotales(res.totales)
+      } else {
+        const totalIng = lista
+          .filter((m: any) => m.tipo === 'ingreso' && m.estado !== 'anulado')
+          .reduce((acc: number, m: any) => acc + Number(m.monto || 0), 0)
+        const totalEgr = lista
+          .filter((m: any) => m.tipo === 'egreso' && m.estado !== 'anulado')
+          .reduce((acc: number, m: any) => acc + Number(m.monto || 0), 0)
+        setTotales({ total_ingresos: totalIng, total_egresos: totalEgr, total_registros: lista.length })
+      }
+    } catch (e: any) {
+      console.warn('Error al cargar movimientos:', e)
+      toast.error(e?.message || 'Error cargando movimientos')
     } finally {
       setLoadingMovs(false)
     }

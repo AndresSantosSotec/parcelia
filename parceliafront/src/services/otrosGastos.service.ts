@@ -111,7 +111,7 @@ class OtrosGastosService {
       success: boolean
       data: OtroGastoMovimiento
       message: string
-    }>(/otros-gastos/movimientos/, { method: 'PUT', body: JSON.stringify(data) })
+    }>(`/otros-gastos/movimientos/${id}`, { method: 'PUT', body: JSON.stringify(data) })
   }
 
   async anularMovimiento(id: number, motivo: string) {

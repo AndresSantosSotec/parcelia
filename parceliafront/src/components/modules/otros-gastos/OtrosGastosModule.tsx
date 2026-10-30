@@ -206,7 +206,6 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
       toast.success('Movimiento actualizado correctamente')
       setMovEditando(null)
       cargarMovimientos()
-      cargarResumen()
     } catch (e: any) {
       toast.error(e?.message || 'Error al actualizar el movimiento')
     } finally {

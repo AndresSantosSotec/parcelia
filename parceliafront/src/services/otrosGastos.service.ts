@@ -76,10 +76,12 @@ class OtrosGastosService {
     tipo?: string
     mes?: number
     anio?: number
-    per_page?: number
+    per_page?: number | string
     page?: number
     user_id?: number
     otro_gasto_tipo_id?: number
+    buscar?: string
+    all?: boolean
   }) {
     const q = new URLSearchParams()
     if (params?.tipo) q.append('tipo', params.tipo)
@@ -89,6 +91,8 @@ class OtrosGastosService {
     if (params?.page) q.append('page', String(params.page))
     if (params?.user_id) q.append('user_id', String(params.user_id))
     if (params?.otro_gasto_tipo_id) q.append('otro_gasto_tipo_id', String(params.otro_gasto_tipo_id))
+    if (params?.buscar) q.append('buscar', params.buscar.trim())
+    if (params?.all) q.append('all', 'true')
     return this.request<{
       success: boolean
       data: OtroGastoMovimiento[]

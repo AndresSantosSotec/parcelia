@@ -112,6 +112,7 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
   const [totales, setTotales] = useState({ total_ingresos: 0, total_egresos: 0, total_registros: 0 })
   const [filtroTipoMov, setFiltroTipoMov] = useState<'todos' | TipoMovimiento>('todos')
   const [buscarMov, setBuscarMov] = useState('')
+  const [filtroTamanoPagina, setFiltroTamanoPagina] = useState<'all' | '50' | '15'>('all')
 
   // ── Tipos (catálogo) ──────────────────────────────────────────────────────
   const [tipos, setTipos] = useState<OtroGastoTipo[]>([])
@@ -258,15 +259,20 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
     }
   }, [])
 
+  const buscando = buscarMov.trim().length > 0
+
   const cargarMovimientos = useCallback(async () => {
     setLoadingMovs(true)
     try {
+      const perPageVal = filtroTamanoPagina === 'all' ? 1000 : Number(filtroTamanoPagina)
       const res = await otrosGastosService.listarMovimientos({
         mes,
         anio,
-        page: pagina,
-        per_page: 15,
+        page: filtroTamanoPagina === 'all' || buscando ? 1 : pagina,
+        per_page: perPageVal,
         tipo: filtroTipoMov === 'todos' ? undefined : filtroTipoMov,
+        buscar: buscarMov.trim() || undefined,
+        all: filtroTamanoPagina === 'all',
       })
       setMovimientos(res.data)
       setTotalPaginas(res.meta.last_page)
@@ -277,7 +283,7 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
     } finally {
       setLoadingMovs(false)
     }
-  }, [mes, anio, pagina, filtroTipoMov])
+  }, [mes, anio, pagina, filtroTipoMov, filtroTamanoPagina, buscando, buscarMov])
 
   useEffect(() => { cargarTipos() }, [cargarTipos])
   useEffect(() => { setPagina(1) }, [mes, anio, filtroTipoMov])
@@ -399,9 +405,12 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
     const q = buscarMov.toLowerCase().trim()
     if (!q) return movimientos
     return movimientos.filter(m =>
-      m.concepto.toLowerCase().includes(q) ||
-      m.tipo_gasto?.nombre.toLowerCase().includes(q) ||
-      (m.numero_recibo ?? '').toLowerCase().includes(q)
+      (m.concepto || '').toLowerCase().includes(q) ||
+      (m.descripcion || '').toLowerCase().includes(q) ||
+      (m.tipo_gasto?.nombre || '').toLowerCase().includes(q) ||
+      (m.numero_recibo ?? '').toLowerCase().includes(q) ||
+      (m.forma_pago || '').toLowerCase().includes(q) ||
+      String(m.monto || '').includes(q)
     )
   }, [movimientos, buscarMov])
 
@@ -466,6 +475,17 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
               </SelectContent>
             </Select>
 
+            <Select value={filtroTamanoPagina} onValueChange={(v) => { setFiltroTamanoPagina(v as any); setPagina(1) }}>
+              <SelectTrigger className="w-44 h-9 text-xs">
+                <SelectValue placeholder="Vista" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Ver: Todos (1 página)</SelectItem>
+                <SelectItem value="50">Ver: 50 por página</SelectItem>
+                <SelectItem value="15">Ver: 15 por página</SelectItem>
+              </SelectContent>
+            </Select>
+
             <div className="relative flex-1 min-w-[180px]">
               <MagnifyingGlass className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -514,7 +534,9 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
           <Card>
             <CardHeader className="py-3 px-4 border-b">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                {totalMovs} movimiento{totalMovs !== 1 ? 's' : ''} en {MESES[mes - 1]} {anio}
+                {buscando
+                  ? `${movsFiltrados.length} resultado${movsFiltrados.length === 1 ? '' : 's'}`
+                  : `${totalMovs} movimiento${totalMovs !== 1 ? 's' : ''} en ${MESES[mes - 1]} ${anio}`}
               </CardTitle>
             </CardHeader>
             {/* ── Vista Móvil: Cards compactos y legibles ── */}
@@ -528,7 +550,11 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
               ) : movsFiltrados.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground text-sm">
                   <CalendarBlank className="mx-auto h-8 w-8 mb-2 opacity-30" />
-                  <p>Sin movimientos para {MESES[mes - 1]} {anio}</p>
+                  <p>
+                    {buscando
+                      ? 'Ningún movimiento coincide con la búsqueda'
+                      : `Sin movimientos para ${MESES[mes - 1]} ${anio}`}
+                  </p>
                 </div>
               ) : (
                 movsFiltrados.map((mov) => {
@@ -635,7 +661,11 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
                     <TableRow>
                       <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
                         <CalendarBlank className="mx-auto h-8 w-8 mb-2 opacity-30" />
-                        <p>Sin movimientos para {MESES[mes - 1]} {anio}</p>
+                        <p>
+                          {buscando
+                            ? 'Ningún movimiento coincide con la búsqueda'
+                            : `Sin movimientos para ${MESES[mes - 1]} ${anio}`}
+                        </p>
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -706,21 +736,32 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
               </Table>
             </div>
 
-            {/* Paginación */}
-            {totalPaginas > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t">
-                <span className="text-xs text-muted-foreground">
-                  Página {pagina} de {totalPaginas}
+            {/* Paginación / Resumen de visualización */}
+            {filtroTamanoPagina === 'all' ? (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-4 py-2.5 border-t bg-muted/20 text-xs text-muted-foreground">
+                <span>
+                  Mostrando todos los {movsFiltrados.length} movimientos de {MESES[mes - 1]} {anio} en una sola página
                 </span>
-                <div className="flex gap-1">
-                  <Button variant="outline" size="sm" disabled={pagina === 1} onClick={() => setPagina(p => p - 1)}>
-                    <CaretLeft className="h-4 w-4" />
-                  </Button>
-                  <Button variant="outline" size="sm" disabled={pagina === totalPaginas} onClick={() => setPagina(p => p + 1)}>
-                    <CaretRight className="h-4 w-4" />
-                  </Button>
-                </div>
+                <span className="font-medium text-foreground">
+                  {movsFiltrados.length === 1 ? '1 movimiento' : `${movsFiltrados.length} movimientos`}
+                </span>
               </div>
+            ) : (
+              !buscando && totalPaginas > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t">
+                  <span className="text-xs text-muted-foreground">
+                    Página {pagina} de {totalPaginas} ({totalMovs} en total)
+                  </span>
+                  <div className="flex gap-1">
+                    <Button variant="outline" size="sm" disabled={pagina === 1} onClick={() => setPagina(p => p - 1)}>
+                      <CaretLeft className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={pagina === totalPaginas} onClick={() => setPagina(p => p + 1)}>
+                      <CaretRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )
             )}
           </Card>
         </TabsContent>

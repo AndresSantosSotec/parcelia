@@ -165,12 +165,30 @@ class OtrosGastosController extends Controller
             $query->where('otro_gasto_tipo_id', $request->otro_gasto_tipo_id);
         }
 
-        if ($request->boolean('all', false)) {
-            return response()->json(['success' => true, 'data' => $query->orderBy('fecha', 'desc')->get()]);
-        }
+        // Búsqueda global en movimientos
+        $busqueda = trim((string) $request->input('buscar', $request->input('busqueda', $request->input('search', ''))));
+        if ($busqueda !== '') {
+            $query->where(function ($q) use ($busqueda) {
+                $q->where('concepto', 'like', "%{$busqueda}%")
+                  ->orWhere('descripcion', 'like', "%{$busqueda}%")
+                  ->orWhere('numero_recibo', 'like', "%{$busqueda}%")
+                  ->orWhere('forma_pago', 'like', "%{$busqueda}%")
+                  ->orWhereHas('tipo_gasto', function ($tq) use ($busqueda) {
+                      $tq->where('nombre', 'like', "%{$busqueda}%")
+                         ->orWhere('nomenclatura', 'like', "%{$busqueda}%")
+                         ->orWhere('grupo', 'like', "%{$busqueda}%");
+                  })
+                  ->orWhereHas('user', function ($uq) use ($busqueda) {
+                      $uq->where('name', 'like', "%{$busqueda}%")
+                         ->orWhere('username', 'like', "%{$busqueda}%");
+                  });
 
-        $perPage = (int) $request->get('per_page', 20);
-        $data = $query->orderBy('fecha', 'desc')->orderBy('id', 'desc')->paginate($perPage);
+                if (is_numeric(str_replace(['Q', ',', ' '], '', $busqueda))) {
+                    $montoLimpio = (float) str_replace(['Q', ',', ' '], '', $busqueda);
+                    $q->orWhere('monto', $montoLimpio);
+                }
+            });
+        }
 
         // Resumen totales
         $totales = OtroGastoMovimiento::where('estado', 'aplicado')
@@ -183,6 +201,25 @@ class OtrosGastosController extends Controller
                 COUNT(*) as total_registros
             ")
             ->first();
+
+        if ($request->boolean('all', false) || $request->get('per_page') === 'all' || (int) $request->get('per_page') === -1) {
+            $todos = $query->orderBy('fecha', 'desc')->orderBy('id', 'desc')->get();
+            return response()->json([
+                'success' => true,
+                'data'    => $todos,
+                'meta'    => [
+                    'current_page' => 1,
+                    'last_page'    => 1,
+                    'total'        => $todos->count(),
+                    'per_page'     => $todos->count(),
+                ],
+                'totales' => $totales,
+            ]);
+        }
+
+        $perPageParam = $request->get('per_page');
+        $perPage = ($perPageParam && is_numeric($perPageParam)) ? min(2000, max(10, (int) $perPageParam)) : 500;
+        $data = $query->orderBy('fecha', 'desc')->orderBy('id', 'desc')->paginate($perPage);
 
         return response()->json([
             'success' => true,

@@ -56,7 +56,28 @@ class ReciboController extends Controller
             $query->where('sucursal_id', $request->sucursal_id);
         }
 
-        $recibos = $query->orderBy('created_at', 'desc')->paginate(50);
+        // Búsqueda en recibos
+        $busqueda = trim((string) $request->input('buscar', $request->input('busqueda', $request->input('search', ''))));
+        if ($busqueda !== '') {
+            $query->where(function ($q) use ($busqueda) {
+                $q->where('numero_recibo', 'like', "%{$busqueda}%")
+                  ->orWhere('concepto', 'like', "%{$busqueda}%")
+                  ->orWhere('observaciones', 'like', "%{$busqueda}%")
+                  ->orWhereHas('cliente', function ($cq) use ($busqueda) {
+                      $cq->where('nombres', 'like', "%{$busqueda}%")
+                         ->orWhere('apellidos', 'like', "%{$busqueda}%")
+                         ->orWhere('dpi', 'like', "%{$busqueda}%")
+                         ->orWhereRaw("CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellidos, '')) LIKE ?", ["%{$busqueda}%"]);
+                  });
+            });
+        }
+
+        $perPageParam = $request->input('per_page');
+        $perPage = ($perPageParam === 'all' || (int) $perPageParam === -1)
+            ? 1000
+            : min(500, max(10, (int) ($perPageParam ?? 50)));
+
+        $recibos = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         return response()->json($recibos);
     }

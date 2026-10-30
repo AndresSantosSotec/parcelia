@@ -33,9 +33,34 @@ class PagoTerrenoController extends Controller
             });
         }
 
+        $busqueda = trim((string) $request->input('buscar', $request->input('busqueda', $request->input('search', ''))));
+        if ($busqueda !== '') {
+            $query->where(function ($q) use ($busqueda) {
+                $q->where('numero_recibo', 'like', "%{$busqueda}%")
+                  ->orWhere('concepto', 'like', "%{$busqueda}%")
+                  ->orWhere('observaciones', 'like', "%{$busqueda}%")
+                  ->orWhere('metodo_pago', 'like', "%{$busqueda}%")
+                  ->orWhereHas('comprador', function ($cq) use ($busqueda) {
+                      $cq->where('nombres', 'like', "%{$busqueda}%")
+                         ->orWhere('apellidos', 'like', "%{$busqueda}%")
+                         ->orWhere('dpi', 'like', "%{$busqueda}%")
+                         ->orWhereRaw("CONCAT(COALESCE(nombres, ''), ' ', COALESCE(apellidos, '')) LIKE ?", ["%{$busqueda}%"]);
+                  })
+                  ->orWhereHas('lote', function ($lq) use ($busqueda) {
+                      $lq->where('numero_lote', 'like', "%{$busqueda}%")
+                         ->orWhere('codigo_unico', 'like', "%{$busqueda}%");
+                  });
+            });
+        }
+
+        $perPageParam = $request->input('per_page');
+        $perPage = ($perPageParam === 'all' || (int) $perPageParam === -1)
+            ? 1000
+            : min(500, max(10, (int) ($perPageParam ?? 50)));
+
         return response()->json([
             'success' => true,
-            'data' => $query->orderBy('fecha_pago', 'desc')->paginate(50),
+            'data' => $query->orderBy('fecha_pago', 'desc')->paginate($perPage),
         ]);
     }
 

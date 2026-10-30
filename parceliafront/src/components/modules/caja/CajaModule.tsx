@@ -1006,6 +1006,11 @@ export function CajaModule({ userSession }: CajaModuleProps) {
         totalEsperado={totalEsperado}
         onVolver={() => setVistaActual('dashboard')}
         cashVaultIntegrationEnabled={cashVaultIntegrationEnabled}
+        canEditMovimiento={canManageOtherCashRegisters}
+        onEditarMovimiento={(mov: MovimientoCaja) => {
+          setMovCajaEditando(mov)
+          setFormEditCajaMov({ concepto: mov.concepto, monto: String(mov.monto) })
+        }}
       />}
 
       {vistaActual === 'cierre' && (() => {
@@ -1206,6 +1211,50 @@ function VistaDashboard({
           </div>
         </CardContent>
       </Card>
+      {/* Diálogo Editar Movimiento Manual de Caja */}
+      <Dialog open={movCajaEditando !== null} onOpenChange={(open) => { if (!open) setMovCajaEditando(null) }}>
+        <DialogContent className="w-[min(95vw,460px)]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-primary" />
+              Editar {movCajaEditando?.tipo === 'incremento' ? 'Ingreso' : 'Egreso'} de Caja
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label>Concepto / Motivo *</Label>
+              <Input
+                value={formEditCajaMov.concepto}
+                onChange={(e) => setFormEditCajaMov(f => ({ ...f, concepto: e.target.value }))}
+                placeholder="Ej. Ingreso por cambio..."
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Monto ({simboloMoneda}) *</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={formEditCajaMov.monto}
+                onChange={(e) => setFormEditCajaMov(f => ({ ...f, monto: e.target.value }))}
+                placeholder="0.00"
+                className="font-bold text-lg"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
+            <Button variant="outline" onClick={() => setMovCajaEditando(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleGuardarEditCajaMov} disabled={guardandoEditCajaMov}>
+              {guardandoEditCajaMov ? 'Guardando...' : 'Guardar Cambios'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -1487,7 +1536,9 @@ function VistaApertura({
 function VistaMovimientos({
   cajaActual, movimientos, simboloMoneda, totalIngresos, totalEgresos, totalEsperado, onVolver,
   // Integración Caja-Bóveda
-  cashVaultIntegrationEnabled
+  cashVaultIntegrationEnabled,
+  canEditMovimiento,
+  onEditarMovimiento
 }: any) {
   if (!cajaActual) {
     return (
@@ -1553,9 +1604,21 @@ function VistaMovimientos({
                     </div>
                     <MovimientoBadge tipo={mov.tipo} />
                   </div>
-                  <p className={`text-right font-bold ${ingreso ? 'text-green-600 dark:text-green-400' : egreso ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
-                    {ingreso ? `${simboloMoneda}${Number(mov.monto).toFixed(2)}` : egreso ? `${simboloMoneda}${Number(mov.monto).toFixed(2)}` : '—'}
-                  </p>
+                  <div className="flex items-center justify-between pt-1">
+                    <p className={`font-bold ${ingreso ? 'text-green-600 dark:text-green-400' : egreso ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                      {ingreso ? `+${simboloMoneda}${Number(mov.monto).toFixed(2)}` : egreso ? `-${simboloMoneda}${Number(mov.monto).toFixed(2)}` : '—'}
+                    </p>
+                    {canEditMovimiento && ['incremento', 'decremento'].includes(mov.tipo) && mov.estado !== 'anulado' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[11px] gap-1 px-2"
+                        onClick={() => onEditarMovimiento?.(mov)}
+                      >
+                        <Pencil className="h-3 w-3" /> Editar
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )
             })}
@@ -1574,6 +1637,7 @@ function VistaMovimientos({
                 <TableHead>Tipo</TableHead>
                 <TableHead className="text-right">Ingresos</TableHead>
                 <TableHead className="text-right">Egresos</TableHead>
+                {canEditMovimiento && <TableHead className="w-[80px] text-right">Acción</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1613,6 +1677,21 @@ function VistaMovimientos({
                   <TableCell className="text-right text-red-600 dark:text-red-400 font-bold">
                     {['decremento', 'egreso_desembolso'].includes(mov.tipo) && mov.estado === 'aplicado' ? `${simboloMoneda}${Number(mov.monto).toFixed(2)}` : ''}
                   </TableCell>
+                  {canEditMovimiento && (
+                    <TableCell className="text-right">
+                      {['incremento', 'decremento'].includes(mov.tipo) && mov.estado !== 'anulado' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-primary"
+                          title="Editar movimiento"
+                          onClick={() => onEditarMovimiento?.(mov)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
               {/* Totales */}

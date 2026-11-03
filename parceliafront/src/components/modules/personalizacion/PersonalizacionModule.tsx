@@ -66,13 +66,16 @@ export function PersonalizacionModule() {
     toast.info('Logo removido. Guarda los cambios para aplicar.')
   }
 
-  const handleGuardar = () => {
+  const handleGuardar = async () => {
     setGuardando(true)
-    setTimeout(() => {
-      updateConfig(formData)
-      setGuardando(false)
+    try {
+      await updateConfig(formData)
       toast.success('Configuración de marca y logo guardada exitosamente')
-    }, 400)
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al guardar la configuración')
+    } finally {
+      setGuardando(false)
+    }
   }
 
   const handleRestaurar = () => {

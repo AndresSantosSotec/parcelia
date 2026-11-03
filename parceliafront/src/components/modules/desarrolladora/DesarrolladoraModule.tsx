@@ -477,10 +477,34 @@ export function DesarrolladoraModule({
 
       {resumen && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Resumen titulo="Inversión" valor={q(resumen.inversion)} nota="Compra + escrituración. La urbanización no entra al costo del lote." />
-          <Resumen titulo="Costo por m²" valor={q(resumen.costo_m2)} nota={`${resumen.area_negociable_m2} m² negociables`} />
-          <Resumen titulo="Precio sugerido / m²" valor={q(resumen.precio_sugerido_m2)} nota={`Utilidad ${resumen.porcentaje_utilidad}%`} />
-          <Resumen titulo="Utilidad proyectada" valor={q(resumen.utilidad_proyectada)} nota="Suma de lotes al precio sugerido" />
+          <Resumen
+            titulo="Inversión"
+            valor={q(resumen.inversion)}
+            nota="Compra + escrituración. La urbanización no entra al costo del lote."
+            colorClass="text-emerald-700 dark:text-emerald-400"
+            borderClass="border-l-4 border-l-emerald-600 bg-emerald-500/5"
+          />
+          <Resumen
+            titulo="Costo por m²"
+            valor={q(resumen.costo_m2)}
+            nota={`${resumen.area_negociable_m2} m² negociables`}
+            colorClass="text-blue-700 dark:text-blue-400"
+            borderClass="border-l-4 border-l-blue-600 bg-blue-500/5"
+          />
+          <Resumen
+            titulo="Precio sugerido / m²"
+            valor={q(resumen.precio_sugerido_m2)}
+            nota={`Utilidad ${resumen.porcentaje_utilidad}%`}
+            colorClass="text-violet-700 dark:text-violet-400"
+            borderClass="border-l-4 border-l-violet-600 bg-violet-500/5"
+          />
+          <Resumen
+            titulo="Utilidad proyectada"
+            valor={q(resumen.utilidad_proyectada)}
+            nota="Suma de lotes al precio sugerido"
+            colorClass="text-amber-700 dark:text-amber-400"
+            borderClass="border-l-4 border-l-amber-600 bg-amber-500/5"
+          />
         </div>
       )}
 
@@ -993,13 +1017,25 @@ export function DesarrolladoraModule({
   )
 }
 
-function Resumen({ titulo, valor, nota }: { titulo: string; valor: string; nota: string }) {
+function Resumen({
+  titulo,
+  valor,
+  nota,
+  colorClass = 'text-foreground',
+  borderClass = 'border-border',
+}: {
+  titulo: string
+  valor: string
+  nota: string
+  colorClass?: string
+  borderClass?: string
+}) {
   return (
-    <Card>
-      <CardContent className="py-4">
-        <p className="text-xs text-muted-foreground">{titulo}</p>
-        <p className="text-xl font-semibold">{valor}</p>
-        <p className="text-xs text-muted-foreground">{nota}</p>
+    <Card className={`${borderClass} shadow-xs`}>
+      <CardContent className="py-3.5 px-4 space-y-1">
+        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{titulo}</p>
+        <p className={`text-2xl font-black tracking-tight ${colorClass}`}>{valor}</p>
+        <p className="text-[11px] text-muted-foreground leading-snug">{nota}</p>
       </CardContent>
     </Card>
   )

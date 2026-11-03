@@ -96,7 +96,15 @@ export function useEmpresaConfig() {
       setConfigState(updated)
 
       // Guardar también en el backend Laravel
-      await api.post('/empresa-config', updated).catch(() => {})
+      const res = await api.post<any>('/empresa-config', updated).catch((err) => {
+        console.warn('No se pudo guardar en backend:', err)
+        return null
+      })
+      if (res?.success && res?.data) {
+        const mergedBackend = { ...updated, ...res.data }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedBackend))
+        setConfigState(mergedBackend)
+      }
     } catch (e) {
       console.error('Error saving empresa config:', e)
     }

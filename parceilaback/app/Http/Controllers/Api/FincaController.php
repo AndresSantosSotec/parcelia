@@ -243,6 +243,88 @@ class FincaController extends Controller
         ], 201);
     }
 
+    /**
+     * Crear múltiples lotes con la misma medida en un sector/parcela
+     * POST /api/v1/parcelas/{parcelaId}/lotes-masivos
+     */
+    public function storeLotesMasivos(Request $request, $parcelaId)
+    {
+        $parcela = Parcela::with('finca')->findOrFail($parcelaId);
+        $validated = $request->validate([
+            'cantidad' => 'required|integer|min:1|max:200',
+            'prefijo' => 'nullable|string|max:30',
+            'numero_inicial' => 'nullable|integer|min:1',
+            'frente_metros' => 'nullable|numeric|min:0.01',
+            'fondo_metros' => 'nullable|numeric|min:0.01',
+            'area_m2' => 'required|numeric|min:0.01',
+            'tipo_terreno' => 'nullable|string|max:80',
+            'precio_venta' => 'nullable|numeric|min:0',
+        ]);
+
+        $cantidad = (int) $validated['cantidad'];
+        $numInicial = (int) ($validated['numero_inicial'] ?? 1);
+        $prefijo = trim((string) ($validated['prefijo'] ?? 'LOTE-'));
+        $area = (float) $validated['area_m2'];
+        $frente = !empty($validated['frente_metros']) ? (float) $validated['frente_metros'] : null;
+        $fondo = !empty($validated['fondo_metros']) ? (float) $validated['fondo_metros'] : null;
+        $tipo = $validated['tipo_terreno'] ?? 'residencial';
+        $precio = (float) ($validated['precio_venta'] ?? 0);
+
+        $fincaCod = $parcela->finca->codigo ?? 'F1';
+        $parcelaCod = $parcela->codigo ?? $parcela->nombre_identificador;
+        $user = $request->user();
+
+        $creados = [];
+        \Illuminate\Support\Facades\DB::transaction(function () use (
+            $parcela, $cantidad, $numInicial, $prefijo, $area, $frente, $fondo, $tipo, $precio, $fincaCod, $parcelaCod, $user, &$creados
+        ) {
+            for ($i = 0; $i < $cantidad; $i++) {
+                $numCorrelativo = $numInicial + $i;
+                $numeroLote = $prefijo ? "{$prefijo}{$numCorrelativo}" : (string) $numCorrelativo;
+
+                // Evitar colisión de número dentro de la parcela
+                while ($parcela->lotes()->where('numero_lote', $numeroLote)->exists()) {
+                    $numCorrelativo++;
+                    $numeroLote = $prefijo ? "{$prefijo}{$numCorrelativo}" : (string) $numCorrelativo;
+                }
+
+                $codigoUnico = strtoupper("{$fincaCod}-{$parcelaCod}-L{$numeroLote}");
+
+                $lote = $parcela->lotes()->create([
+                    'vendedor_id' => $user?->id,
+                    'numero_lote' => $numeroLote,
+                    'codigo_unico' => $codigoUnico,
+                    'area_m2' => $area,
+                    'frente_metros' => $frente,
+                    'fondo_metros' => $fondo,
+                    'tipo_terreno' => $tipo,
+                    'precio_venta' => $precio,
+                    'precio_base' => $precio,
+                    'precio_m2' => $area > 0 && $precio > 0 ? round($precio / $area, 2) : 0,
+                    'plusvalia_servicios' => 0,
+                    'estado' => 'disponible',
+                    'publicado' => true,
+                    'token_publico' => (string) \Illuminate\Support\Str::ulid(),
+                ]);
+
+                $creados[] = $lote;
+            }
+
+            // Actualizar área de parcela si sobrepasa
+            $areaTotalLotes = (float) $parcela->lotes()->sum('area_m2');
+            if ((float) $parcela->area_m2 < $areaTotalLotes) {
+                $parcela->area_m2 = $areaTotalLotes;
+                $parcela->save();
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => "Se crearon {$cantidad} lotes exitosamente en {$parcela->nombre_identificador}",
+            'data' => $creados,
+        ], 201);
+    }
+
     private function siguienteCodigoFinca(): string
     {
         $anio = date('Y');

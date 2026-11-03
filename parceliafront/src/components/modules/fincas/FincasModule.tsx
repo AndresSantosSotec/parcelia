@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { TableSkeleton } from '@/components/ui/TableSkeleton'
@@ -128,6 +128,19 @@ export function FincasModule({ userSession, abrirCompra = false }: FincasModuleP
   const [fotosNuevoLote, setFotosNuevoLote] = useState<{ file: File; preview: string }[]>([])
   const [loteEditando, setLoteEditando] = useState<Lote | null>(null)
   const [loteAEliminar, setLoteAEliminar] = useState<Lote | null>(null)
+  const [modalLotesMasivos, setModalLotesMasivos] = useState(false)
+  const [guardandoMasivos, setGuardandoMasivos] = useState(false)
+  const [formMasivos, setFormMasivos] = useState({
+    parcela_id: 0,
+    cantidad: 15,
+    prefijo: 'LOTE-',
+    numero_inicial: 1,
+    frente_metros: 20,
+    fondo_metros: 60,
+    area_m2: 1200,
+    tipo_terreno: 'Residencial',
+    precio_venta: 0,
+  })
 
   // Formularios
   const [formFinca, setFormFinca] = useState(formFincaVacio)
@@ -317,6 +330,69 @@ export function FincasModule({ userSession, abrirCompra = false }: FincasModuleP
       toast.error(e?.message || 'Error al registrar la parcela')
     } finally {
       setGuardando(false)
+    }
+  }
+
+  const abrirModalLotesMasivos = () => {
+    if (!fincaSeleccionada) return
+    const parcelaActual = parcelaSeleccionada || fincaSeleccionada.parcelas?.[0]
+    if (!parcelaActual) {
+      toast.info('Crea primero una parcela o sector para poder generar lotes.')
+      setModalParcela(true)
+      return
+    }
+    const frente = 20
+    const fondo = 60
+    setFormMasivos({
+      parcela_id: parcelaActual.id,
+      cantidad: 15,
+      prefijo: `${parcelaActual.codigo || parcelaActual.nombre_identificador}-L`,
+      numero_inicial: 1,
+      frente_metros: frente,
+      fondo_metros: fondo,
+      area_m2: frente * fondo,
+      tipo_terreno: 'Residencial',
+      precio_venta: 0,
+    })
+    setModalLotesMasivos(true)
+  }
+
+  const handleGuardarLotesMasivos = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formMasivos.parcela_id) {
+      toast.error('Selecciona el sector o parcela de destino')
+      return
+    }
+    if (!formMasivos.cantidad || formMasivos.cantidad < 1) {
+      toast.error('Ingresa una cantidad de lotes válida')
+      return
+    }
+    if (!formMasivos.area_m2 || formMasivos.area_m2 <= 0) {
+      toast.error('Ingresa un área válida')
+      return
+    }
+
+    setGuardandoMasivos(true)
+    try {
+      const res = await fincaService.createLotesMasivos(formMasivos.parcela_id, {
+        cantidad: Number(formMasivos.cantidad),
+        prefijo: formMasivos.prefijo.trim() || undefined,
+        numero_inicial: Number(formMasivos.numero_inicial) || 1,
+        frente_metros: Number(formMasivos.frente_metros) || undefined,
+        fondo_metros: Number(formMasivos.fondo_metros) || undefined,
+        area_m2: Number(formMasivos.area_m2),
+        tipo_terreno: formMasivos.tipo_terreno,
+        precio_venta: Number(formMasivos.precio_venta) || 0,
+      })
+      if (res.success) {
+        toast.success(res.message || 'Lotes creados exitosamente')
+        setModalLotesMasivos(false)
+        await cargarFincas()
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Error al crear los lotes masivos')
+    } finally {
+      setGuardandoMasivos(false)
     }
   }
 
@@ -928,6 +1004,28 @@ export function FincasModule({ userSession, abrirCompra = false }: FincasModuleP
 
                 <Button
                   size="sm"
+                  variant="outline"
+                  onClick={() => setModalParcela(true)}
+                  className="h-8 text-xs gap-1.5 shadow-xs"
+                  title="Crear un nuevo sector o parcela en esta finca"
+                >
+                  <Plus size={14} weight="bold" />
+                  Nuevo Sector
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={abrirModalLotesMasivos}
+                  className="h-8 text-xs gap-1.5 shadow-xs border-emerald-600/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 font-medium"
+                  title="Crear múltiples lotes con la misma medida en un sector"
+                >
+                  <TreeStructure size={14} weight="duotone" />
+                  Lotes con Misma Medida
+                </Button>
+
+                <Button
+                  size="sm"
                   onClick={() => {
                     if (!parcelaSeleccionada) {
                       const primera = fincaSeleccionada.parcelas?.[0]
@@ -1338,6 +1436,181 @@ export function FincasModule({ userSession, abrirCompra = false }: FincasModuleP
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setModalParcela(false)}>Cancelar</Button>
               <Button type="submit" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar Parcela'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Lotes con Misma Medida (Masivos) */}
+      <Dialog open={modalLotesMasivos} onOpenChange={setModalLotesMasivos}>
+        <DialogContent className="sm:max-w-[560px] max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <TreeStructure size={20} className="text-primary" weight="duotone" />
+              Generar Lotes con Misma Medida
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Crea automáticamente un bloque de lotes idénticos en el sector seleccionado.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleGuardarLotesMasivos} className="space-y-4 py-2">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Sector / Parcela de Destino *</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => { setModalParcela(true); setModalLotesMasivos(false) }}
+                  className="h-6 text-[11px] px-2 text-primary"
+                >
+                  + Crear Nuevo Sector
+                </Button>
+              </div>
+              <select
+                required
+                value={formMasivos.parcela_id}
+                onChange={(e) => setFormMasivos({ ...formMasivos, parcela_id: Number(e.target.value) })}
+                className="w-full bg-background border rounded-lg p-2.5 text-sm"
+              >
+                {fincaSeleccionada?.parcelas?.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre_identificador} {p.codigo ? `(${p.codigo})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label>Cantidad de Lotes *</Label>
+                <Input
+                  required
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={formMasivos.cantidad}
+                  onChange={(e) => setFormMasivos({ ...formMasivos, cantidad: parseInt(e.target.value) || 1 })}
+                  className="font-semibold text-center text-base"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Prefijo / Nomenclatura</Label>
+                <Input
+                  placeholder="Ej. LOTE- o MZ1-"
+                  value={formMasivos.prefijo}
+                  onChange={(e) => setFormMasivos({ ...formMasivos, prefijo: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Número Inicial</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={formMasivos.numero_inicial}
+                  onChange={(e) => setFormMasivos({ ...formMasivos, numero_inicial: parseInt(e.target.value) || 1 })}
+                  className="text-center"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-xl border bg-muted/30 p-3 space-y-3">
+              <span className="text-xs font-semibold text-foreground block">Dimensiones de cada lote:</span>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <span className="text-[11px] text-muted-foreground block">Frente (m)</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0.1"
+                    value={formMasivos.frente_metros}
+                    onChange={(e) => {
+                      const frente = parseFloat(e.target.value) || 0
+                      const fondo = formMasivos.fondo_metros || 0
+                      setFormMasivos({
+                        ...formMasivos,
+                        frente_metros: frente,
+                        area_m2: frente > 0 && fondo > 0 ? Math.round(frente * fondo * 100) / 100 : formMasivos.area_m2,
+                      })
+                    }}
+                    placeholder="20.00"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[11px] text-muted-foreground block">Fondo (m)</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0.1"
+                    value={formMasivos.fondo_metros}
+                    onChange={(e) => {
+                      const fondo = parseFloat(e.target.value) || 0
+                      const frente = formMasivos.frente_metros || 0
+                      setFormMasivos({
+                        ...formMasivos,
+                        fondo_metros: fondo,
+                        area_m2: frente > 0 && fondo > 0 ? Math.round(frente * fondo * 100) / 100 : formMasivos.area_m2,
+                      })
+                    }}
+                    placeholder="60.00"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[11px] text-muted-foreground block">Área (m²) *</span>
+                  <Input
+                    required
+                    type="number"
+                    step="0.01"
+                    min="0.1"
+                    value={formMasivos.area_m2}
+                    onChange={(e) => setFormMasivos({ ...formMasivos, area_m2: parseFloat(e.target.value) || 0 })}
+                    placeholder="1200.00"
+                    className="font-bold text-primary"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Tipo de Terreno</Label>
+                <select
+                  value={formMasivos.tipo_terreno}
+                  onChange={(e) => setFormMasivos({ ...formMasivos, tipo_terreno: e.target.value })}
+                  className="w-full bg-background border rounded-lg p-2.5 text-sm"
+                >
+                  <option value="Residencial">Residencial</option>
+                  <option value="Comercial">Comercial</option>
+                  <option value="Mixto">Mixto</option>
+                  <option value="Industrial">Industrial</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Precio Sugerido / Venta por Lote (Q)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formMasivos.precio_venta || ''}
+                  onChange={(e) => setFormMasivos({ ...formMasivos, precio_venta: parseFloat(e.target.value) || 0 })}
+                  placeholder="Opcional. Ej. 150000"
+                />
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300">
+              💡 Se generarán <strong>{formMasivos.cantidad}</strong> lotes numerados desde <strong>{formMasivos.prefijo}{formMasivos.numero_inicial}</strong> hasta <strong>{formMasivos.prefijo}{Number(formMasivos.numero_inicial) + Number(formMasivos.cantidad) - 1}</strong> de <strong>{formMasivos.area_m2} m²</strong> cada uno.
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => setModalLotesMasivos(false)}>Cancelar</Button>
+              <Button type="submit" disabled={guardandoMasivos}>
+                {guardandoMasivos ? 'Generando lotes...' : `Crear ${formMasivos.cantidad} Lotes`}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

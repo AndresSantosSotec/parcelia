@@ -1438,6 +1438,9 @@ export interface DashboardData {
   total_prestado: number
   total_saldo: number
   total_recuperado: number
+  lotes_disponibles?: number
+  lotes_reservados?: number
+  lotes_vendidos?: number
   creditos_por_estado: Record<string, number>
   ventas_mes_actual: number
   prendas_en_inventario: number
@@ -1601,6 +1604,18 @@ export const fincaService = {
   },
   createLote: (parcelaId: number, data: Partial<Lote>) => {
     return api.post<Lote>(`/parcelas/${parcelaId}/lotes`, data)
+  },
+  createLotesMasivos: (parcelaId: number, data: {
+    cantidad: number
+    prefijo?: string
+    numero_inicial?: number
+    frente_metros?: number
+    fondo_metros?: number
+    area_m2: number
+    tipo_terreno?: string
+    precio_venta?: number
+  }) => {
+    return api.post<Lote[]>(`/parcelas/${parcelaId}/lotes-masivos`, data)
   }
 }
 
@@ -2081,8 +2096,17 @@ export const compraFincaService = {
     api.delete<CompraFincaPayload>(`/fincas/${id}/gastos-urbanizacion/${gastoId}`),
   pagarCuota: (id: number, cuotaId: number, data: { monto: number; fecha?: string; origen: 'caja' | 'boveda' }) =>
     api.post<CompraFincaPayload & { pago_id: number }>(`/fincas/${id}/cuotas-compra/${cuotaId}/pagar`, data),
-  sincronizarLotes: (id: number, lotes: Array<{ numero: string; area_m2: number; tipo: string; frente_metros?: number | null; fondo_metros?: number | null }>) =>
-    api.post<CompraFincaPayload>(`/fincas/${id}/lotes-medidas`, { lotes }),
+  sincronizarLotes: (
+    id: number,
+    lotes: Array<{ numero: string; area_m2: number; tipo: string; frente_metros?: number | null; fondo_metros?: number | null }>,
+    parcelaId?: number | null,
+    nuevoSector?: string | null
+  ) =>
+    api.post<CompraFincaPayload>(`/fincas/${id}/lotes-medidas`, {
+      lotes,
+      parcela_id: parcelaId || undefined,
+      nuevo_sector: nuevoSector || undefined,
+    }),
   rehacerPendiente: (id: number, data: { cuotas: number; fecha_inicio?: string }) =>
     api.post<CompraFincaPayload>(`/fincas/${id}/rehacer-plan-pendiente`, data),
   aplicarPrecios: (id: number) => api.post<CompraFincaPayload>(`/fincas/${id}/aplicar-precios`),

@@ -573,7 +573,9 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
         observaciones: formPago.observaciones,
         caja_apertura_cierre_id: cajaPagoId,
         fecha_pago: formPago.fecha_pago || undefined,
-        mora: formPago.tipo_pago === 'cuota_normal' ? moraEditada : undefined,
+        mora: ['cuota_normal', 'abono_capital', 'pago_total', 'pago_anticipado'].includes(formPago.tipo_pago)
+          ? Number(moraEditada)
+          : undefined,
       })
 
       if (res.success) {
@@ -2168,7 +2170,16 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                   <Label>Tipo de Pago *</Label>
                   <select
                     value={formPago.tipo_pago}
-                    onChange={(e) => setFormPago({ ...formPago, tipo_pago: e.target.value })}
+                    onChange={(e) => {
+                      const nuevoTipo = e.target.value
+                      setFormPago((prev) => ({
+                        ...prev,
+                        tipo_pago: nuevoTipo,
+                        monto: nuevoTipo === 'cuota_normal'
+                          ? Math.round((cuotaBaseSugerida + moraEditada) * 100) / 100
+                          : prev.monto,
+                      }))
+                    }}
                     className="w-full rounded-lg border border-border bg-background p-2.5 text-sm text-foreground"
                   >
                     <option value="cuota_normal">Pago de Cuota Ordinaria</option>
@@ -2196,25 +2207,27 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                 </div>
               </div>
 
-              {formPago.tipo_pago === 'cuota_normal' && (
+              {['cuota_normal', 'abono_capital', 'pago_total', 'pago_anticipado'].includes(formPago.tipo_pago) && (
                 <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <Label className="text-xs font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
                       <WarningCircle size={15} weight="fill" className="text-amber-600" />
-                      Mora de este Contrato / Cuota
+                      Mora de este Contrato / Cuota (Editable antes de pagar)
                     </Label>
                     <div className="flex items-center gap-1.5">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="h-6 text-[11px] px-2.5 text-amber-800 dark:text-amber-200 border-amber-400/50 hover:bg-amber-500/10"
+                        className="h-6 text-[11px] px-2.5 text-amber-800 dark:text-amber-200 border-amber-400/50 hover:bg-amber-500/10 font-medium"
                         onClick={() => {
                           setMoraEditada(0)
-                          setFormPago((prev) => ({
-                            ...prev,
-                            monto: Math.round(cuotaBaseSugerida * 100) / 100,
-                          }))
+                          if (formPago.tipo_pago === 'cuota_normal') {
+                            setFormPago((prev) => ({
+                              ...prev,
+                              monto: Math.round(cuotaBaseSugerida * 100) / 100,
+                            }))
+                          }
                         }}
                       >
                         Condonar (Q0.00)
@@ -2227,27 +2240,36 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                           className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground"
                           onClick={() => {
                             setMoraEditada(moraCalculada)
-                            setFormPago((prev) => ({
-                              ...prev,
-                              monto: Math.round((cuotaBaseSugerida + moraCalculada) * 100) / 100,
-                            }))
+                            if (formPago.tipo_pago === 'cuota_normal') {
+                              setFormPago((prev) => ({
+                                ...prev,
+                                monto: Math.round((cuotaBaseSugerida + moraCalculada) * 100) / 100,
+                              }))
+                            }
                           }}
                         >
-                          Restablecer (Q{moraCalculada})
+                          Restablecer (Q{moraCalculada.toLocaleString('es-GT', { minimumFractionDigits: 2 })})
                         </Button>
                       )}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="p-2 rounded-lg bg-background/60 border text-xs">
+                    <div className="p-2.5 rounded-lg bg-background/70 border text-xs space-y-1">
                       <span className="text-[11px] text-muted-foreground block">Mora calculada por sistema:</span>
-                      <strong className="text-sm font-semibold text-foreground">
+                      <strong className="text-sm font-semibold text-amber-700 dark:text-amber-400">
                         {cargandoMoraPago ? 'Calculando...' : `Q${moraCalculada.toLocaleString('es-GT', { minimumFractionDigits: 2 })}`}
                       </strong>
+                      {cuotaBaseSugerida > 0 && formPago.tipo_pago === 'cuota_normal' && (
+                        <span className="text-[10px] text-muted-foreground block pt-0.5">
+                          Cuota base: Q{cuotaBaseSugerida.toLocaleString('es-GT', { minimumFractionDigits: 2 })}
+                        </span>
+                      )}
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[11px] font-medium text-foreground block">Mora a Cobrar (Editable) *</span>
+                      <span className="text-[11px] font-medium text-foreground block">
+                        Mora a Cobrar en este Recibo (Q) *
+                      </span>
                       <Input
                         type="number"
                         step="0.01"
@@ -2256,10 +2278,12 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                         onChange={(e) => {
                           const val = Math.max(0, parseFloat(e.target.value) || 0)
                           setMoraEditada(val)
-                          setFormPago((prev) => ({
-                            ...prev,
-                            monto: Math.round((cuotaBaseSugerida + val) * 100) / 100,
-                          }))
+                          if (formPago.tipo_pago === 'cuota_normal') {
+                            setFormPago((prev) => ({
+                              ...prev,
+                              monto: Math.round((cuotaBaseSugerida + val) * 100) / 100,
+                            }))
+                          }
                         }}
                         className="h-9 bg-background font-semibold"
                         placeholder="0.00"
@@ -2267,7 +2291,7 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                     </div>
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-tight">
-                    Puedes cambiar o poner en Q0 la mora si se autorizó descuento o condonación. Este monto saldrá reflejado en el recibo.
+                    Puedes modificar o poner en Q0 la mora si se autorizó condonación o descuento. El valor que coloques aquí es exactamente el que se aplicará y se reflejará en el recibo.
                   </p>
                 </div>
               )}

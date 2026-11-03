@@ -145,4 +145,66 @@ class ConfiguracionSistemaController extends Controller
             'cash_vault_integration_enabled' => (bool) $request->activo,
         ]);
     }
+
+    /**
+     * Obtener configuración de empresa / marca (Logo, nombres, NIT, etc.)
+     * GET /api/v1/empresa-config
+     */
+    public function getEmpresaConfig(): JsonResponse
+    {
+        $config = \App\Helpers\EmpresaConfigHelper::getConfig();
+
+        return response()->json([
+            'success' => true,
+            'data'    => $config,
+        ]);
+    }
+
+    /**
+     * Guardar configuración de empresa / marca
+     * POST /api/v1/empresa-config
+     */
+    public function updateEmpresaConfig(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+
+        $esAdmin = $user && (
+            in_array($user->rol, ['superadmin', 'administrador', 'admin', 'gerente'], true) ||
+            (method_exists($user, 'normalizedRole') && in_array($user->normalizedRole(), ['superadmin', 'administrador'], true))
+        );
+
+        if (!$esAdmin) {
+            return response()->json(['error' => 'Solo administradores pueden cambiar la configuración de la empresa.'], 403);
+        }
+
+        $data = $request->all();
+
+        // Si se envió un logo en Base64, intentar persistirlo en archivo físico público para mayor velocidad y ligereza
+        if (!empty($data['logoUrl']) && str_starts_with($data['logoUrl'], 'data:image/')) {
+            try {
+                if (preg_match('/^data:image\/(\w+);base64,/', $data['logoUrl'], $type)) {
+                    $imageData = substr($data['logoUrl'], strpos($data['logoUrl'], ',') + 1);
+                    $extension = strtolower($type[1]);
+                    if ($extension === 'jpeg') $extension = 'jpg';
+                    $decoded = base64_decode($imageData);
+                    if ($decoded !== false) {
+                        $filename = 'logo_' . time() . '.' . $extension;
+                        $path = 'logos/' . $filename;
+                        \Illuminate\Support\Facades\Storage::disk('public')->put($path, $decoded);
+                        $data['logoUrl'] = url('/storage/' . $path);
+                    }
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('No se pudo guardar logo en disco: ' . $e->getMessage());
+            }
+        }
+
+        $guardado = \App\Helpers\EmpresaConfigHelper::setConfig($data);
+
+        return response()->json([
+            'success' => true,
+            'data'    => $guardado,
+            'message' => 'Configuración de empresa y logo guardada exitosamente.',
+        ]);
+    }
 }

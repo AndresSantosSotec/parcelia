@@ -101,6 +101,8 @@ Route::prefix('v1')->group(function () {
         Route::post('/auth/login', [AuthController::class, 'login']);
     });
 
+    // Configuración pública de empresa/marca (logo, nombres, etc.)
+    Route::get('/empresa-config', [ConfiguracionSistemaController::class, 'getEmpresaConfig']);
 
     Route::get('/publico/terrenos/{token}', [LoteController::class, 'publico'])->middleware('throttle:60,1');
     Route::get('/publico/media/lotes/{id}', [LoteController::class, 'media'])->middleware('throttle:120,1');
@@ -118,6 +120,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/fincas/{id}/desactivar', [FincaController::class, 'desactivar'])->middleware('permiso:fincas,desactivar');
             Route::post('/fincas/{fincaId}/parcelas', [FincaController::class, 'storeParcela'])->middleware('permiso:fincas,crear');
             Route::post('/parcelas/{parcelaId}/lotes', [FincaController::class, 'storeLote'])->middleware('permiso:lotes,crear');
+            Route::post('/parcelas/{parcelaId}/lotes-masivos', [FincaController::class, 'storeLotesMasivos'])->middleware('permiso:lotes,crear');
             Route::get('/fincas/{id}/plano', [\App\Http\Controllers\Api\PlanoLotificacionController::class, 'show'])->middleware('permiso:lotes,ver');
             Route::get('/fincas/{id}/plano/imagen', [\App\Http\Controllers\Api\PlanoLotificacionController::class, 'imagen'])->middleware('permiso:lotes,ver');
             Route::post('/fincas/{id}/plano/imagen', [\App\Http\Controllers\Api\PlanoLotificacionController::class, 'subirImagen'])->middleware('permiso:fincas,editar');
@@ -639,6 +642,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/configuraciones-sistema/cash-vault-integration/toggle', [ConfiguracionSistemaController::class, 'toggleCashVaultIntegration']);
             Route::get('/configuraciones-sistema/{clave}', [ConfiguracionSistemaController::class, 'show']);
             Route::put('/configuraciones-sistema', [ConfiguracionSistemaController::class, 'update']);
+            Route::post('/empresa-config', [ConfiguracionSistemaController::class, 'updateEmpresaConfig']);
 
         }); // FIN DEL GRUPO DE RUTAS CON SCOPE DE SUCURSAL
     });

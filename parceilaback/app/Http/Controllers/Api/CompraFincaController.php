@@ -444,6 +444,8 @@ class CompraFincaController extends Controller
     {
         $finca = Finca::findOrFail($id);
         $validated = $request->validate([
+            'parcela_id' => 'nullable|exists:parcelas,id',
+            'nuevo_sector' => 'nullable|string|max:100',
             'lotes' => 'required|array|min:1|max:500',
             'lotes.*.numero' => 'required|string|max:50',
             'lotes.*.area_m2' => 'required|numeric|min:0.01',
@@ -452,14 +454,30 @@ class CompraFincaController extends Controller
             'lotes.*.fondo_metros' => 'nullable|numeric|min:0',
         ]);
 
-        $parcela = $finca->parcelas()->orderBy('id')->first();
-        if (! $parcela) {
+        $parcela = null;
+        if (!empty($validated['parcela_id'])) {
+            $parcela = $finca->parcelas()->find($validated['parcela_id']);
+        } elseif (!empty($validated['nuevo_sector'])) {
+            $nombreSector = trim($validated['nuevo_sector']);
+            $codSector = 'S' . ($finca->parcelas()->count() + 1);
             $parcela = $finca->parcelas()->create([
-                'nombre_identificador' => 'Sector 1',
-                'codigo' => 'S1',
+                'nombre_identificador' => $nombreSector,
+                'codigo' => $codSector,
                 'area_m2' => 0,
                 'activo' => true,
             ]);
+        }
+
+        if (! $parcela) {
+            $parcela = $finca->parcelas()->orderBy('id')->first();
+            if (! $parcela) {
+                $parcela = $finca->parcelas()->create([
+                    'nombre_identificador' => 'Sector 1',
+                    'codigo' => 'S1',
+                    'area_m2' => 0,
+                    'activo' => true,
+                ]);
+            }
         }
 
         $suma = round(collect($validated['lotes'])->sum(fn ($l) => (float) $l['area_m2']), 2);

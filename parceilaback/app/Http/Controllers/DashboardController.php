@@ -7,6 +7,9 @@ use App\Models\CreditoPrendario;
 use App\Models\Venta;
 use App\Models\Prenda;
 use App\Models\User;
+use App\Models\Negociacion;
+use App\Models\Lote;
+use App\Models\PagoTerreno;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -68,73 +71,100 @@ class DashboardController extends Controller
                 ->where('eliminado', false)
                 ->count();
 
-            // Créditos activos (vigente, en_mora, vencido)
-            $creditosActivos = CreditoPrendario::whereIn('estado', [
-                'vigente',
-                'en_mora',
-                'vencido'
-            ])->count();
+            // Métricas Inmobiliarias (Negociaciones de Terrenos)
+            $totalNegociaciones = Negociacion::count();
 
-            // Créditos vencidos específicamente
-            $creditosVencidos = CreditoPrendario::where('estado', 'vencido')
-                ->orWhere('estado', 'en_mora')
-                ->count();
+            if ($totalNegociaciones > 0 || Lote::count() > 0) {
+                // Modo Inmobiliario / Parcelia
+                $creditosActivos = Negociacion::whereIn('estado', ['vigente', 'al_dia', 'en_mora', 'cobro_dudoso'])->count();
+                $creditosVencidos = Negociacion::whereIn('estado', ['en_mora', 'cobro_dudoso'])->count();
+                $totalPrestado = (float) Negociacion::whereIn('estado', ['vigente', 'al_dia', 'en_mora', 'cobro_dudoso', 'pagada_total'])->sum('monto_financiado');
+                $totalSaldo = (float) Negociacion::whereIn('estado', ['vigente', 'al_dia', 'en_mora', 'cobro_dudoso'])->sum('saldo_capital_pendiente');
+                $totalRecuperado = (float) PagoTerreno::where('estado', '!=', 'anulado')->sum('monto_total');
+                $prendasEnInventario = Lote::count();
 
-            // Total prestado en créditos activos
-            $totalPrestado = CreditoPrendario::whereIn('estado', [
-                'vigente',
-                'en_mora',
-                'vencido'
-            ])->sum('monto_desembolsado');
+                $lotesDisponibles = Lote::where('estado', 'disponible')->count();
+                $lotesReservados = Lote::where('estado', 'reservado')->count();
+                $lotesVendidos = Lote::whereIn('estado', ['vendido', 'en_negociacion', 'pagado'])->count();
 
-            // Saldo pendiente total (capital + intereses + mora)
-            $totalCapitalPendiente = CreditoPrendario::whereIn('estado', [
-                'vigente',
-                'en_mora',
-                'vencido'
-            ])->sum('capital_pendiente');
+                $ventasMesActual = (float) PagoTerreno::where('estado', '!=', 'anulado')
+                    ->whereMonth('fecha_pago', Carbon::now()->month)
+                    ->whereYear('fecha_pago', Carbon::now()->year)
+                    ->sum('monto_total');
 
-            $totalInteresPendiente = CreditoPrendario::whereIn('estado', [
-                'vigente',
-                'en_mora',
-                'vencido'
-            ])->get()->sum(function ($credito) {
-                return $credito->interes_generado - $credito->interes_pagado;
-            });
+                $creditosPorEstado = Negociacion::select('estado', DB::raw('count(*) as total'))
+                    ->groupBy('estado')
+                    ->get()
+                    ->pluck('total', 'estado');
 
-            $totalMoraPendiente = CreditoPrendario::whereIn('estado', [
-                'vigente',
-                'en_mora',
-                'vencido'
-            ])->get()->sum(function ($credito) {
-                return $credito->mora_generada - $credito->mora_pagada;
-            });
+                $creditosProximosVencer = 0;
+            } else {
+                // Modo Empeños / Prendario (Legacy)
+                $creditosActivos = CreditoPrendario::whereIn('estado', [
+                    'vigente',
+                    'en_mora',
+                    'vencido'
+                ])->count();
 
-            $totalSaldo = $totalCapitalPendiente + $totalInteresPendiente + $totalMoraPendiente;
+                $creditosVencidos = CreditoPrendario::where('estado', 'vencido')
+                    ->orWhere('estado', 'en_mora')
+                    ->count();
 
-            // Estadísticas adicionales
-            $creditosPorEstado = CreditoPrendario::select('estado', DB::raw('count(*) as total'))
-                ->groupBy('estado')
-                ->get()
-                ->pluck('total', 'estado');
+                $totalPrestado = (float) CreditoPrendario::whereIn('estado', [
+                    'vigente',
+                    'en_mora',
+                    'vencido'
+                ])->sum('monto_desembolsado');
 
-            // Ventas del mes actual
-            $ventasMesActual = Venta::whereYear('created_at', Carbon::now()->year)
-                ->whereMonth('created_at', Carbon::now()->month)
-                ->where('estado', 'pagada')
-                ->sum('total_final');
+                $totalCapitalPendiente = (float) CreditoPrendario::whereIn('estado', [
+                    'vigente',
+                    'en_mora',
+                    'vencido'
+                ])->sum('capital_pendiente');
 
-            // Prendas en inventario
-            $prendasEnInventario = Prenda::whereIn('estado', ['en_custodia', 'en_venta'])
-                ->count();
+                $totalInteresPendiente = CreditoPrendario::whereIn('estado', [
+                    'vigente',
+                    'en_mora',
+                    'vencido'
+                ])->get()->sum(function ($credito) {
+                    return $credito->interes_generado - $credito->interes_pagado;
+                });
 
-            // Créditos próximos a vencer (próximos 7 días)
-            $creditosProximosVencer = CreditoPrendario::where('estado', 'vigente')
-                ->whereBetween('fecha_vencimiento', [
-                    Carbon::now(),
-                    Carbon::now()->addDays(7)
-                ])
-                ->count();
+                $totalMoraPendiente = CreditoPrendario::whereIn('estado', [
+                    'vigente',
+                    'en_mora',
+                    'vencido'
+                ])->get()->sum(function ($credito) {
+                    return $credito->mora_generada - $credito->mora_pagada;
+                });
+
+                $totalSaldo = $totalCapitalPendiente + $totalInteresPendiente + $totalMoraPendiente;
+                $totalRecuperado = max(0, $totalPrestado - $totalSaldo);
+
+                $creditosPorEstado = CreditoPrendario::select('estado', DB::raw('count(*) as total'))
+                    ->groupBy('estado')
+                    ->get()
+                    ->pluck('total', 'estado');
+
+                $ventasMesActual = (float) Venta::whereYear('created_at', Carbon::now()->year)
+                    ->whereMonth('created_at', Carbon::now()->month)
+                    ->where('estado', 'pagada')
+                    ->sum('total_final');
+
+                $prendasEnInventario = Prenda::whereIn('estado', ['en_custodia', 'en_venta'])
+                    ->count();
+
+                $lotesDisponibles = 0;
+                $lotesReservados = 0;
+                $lotesVendidos = 0;
+
+                $creditosProximosVencer = CreditoPrendario::where('estado', 'vigente')
+                    ->whereBetween('fecha_vencimiento', [
+                        Carbon::now(),
+                        Carbon::now()->addDays(7)
+                    ])
+                    ->count();
+            }
 
             return response()->json([
                 'success' => true,
@@ -145,7 +175,12 @@ class DashboardController extends Controller
                     'creditos_vencidos' => $creditosVencidos,
                     'total_prestado' => (float) $totalPrestado,
                     'total_saldo' => (float) $totalSaldo,
-                    'total_recuperado' => (float) ($totalPrestado - $totalSaldo),
+                    'total_recuperado' => (float) $totalRecuperado,
+
+                    // Lotes inmobiliarios
+                    'lotes_disponibles' => $lotesDisponibles ?? 0,
+                    'lotes_reservados' => $lotesReservados ?? 0,
+                    'lotes_vendidos' => $lotesVendidos ?? 0,
 
                     // Estadísticas adicionales
                     'creditos_por_estado' => $creditosPorEstado,

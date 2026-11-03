@@ -385,6 +385,9 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
           totalSaldo={dashboardData?.total_saldo ?? 0}
           totalRecuperado={dashboardData?.total_recuperado ?? 0}
           prendasEnInventario={dashboardData?.prendas_en_inventario ?? 0}
+          lotesDisponibles={dashboardData?.lotes_disponibles ?? 0}
+          lotesReservados={dashboardData?.lotes_reservados ?? 0}
+          lotesVendidos={dashboardData?.lotes_vendidos ?? 0}
           cargando={cargandoDashboard}
           modoBienvenida={Boolean(dashboardData?.modo_bienvenida)}
           mensajeBienvenida={dashboardData?.mensaje_bienvenida}
@@ -753,6 +756,9 @@ function Dashboard({
   totalSaldo,
   totalRecuperado,
   prendasEnInventario,
+  lotesDisponibles,
+  lotesReservados,
+  lotesVendidos,
   cargando,
   modoBienvenida,
   mensajeBienvenida,
@@ -764,6 +770,9 @@ function Dashboard({
   totalSaldo: number
   totalRecuperado?: number
   prendasEnInventario?: number
+  lotesDisponibles?: number
+  lotesReservados?: number
+  lotesVendidos?: number
   cargando?: boolean
   modoBienvenida?: boolean
   mensajeBienvenida?: string
@@ -892,19 +901,19 @@ function Dashboard({
           <CardContent className="space-y-2 sm:space-y-3">
             <div className="flex justify-between items-center text-xs sm:text-sm md:text-base">
               <span className="text-muted-foreground">Lotes Disponibles</span>
-              <span className="font-semibold text-accent">{cargando ? '…' : '—'}</span>
+              <span className="font-bold text-emerald-600 dark:text-emerald-400">{cargando ? '…' : `${lotesDisponibles ?? 0} lotes`}</span>
             </div>
             <div className="flex justify-between items-center text-xs sm:text-sm md:text-base">
               <span className="text-muted-foreground">Lotes Reservados</span>
-              <span className="font-semibold text-amber-600">{cargando ? '…' : '—'}</span>
+              <span className="font-bold text-amber-600 dark:text-amber-400">{cargando ? '…' : `${lotesReservados ?? 0} lotes`}</span>
             </div>
             <div className="flex justify-between items-center text-xs sm:text-sm md:text-base">
               <span className="text-muted-foreground">Lotes Vendidos / Financiados</span>
-              <span className="font-semibold text-primary">{cargando ? '…' : '—'}</span>
+              <span className="font-bold text-blue-600 dark:text-blue-400">{cargando ? '…' : `${lotesVendidos ?? 0} lotes`}</span>
             </div>
-            <div className="flex justify-between items-center text-xs sm:text-sm md:text-base pt-2 border-t">
-              <span className="text-muted-foreground">Total Inventario de Terrenos</span>
-              <span className="font-semibold">{cargando ? '…' : `${prendasEnInventario ?? 0} lotes`}</span>
+            <div className="flex justify-between items-center text-xs sm:text-sm md:text-base pt-2 border-t font-semibold">
+              <span className="text-foreground">Total Inventario de Terrenos</span>
+              <span className="font-bold text-foreground">{cargando ? '…' : `${prendasEnInventario ?? 0} lotes`}</span>
             </div>
           </CardContent>
         </Card>

@@ -314,8 +314,8 @@ export function OtrosGastosModule({ userSession }: { userSession?: any } = {}) {
       }
     } catch (e: any) {
       console.warn('Error al cargar movimientos:', e)
-      // No mostrar toast de error si ya tenemos movimientos cargados o si la petición fue cancelada
-      if (movimientos.length === 0) {
+      // Evitar molestar con toasts de error durante búsquedas o cancelaciones
+      if (!buscando && e?.name !== 'AbortError') {
         toast.error(e?.message || 'Error cargando movimientos')
       }
     } finally {

@@ -76,18 +76,18 @@ class DashboardController extends Controller
 
             if ($totalNegociaciones > 0 || Lote::count() > 0) {
                 // Modo Inmobiliario / Parcelia
-                $creditosActivos = Negociacion::whereIn('estado', ['vigente', 'al_dia', 'en_mora', 'cobro_dudoso'])->count();
-                $creditosVencidos = Negociacion::whereIn('estado', ['en_mora', 'cobro_dudoso'])->count();
-                $totalPrestado = (float) Negociacion::whereIn('estado', ['vigente', 'al_dia', 'en_mora', 'cobro_dudoso', 'pagada_total'])->sum('monto_financiado');
-                $totalSaldo = (float) Negociacion::whereIn('estado', ['vigente', 'al_dia', 'en_mora', 'cobro_dudoso'])->sum('saldo_capital_pendiente');
-                $totalRecuperado = (float) PagoTerreno::where('estado', '!=', 'anulado')->sum('monto_total');
+                $creditosActivos = Negociacion::whereIn('estado', ['activa', 'en_mora'])->count();
+                $creditosVencidos = Negociacion::where('estado', 'en_mora')->count();
+                $totalPrestado = (float) Negociacion::whereIn('estado', ['activa', 'en_mora', 'pagada_total'])->sum('precio_final');
+                $totalSaldo = (float) Negociacion::whereIn('estado', ['activa', 'en_mora'])->sum('saldo_capital_pendiente');
+                $totalRecuperado = (float) PagoTerreno::where('anulado', false)->sum('monto_total');
                 $prendasEnInventario = Lote::count();
 
                 $lotesDisponibles = Lote::where('estado', 'disponible')->count();
                 $lotesReservados = Lote::where('estado', 'reservado')->count();
                 $lotesVendidos = Lote::whereIn('estado', ['vendido', 'en_negociacion', 'pagado'])->count();
 
-                $ventasMesActual = (float) PagoTerreno::where('estado', '!=', 'anulado')
+                $ventasMesActual = (float) PagoTerreno::where('anulado', false)
                     ->whereMonth('fecha_pago', Carbon::now()->month)
                     ->whereYear('fecha_pago', Carbon::now()->year)
                     ->sum('monto_total');
@@ -193,6 +193,9 @@ class DashboardController extends Controller
                 ]
             ]);
         } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error al obtener estadísticas del dashboard: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Error al obtener estadísticas del dashboard',
@@ -250,6 +253,9 @@ class DashboardController extends Controller
                 ]
             ]);
         } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error al obtener estadísticas del dashboard: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Error al obtener gráficas del dashboard',
@@ -309,6 +315,9 @@ class DashboardController extends Controller
                 ]
             ]);
         } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error al obtener estadísticas del dashboard: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Error al obtener alertas del dashboard',

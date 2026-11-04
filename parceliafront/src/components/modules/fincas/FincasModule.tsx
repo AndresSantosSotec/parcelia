@@ -154,6 +154,15 @@ export function FincasModule({ userSession, abrirCompra = false }: FincasModuleP
     colindancias: '',
     descripcion: ''
   })
+  const [crearLotesConSector, setCrearLotesConSector] = useState(false)
+  const [datosLotesNuevoSector, setDatosLotesNuevoSector] = useState({
+    cantidad: 15,
+    frente: 20,
+    fondo: 60,
+    area_m2: 1200,
+    tipo: 'Residencial',
+    precio_venta: 0,
+  })
 
   const [formLote, setFormLote] = useState(formLoteVacio)
 
@@ -320,11 +329,30 @@ export function FincasModule({ userSession, abrirCompra = false }: FincasModuleP
     setGuardando(true)
     try {
       const res = await fincaService.createParcela(fincaSeleccionada.id, formParcela)
-      if (res.success) {
-        toast.success('Parcela / Manzana agregada exitosamente')
+      if (res.success && res.data) {
+        const nuevaParcela = res.data
+        if (crearLotesConSector && datosLotesNuevoSector.cantidad > 0) {
+          const prefijo = (formParcela.nombre_identificador || 'S').trim().replace(/\s+/g, '').toUpperCase() + '-L'
+          await fincaService.createLotesMasivos(nuevaParcela.id, {
+            cantidad: Number(datosLotesNuevoSector.cantidad),
+            prefijo,
+            numero_inicial: 1,
+            frente_metros: Number(datosLotesNuevoSector.frente),
+            fondo_metros: Number(datosLotesNuevoSector.fondo),
+            area_m2: Number(datosLotesNuevoSector.area_m2),
+            tipo_terreno: datosLotesNuevoSector.tipo,
+            precio_venta: Number(datosLotesNuevoSector.precio_venta) || undefined,
+          })
+          toast.success(`Sector ${formParcela.nombre_identificador} y ${datosLotesNuevoSector.cantidad} lotes creados exitosamente`)
+        } else {
+          toast.success('Parcela / Sector agregada exitosamente')
+        }
         setModalParcela(false)
+        setCrearLotesConSector(false)
         setFormParcela({ nombre_identificador: '', codigo: '', area_m2: 10000, tipo_terreno: 'Plano', medidas_perimetro: '', colindancias: '', descripcion: '' })
-        cargarFincas()
+        await cargarFincas()
+        setParcelaSeleccionada(nuevaParcela)
+        await cargarLotes()
       }
     } catch (e: any) {
       toast.error(e?.message || 'Error al registrar la parcela')
@@ -1433,9 +1461,122 @@ export function FincasModule({ userSession, abrirCompra = false }: FincasModuleP
                 </select>
               </div>
             </div>
+
+            {/* Opción de crear lotes inmediatamente con misma medida */}
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 space-y-3">
+              <label className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                <input
+                  type="checkbox"
+                  checked={crearLotesConSector}
+                  onChange={(e) => setCrearLotesConSector(e.target.checked)}
+                  className="rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                />
+                Crear lotes con la misma medida en este sector inmediatamente
+              </label>
+
+              {crearLotesConSector && (
+                <div className="space-y-3 pt-2 border-t border-emerald-500/20 text-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div>
+                      <span className="text-[11px] text-muted-foreground block font-medium">Cantidad</span>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={200}
+                        value={datosLotesNuevoSector.cantidad}
+                        onChange={(e) => setDatosLotesNuevoSector({ ...datosLotesNuevoSector, cantidad: parseInt(e.target.value) || 1 })}
+                        className="h-8 text-xs font-semibold text-center"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-muted-foreground block font-medium">Frente (m)</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0.1"
+                        value={datosLotesNuevoSector.frente}
+                        onChange={(e) => {
+                          const frente = parseFloat(e.target.value) || 0
+                          const fondo = datosLotesNuevoSector.fondo || 0
+                          setDatosLotesNuevoSector({
+                            ...datosLotesNuevoSector,
+                            frente,
+                            area_m2: Math.round(frente * fondo * 100) / 100,
+                          })
+                        }}
+                        className="h-8 text-xs text-center"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-muted-foreground block font-medium">Fondo (m)</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0.1"
+                        value={datosLotesNuevoSector.fondo}
+                        onChange={(e) => {
+                          const fondo = parseFloat(e.target.value) || 0
+                          const frente = datosLotesNuevoSector.frente || 0
+                          setDatosLotesNuevoSector({
+                            ...datosLotesNuevoSector,
+                            fondo,
+                            area_m2: Math.round(frente * fondo * 100) / 100,
+                          })
+                        }}
+                        className="h-8 text-xs text-center"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-muted-foreground block font-medium">Área m²</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={datosLotesNuevoSector.area_m2}
+                        readOnly
+                        className="h-8 text-xs bg-muted/60 font-semibold text-center"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <span className="text-[11px] text-muted-foreground block font-medium">Tipo de Lote</span>
+                      <select
+                        value={datosLotesNuevoSector.tipo}
+                        onChange={(e) => setDatosLotesNuevoSector({ ...datosLotesNuevoSector, tipo: e.target.value })}
+                        className="w-full h-8 bg-background border rounded-lg px-2 text-xs"
+                      >
+                        <option value="Residencial">Residencial</option>
+                        <option value="Comercial">Comercial</option>
+                        <option value="Mixto">Mixto</option>
+                        <option value="Industrial">Industrial</option>
+                      </select>
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-muted-foreground block font-medium">Precio Venta (Q)</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="Opcional. Ej. 150000"
+                        value={datosLotesNuevoSector.precio_venta || ''}
+                        onChange={(e) => setDatosLotesNuevoSector({ ...datosLotesNuevoSector, precio_venta: parseFloat(e.target.value) || 0 })}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setModalParcela(false)}>Cancelar</Button>
-              <Button type="submit" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar Parcela'}</Button>
+              <Button type="submit" disabled={guardando}>
+                {guardando
+                  ? 'Guardando…'
+                  : crearLotesConSector
+                  ? `Guardar Sector y Crear ${datosLotesNuevoSector.cantidad} Lotes`
+                  : 'Guardar Parcela'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

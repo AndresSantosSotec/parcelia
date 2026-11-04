@@ -71,6 +71,7 @@ export const MODULOS = [
   'financistas',
   'comisionistas',
   'lotes',
+  'prospectos',
   'negociaciones',
   'pagos_terreno',
   'tasas_inmobiliarias',
@@ -111,6 +112,7 @@ export const MODULO_NAV_MAP: Record<Modulo, string> = {
   financistas: 'financistas',
   comisionistas: 'comisionistas',
   lotes: 'fincas',
+  prospectos: 'prospectos',
   negociaciones: 'negociaciones',
   pagos_terreno: 'pagos_terreno',
   tasas_inmobiliarias: 'fincas',
@@ -149,6 +151,7 @@ export const ACCIONES_POR_MODULO: Record<Modulo, string[]> = {
   financistas: ['ver', 'editar', 'pagar', 'reportes'],
   comisionistas: ['ver', 'editar', 'pagar', 'reglas', 'reportes'],
   lotes: ['ver', 'crear', 'editar', 'eliminar', 'servicios', 'imagenes'],
+  prospectos: ['ver', 'crear', 'editar', 'eliminar', 'cambiar_estado', 'asignar'],
   negociaciones: ['ver', 'crear', 'ajustar_condiciones', 'rescindir', 'contrato'],
   pagos_terreno: ['ver', 'cobrar', 'anular'],
   tasas_inmobiliarias: ['ver', 'crear', 'editar', 'desactivar'],
@@ -203,6 +206,7 @@ export const ACCION_LABELS: Record<string, string> = {
   contrato: 'Contrato',
   pagar: 'Registrar pagos',
   reglas: 'Parametrizar reglas',
+  asignar: 'Asignar asesor',
 }
 
 // Nombres legibles de módulos
@@ -237,6 +241,7 @@ export const MODULO_LABELS: Record<Modulo, string> = {
   financistas: 'Financiamientos',
   comisionistas: 'Comisionistas',
   lotes: 'Lotes',
+  prospectos: 'Prospectos / CRM',
   negociaciones: 'Negociaciones',
   pagos_terreno: 'Pagos de terrenos',
   tasas_inmobiliarias: 'Tasas inmobiliarias',

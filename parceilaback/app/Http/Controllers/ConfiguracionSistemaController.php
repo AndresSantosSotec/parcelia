@@ -179,7 +179,7 @@ class ConfiguracionSistemaController extends Controller
 
         $data = $request->all();
 
-        // Si se envió un logo en Base64, intentar persistirlo en archivo físico público para mayor velocidad y ligereza
+        // Si se envió un logo en Base64, guardar respaldo en disco y preservar en BD
         if (!empty($data['logoUrl']) && str_starts_with($data['logoUrl'], 'data:image/')) {
             try {
                 if (preg_match('/^data:image\/(\w+);base64,/', $data['logoUrl'], $type)) {
@@ -188,14 +188,13 @@ class ConfiguracionSistemaController extends Controller
                     if ($extension === 'jpeg') $extension = 'jpg';
                     $decoded = base64_decode($imageData);
                     if ($decoded !== false) {
-                        $filename = 'logo_' . time() . '.' . $extension;
+                        $filename = 'logo_oficial.' . $extension;
                         $path = 'logos/' . $filename;
                         \Illuminate\Support\Facades\Storage::disk('public')->put($path, $decoded);
-                        $data['logoUrl'] = url('/storage/' . $path);
                     }
                 }
             } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning('No se pudo guardar logo en disco: ' . $e->getMessage());
+                \Illuminate\Support\Facades\Log::warning('No se pudo guardar respaldo de logo en disco: ' . $e->getMessage());
             }
         }
 

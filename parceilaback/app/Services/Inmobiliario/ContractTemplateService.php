@@ -49,6 +49,8 @@ class ContractTemplateService
             '{{CURRENCY}}' => $moneda,
 
             '{{CLIENT_NAME}}' => trim(($cliente->nombres ?? '') . ' ' . ($cliente->apellidos ?? '')),
+            '{{CLIENT_CIVIL_STATUS}}' => $cliente->estado_civil ?? 'mayor de edad',
+            '{{CLIENT_PROFESSION}}' => $cliente->profesion ?? 'comerciante',
             '{{CLIENT_DPI}}' => $cliente->dpi ?? 'N/A',
             '{{CLIENT_NIT}}' => $cliente->nit ?? 'C/F',
             '{{CLIENT_PHONE}}' => $cliente->telefono ?? 'N/A',
@@ -63,6 +65,10 @@ class ContractTemplateService
             '{{LOT_AREA}}' => number_format($lote->area_m2, 2) . ' m²',
             '{{LOT_FRONT}}' => number_format($lote->frente_metros, 2) . ' m',
             '{{LOT_DEPTH}}' => number_format($lote->fondo_metros, 2) . ' m',
+            '{{LOT_NORTH}}' => $lote->lado_norte ? number_format($lote->lado_norte, 2) . ' m' : ($lote->frente_metros ? number_format($lote->frente_metros, 2) . ' m' : 'Según plano'),
+            '{{LOT_SOUTH}}' => $lote->lado_sur ? number_format($lote->lado_sur, 2) . ' m' : ($lote->frente_metros ? number_format($lote->frente_metros, 2) . ' m' : 'Según plano'),
+            '{{LOT_EAST}}' => $lote->lado_este ? number_format($lote->lado_este, 2) . ' m' : ($lote->fondo_metros ? number_format($lote->fondo_metros, 2) . ' m' : 'Según plano'),
+            '{{LOT_WEST}}' => $lote->lado_oeste ? number_format($lote->lado_oeste, 2) . ' m' : ($lote->fondo_metros ? number_format($lote->fondo_metros, 2) . ' m' : 'Según plano'),
             '{{LOT_BOUNDARIES}}' => $lote->colindancias ?? 'Según plano de registro',
             '{{LOT_PRICE_M2}}' => $moneda . ' ' . number_format($lote->precio_venta > 0 && $lote->area_m2 > 0 ? $lote->precio_venta / $lote->area_m2 : 0, 2),
 
@@ -122,7 +128,7 @@ class ContractTemplateService
     <p style="text-align: center; font-weight: bold; margin: 0 0 6px; color: #555; font-size: 12px;">CONVENIO No. {{CONTRACT_NUMBER}}</p>
     <hr style="margin: 12px 0 20px; border: 0; border-top: 1px solid #e5e7eb;" />
 
-    <p>En {{CURRENT_CITY}}, el día <strong>{{CURRENT_DATE}}</strong>, comparecen: por una parte la Desarrolladora Inmobiliaria <strong>{{COMPANY_NAME}}</strong>, con NIT <strong>{{COMPANY_NIT}}</strong>, con domicilio en {{COMPANY_ADDRESS}}, en adelante <strong>"LA VENDEDORA"</strong>; y por la otra, el(la) señor(a) <strong>{{CLIENT_NAME}}</strong>, quien se identifica con Documento Personal de Identificación (DPI) número <strong>{{CLIENT_DPI}}</strong>, NIT <strong>{{CLIENT_NIT}}</strong>, con domicilio en <strong>{{CLIENT_ADDRESS}}</strong>, teléfono {{CLIENT_PHONE}}, en adelante <strong>"EL COMPRADOR"</strong>, quienes convienen en celebrar el presente contrato de compraventa sujeto a las siguientes cláusulas:</p>
+    <p>En {{CURRENT_CITY}}, el día <strong>{{CURRENT_DATE}}</strong>, comparecen: por una parte la Desarrolladora Inmobiliaria <strong>{{COMPANY_NAME}}</strong>, con NIT <strong>{{COMPANY_NIT}}</strong>, con domicilio en {{COMPANY_ADDRESS}}, en adelante <strong>"LA VENDEDORA"</strong>; y por la otra, el(la) señor(a) <strong>{{CLIENT_NAME}}</strong>, de estado civil {{CLIENT_CIVIL_STATUS}}, profesión u oficio {{CLIENT_PROFESSION}}, quien se identifica con Documento Personal de Identificación (DPI) número <strong>{{CLIENT_DPI}}</strong>, NIT <strong>{{CLIENT_NIT}}</strong>, con domicilio en <strong>{{CLIENT_ADDRESS}}</strong>, teléfono {{CLIENT_PHONE}}, en adelante <strong>"EL COMPRADOR"</strong>, quienes convienen en celebrar el presente contrato de promesa de compraventa sujeto a las siguientes cláusulas:</p>
 
     <h3 style="color: #047857; border-bottom: 1px solid #eee; padding-bottom: 4px; margin-top: 20px;">PRIMERA: ANTECEDENTES Y DESCRIPCIÓN DEL INMUEBLE</h3>
     <p>LA VENDEDORA es legítima propietaria de la finca matriz denominada <strong>"{{FINCA_NAME}}"</strong> ({{FINCA_REGISTRATION}}), inscrita en el Registro General de la Propiedad. Dentro de dicha finca se ubica el lote individual identificado como:</p>
@@ -138,6 +144,10 @@ class ContractTemplateService
         <tr>
             <td style="padding: 4px 8px; border: 1px solid #e5e7eb; font-weight: bold; background: #f0fdf4;">Área</td>
             <td style="padding: 4px 8px; border: 1px solid #e5e7eb;">{{LOT_AREA}} (Frente: {{LOT_FRONT}}, Fondo: {{LOT_DEPTH}})</td>
+        </tr>
+        <tr>
+            <td style="padding: 4px 8px; border: 1px solid #e5e7eb; font-weight: bold; background: #f0fdf4;">Medidas por Rumbo</td>
+            <td style="padding: 4px 8px; border: 1px solid #e5e7eb;">Norte: {{LOT_NORTH}} &nbsp;|&nbsp; Sur: {{LOT_SOUTH}} &nbsp;|&nbsp; Oriente/Este: {{LOT_EAST}} &nbsp;|&nbsp; Poniente/Oeste: {{LOT_WEST}}</td>
         </tr>
         <tr>
             <td style="padding: 4px 8px; border: 1px solid #e5e7eb; font-weight: bold; background: #f0fdf4;">Colindancias</td>

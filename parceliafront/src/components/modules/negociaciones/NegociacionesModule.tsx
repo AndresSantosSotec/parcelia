@@ -1335,11 +1335,8 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <Button size="sm" variant="ghost" onClick={() => handleDescargarContratoPdf(neg)} className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground">
-                            <Printer size={14} /> Contrato
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => handleDescargarContratoPdf(neg)} disabled={descargandoDoc === 'contrato'} className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground" title="Descargar contrato PDF">
-                            <DownloadSimple size={14} />
+                          <Button size="sm" variant="outline" onClick={() => handleDescargarContratoPdf(neg)} disabled={descargandoDoc === 'contrato'} className="h-8 gap-1 text-xs text-emerald-700 hover:text-emerald-800 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" title="Descargar Contrato Legal de Promesa de Compraventa a Plazos">
+                            <FileText size={14} /> Promesa PDF
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => abrirEstadoCuenta(neg)} className="h-8 gap-1 text-xs">
                             <Receipt size={14} /> Estado Cuenta

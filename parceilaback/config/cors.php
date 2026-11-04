@@ -18,7 +18,7 @@ return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
     'allowed_methods' => ['*'],
-    'allowed_origins' => [
+    'allowed_origins' => array_values(array_filter(array_merge([
         'http://localhost:5000',
         'http://localhost:5173',
         'http://localhost:3000',
@@ -26,19 +26,17 @@ return [
         'http://127.0.0.1:5000',
         'http://127.0.0.1:5173',
         'http://127.0.0.1:3000',
+        'http://127.0.0.1:5174',
         'https://digiprenda.inniserver.net',
         'https://avanzadigiprenda.stockgenius-sotecpro.com',
         'https://crediprendasdigi.stockgenius-sotecpro.com',
-    ],
+    ], env('CORS_ALLOWED_ORIGINS') ? array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS'))) : []))),
 
     'allowed_origins_patterns' => [
-        '/^http:\/\/localhost:\d+$/',
-        '/^http:\/\/127\.0\.0\.1:\d+$/',
+        '/^http:\/\/localhost(:\d+)?$/',
+        '/^http:\/\/127\.0\.0\.1(:\d+)?$/',
         '/^https:\/\/.*\.stockgenius-sotecpro\.com$/',
         '/^https:\/\/.*\.inniserver\.net$/',
-        '/kottan/i',
-        '/kotan/i',
-        '/parcelia/i',
     ],
 
     'allowed_headers' => ['*'],

@@ -56,6 +56,12 @@ class Permission extends Model
                     'comisionistas.reglas' => 'Parametrizar reglas de comisión',
                     'comisionistas.reportes' => 'Estado de cuenta y listados de comisionistas',
                     'negociaciones.ajustar_condiciones' => 'Ajustar condiciones y editar fechas de venta/contrato',
+                    'prospectos.ver' => 'Consultar y explorar el tablero CRM de prospectos',
+                    'prospectos.crear' => 'Registrar un nuevo cliente prospecto',
+                    'prospectos.editar' => 'Modificar datos o registrar contacto con prospecto',
+                    'prospectos.eliminar' => 'Eliminar prospecto del embudo',
+                    'prospectos.cambiar_estado' => 'Avanzar o mover prospecto en el embudo comercial',
+                    'prospectos.asignar' => 'Asignar o reasignar asesor comercial a un prospecto',
                     default => ucfirst(str_replace('_', ' ', (string) $accion)).' en '.ucfirst(str_replace('_', ' ', (string) $modulo)),
                 };
 
@@ -106,6 +112,7 @@ class Permission extends Model
         'historial' => ['ver'],
         'otros_gastos' => ['ver', 'crear', 'editar', 'eliminar', 'anular'],
         'cotizaciones' => ['ver', 'crear', 'editar', 'eliminar', 'convertir'],
+        'prospectos' => ['ver', 'crear', 'editar', 'eliminar', 'cambiar_estado', 'asignar'],
         'planes_interes' => ['ver', 'crear', 'editar', 'eliminar'],
         'transferencias' => ['ver', 'crear', 'aprobar', 'anular'],
     ];
@@ -137,6 +144,7 @@ class Permission extends Model
             'cobros' => ['realizar', 'ver', 'imprimir_recibo'],
             'recibos' => ['ver', 'crear', 'imprimir'],
             'historial' => ['ver'],
+            'prospectos' => ['ver', 'crear'],
             'otros_gastos' => ['ver', 'crear'],
             'planes_interes' => ['ver'],
         ],
@@ -173,6 +181,7 @@ class Permission extends Model
             'cobros' => ['realizar', 'ver', 'imprimir_recibo'],
             'recibos' => ['ver', 'crear', 'imprimir'],
             'historial' => ['ver'],
+            'prospectos' => ['ver', 'crear', 'editar', 'cambiar_estado'],
         ],
         'supervisor' => [
             'dashboard' => ['ver'],
@@ -202,6 +211,7 @@ class Permission extends Model
             'historial' => ['ver'],
             'otros_gastos' => ['ver', 'crear', 'anular'],
             'cotizaciones' => ['ver', 'crear', 'editar', 'eliminar', 'convertir'],
+            'prospectos' => ['ver', 'crear', 'editar', 'eliminar', 'cambiar_estado', 'asignar'],
             'planes_interes' => ['ver'],
             'transferencias' => ['ver', 'crear', 'aprobar', 'anular'],
         ],

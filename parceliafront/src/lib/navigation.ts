@@ -1,8 +1,9 @@
-import { Users, Calculator, CreditCard as CreditCardIcon, Package, Wallet, ChartBar, UserCircle, ShoppingCart, Storefront, Tag, Vault, FileText, Handbag, CurrencyDollar, ShieldCheck, Database, Book, Percent, ArrowsLeftRight, ReceiptX, Receipt, Gavel, PaintBrush, TreeStructure, Handshake, Compass, Bank, IdentificationBadge, MapTrifold } from '@phosphor-icons/react'
+import { Users, UsersThree, Calculator, CreditCard as CreditCardIcon, Package, Wallet, ChartBar, UserCircle, ShoppingCart, Storefront, Tag, Vault, FileText, Handbag, CurrencyDollar, ShieldCheck, Database, Book, Percent, ArrowsLeftRight, ReceiptX, Receipt, Gavel, PaintBrush, TreeStructure, Handshake, Compass, Bank, IdentificationBadge, MapTrifold } from '@phosphor-icons/react'
 
 export const navigation = [
   { id: 'fincas', label: 'Fincas & Lotes', icon: TreeStructure },
   { id: 'lotes', label: 'Plano de lotes', icon: MapTrifold },
+  { id: 'prospectos', label: 'CRM & Prospectos', icon: UsersThree },
   { id: 'financistas', label: 'Financiamientos', icon: Bank },
   { id: 'comisionistas', label: 'Comisionistas', icon: IdentificationBadge },
   { id: 'negociaciones', label: 'Ventas & Contratos', icon: Handshake },

@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\FincaController;
 use App\Http\Controllers\Api\LoteController;
 use App\Http\Controllers\Api\NegociacionController;
 use App\Http\Controllers\Api\PagoTerrenoController;
+use App\Http\Controllers\Api\ProspectoController;
 use App\Support\EmpenosAccess;
 use Illuminate\Support\Facades\DB;
 
@@ -46,54 +47,36 @@ use Illuminate\Support\Facades\DB;
 | be assigned to the "api" middleware group. Make something great!
 |
 */
-    /*Rutas de salud API */
+    /* Rutas de salud API */
     Route::get('/ping', function () {
         return response()->json([
             'status' => 'success',
             'message' => 'Pong'
         ]);
-    });
-    Route::get('/version', function () {
-        return response()->json([
-            'status' => 'success',
-            'version' => '1.0.0'
-        ]);
-    });
-        Route::get('/ping', function () {
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Pong'
-        ]);
-    });
+    })->middleware('throttle:60,1');
 
     Route::get('/version', function () {
         return response()->json([
             'status' => 'success',
             'version' => '1.0.0'
         ]);
-    });
+    })->middleware('throttle:60,1');
 
     Route::get('/health', function () {
-        return response()->json([
-            'status' => 'success',
-            'message' => 'API is healthy'
-        ]);
-    });
-
-    Route::get('/BD', function () {
+        $dbConnected = false;
         try {
             DB::connection()->getPdo();
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Base de datos conectada'
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Base de datos no conectada'
-            ]);
+            $dbConnected = true;
+        } catch (\Throwable $e) {
+            $dbConnected = false;
         }
-    });
+
+        return response()->json([
+            'status' => $dbConnected ? 'success' : 'warning',
+            'api' => 'healthy',
+            'database' => $dbConnected ? 'connected' : 'disconnected',
+        ], $dbConnected ? 200 : 503);
+    })->middleware('throttle:30,1');
 
 Route::prefix('v1')->group(function () {
     // 🔒 Rutas públicas de autenticación con rate limiting estricto
@@ -205,6 +188,15 @@ Route::prefix('v1')->group(function () {
             Route::post('/lotes/{loteId}/imagenes', [LoteController::class, 'storeImagen'])->middleware('permiso:lotes,imagenes');
             Route::delete('/lotes/{loteId}/imagenes/{imagenId}', [LoteController::class, 'destroyImagen'])->middleware('permiso:lotes,imagenes');
 
+            // CRM y Embudo de Prospectos
+            Route::get('/prospectos', [ProspectoController::class, 'index'])->middleware('permiso:prospectos,ver');
+            Route::post('/prospectos', [ProspectoController::class, 'store'])->middleware('permiso:prospectos,crear');
+            Route::get('/prospectos/{id}', [ProspectoController::class, 'show'])->middleware('permiso:prospectos,ver');
+            Route::put('/prospectos/{id}', [ProspectoController::class, 'update'])->middleware('permiso:prospectos,editar');
+            Route::patch('/prospectos/{id}/estado', [ProspectoController::class, 'cambiarEstado'])->middleware('permiso:prospectos,cambiar_estado');
+            Route::post('/prospectos/{id}/registrar-contacto', [ProspectoController::class, 'registrarContacto'])->middleware('permiso:prospectos,editar');
+            Route::delete('/prospectos/{id}', [ProspectoController::class, 'destroy'])->middleware('permiso:prospectos,eliminar');
+
             Route::post('/simulador/calcular', [NegociacionController::class, 'simular'])->middleware('permiso:negociaciones,ver');
             Route::post('/simulador/cotizacion-pdf', [NegociacionController::class, 'cotizacionPdf'])->middleware('permiso:negociaciones,ver');
             Route::get('/negociaciones', [NegociacionController::class, 'index'])->middleware('permiso:negociaciones,ver');
@@ -243,8 +235,7 @@ Route::prefix('v1')->group(function () {
         // ==========================================
         // 🎨 CONFIGURACIÓN DE EMPRESA, MARCA & LOGO
         // ==========================================
-        Route::get('/empresa-config', [\App\Http\Controllers\Api\EmpresaConfigController::class, 'show']);
-        Route::post('/empresa-config', [\App\Http\Controllers\Api\EmpresaConfigController::class, 'update']);
+        Route::post('/empresa-config', [ConfiguracionSistemaController::class, 'updateEmpresaConfig'])->middleware('permiso:configuracion,editar');
 
         // Dashboard
         Route::get('/dashboard', [DashboardController::class, 'index']);
@@ -328,7 +319,9 @@ Route::prefix('v1')->group(function () {
             Route::get('/clientes/{id}', [ClienteController::class, 'show']);
             Route::get('/clientes/{id}/ficha', [ClienteController::class, 'ficha']);
             Route::post('/clientes/{id}/ficha/pdf', [ClienteController::class, 'descargarFichaCliente']);
-            Route::get('/clientes/{id}/creditos-prendarios', [ClienteController::class, 'creditosPrendarios']);
+            if (\App\Support\EmpenosAccess::enabled()) {
+                Route::get('/clientes/{id}/creditos-prendarios', [ClienteController::class, 'creditosPrendarios']);
+            }
             Route::post('/clientes', [ClienteController::class, 'store']);
             Route::put('/clientes/{id}', [ClienteController::class, 'update']);
             Route::delete('/clientes/{id}', [ClienteController::class, 'destroy']);
@@ -350,16 +343,18 @@ Route::prefix('v1')->group(function () {
                 }
             );
 
-            // Planes de Interés por Categoría
-            Route::get('/planes-interes', [PlanInteresCategoriaController::class, 'index']);
-            Route::get('/planes-interes/{id}', [PlanInteresCategoriaController::class, 'show']);
-            Route::get('/categorias-productos/{categoria_id}/planes-interes', [PlanInteresCategoriaController::class, 'getPorCategoria']);
-            Route::post('/planes-interes', [PlanInteresCategoriaController::class, 'store']);
-            Route::put('/planes-interes/{id}', [PlanInteresCategoriaController::class, 'update']);
-            Route::delete('/planes-interes/{id}', [PlanInteresCategoriaController::class, 'destroy']);
-            Route::post('/planes-interes/{id}/toggle-activo', [PlanInteresCategoriaController::class, 'toggleActivo']);
-            Route::post('/planes-interes/{id}/set-default', [PlanInteresCategoriaController::class, 'setDefault']);
-            Route::post('/planes-interes/{id}/calcular-proyeccion', [PlanInteresCategoriaController::class, 'calcularProyeccion']);
+            // Planes de Interés por Categoría (Exclusivo Empeños)
+            if (\App\Support\EmpenosAccess::enabled()) {
+                Route::get('/planes-interes', [PlanInteresCategoriaController::class, 'index']);
+                Route::get('/planes-interes/{id}', [PlanInteresCategoriaController::class, 'show']);
+                Route::get('/categorias-productos/{categoria_id}/planes-interes', [PlanInteresCategoriaController::class, 'getPorCategoria']);
+                Route::post('/planes-interes', [PlanInteresCategoriaController::class, 'store']);
+                Route::put('/planes-interes/{id}', [PlanInteresCategoriaController::class, 'update']);
+                Route::delete('/planes-interes/{id}', [PlanInteresCategoriaController::class, 'destroy']);
+                Route::post('/planes-interes/{id}/toggle-activo', [PlanInteresCategoriaController::class, 'toggleActivo']);
+                Route::post('/planes-interes/{id}/set-default', [PlanInteresCategoriaController::class, 'setDefault']);
+                Route::post('/planes-interes/{id}/calcular-proyeccion', [PlanInteresCategoriaController::class, 'calcularProyeccion']);
+            }
 
             // GeoNames (Guatemala) - sin scope porque son datos públicos de referencia
         });
@@ -410,177 +405,179 @@ Route::prefix('v1')->group(function () {
             Route::get('/recibos/{id}/pdf', [ReciboController::class, 'generarPDF']);
             Route::get('/recibos/{id}/ticket', [ReciboController::class, 'generarTicket']);
 
-            // Créditos Prendarios
-            Route::get('/creditos-prendarios', [CreditoPrendarioController::class, 'index']);
-            Route::get('/creditos-prendarios/estadisticas', [CreditoPrendarioController::class, 'getEstadisticas']);
-            Route::get('/creditos-prendarios/{id}', [CreditoPrendarioController::class, 'show']);
-            Route::get('/creditos-prendarios/{id}/plan-pagos', [CreditoPrendarioController::class, 'getPlanPagos']);
-            Route::get('/creditos-prendarios/{id}/movimientos', [CreditoPrendarioController::class, 'getMovimientos']);
-            Route::get('/creditos-prendarios/{id}/saldo', [CreditoPrendarioController::class, 'getSaldo']);
-            Route::post('/creditos-prendarios', [CreditoPrendarioController::class, 'store']);
-            Route::put('/creditos-prendarios/{id}', [CreditoPrendarioController::class, 'update']);
-            Route::patch('/creditos-prendarios/{id}', [CreditoPrendarioController::class, 'update']);
-            Route::post('/credigos-prendarios/{id}/desembolsar', [CreditoPrendarioController::class, 'desembolsar']);
-            Route::post('/creditos-prendarios/{id}/pagar', [CreditoPrendarioController::class, 'pagar']);
-            Route::post('/creditos-prendarios/{id}/aprobar', [CreditoPrendarioController::class, 'aprobar']);
-            Route::post('/creditos-prendarios/{id}/rechazar', [CreditoPrendarioController::class, 'rechazar']);
-            Route::get('/creditos-prendarios/{id}/transiciones', [CreditoPrendarioController::class, 'getTransiciones']);
-            Route::get('/creditos-prendarios/{id}/auditoria', [CreditoPrendarioController::class, 'getAuditoria']);
-            Route::get('/creditos-prendarios/{id}/plan-pagos/pdf', [CreditoPrendarioController::class, 'descargarPlanPagos']);
-            Route::get('/creditos-prendarios/{id}/contrato/pdf', [CreditoPrendarioController::class, 'descargarContrato']);
-            Route::get('/creditos-prendarios/{id}/recibo/pdf', [CreditoPrendarioController::class, 'descargarRecibo']);
-            Route::get('/creditos-prendarios/{id}/recibo/ticket', [CreditoPrendarioController::class, 'descargarTicket']);
-            Route::get('/creditos-prendarios/{id}/historial-pagos/pdf', [CreditoPrendarioController::class, 'descargarHistorialPagos']);
-            Route::post('/creditos-prendarios/preliminar/recibo', [CreditoPrendarioController::class, 'generarReciboPreliminar']);
-            Route::post('/creditos-prendarios/preliminar/contrato', [CreditoPrendarioController::class, 'generarContratoPreliminar']);
-            Route::post('/creditos-prendarios/preliminar/plan-pagos', [CreditoPrendarioController::class, 'generarPlanPagosPreliminar']);
-            Route::post('/creditos-prendarios/simular-plan', [CreditoPrendarioController::class, 'simularPlan']);
-            Route::post('/creditos-prendarios/{id}/movimientos/{movimiento_id}/anular', [CreditoPrendarioController::class, 'anularMovimiento']);
-            Route::delete('/creditos-prendarios/{id}', [CreditoPrendarioController::class, 'destroy']);
+            // ============================================================
+            // 🔒 RUTAS DE EMPEÑOS PRENDARIOS (DESACOPLADAS Y CONDICIONADAS)
+            // Solo activas si EMPENOS_ENABLED=true en configuración
+            // ============================================================
+            if (\App\Support\EmpenosAccess::enabled()) {
+                // Créditos Prendarios
+                Route::get('/creditos-prendarios', [CreditoPrendarioController::class, 'index']);
+                Route::get('/creditos-prendarios/estadisticas', [CreditoPrendarioController::class, 'getEstadisticas']);
+                Route::get('/creditos-prendarios/{id}', [CreditoPrendarioController::class, 'show']);
+                Route::get('/creditos-prendarios/{id}/plan-pagos', [CreditoPrendarioController::class, 'getPlanPagos']);
+                Route::get('/creditos-prendarios/{id}/movimientos', [CreditoPrendarioController::class, 'getMovimientos']);
+                Route::get('/creditos-prendarios/{id}/saldo', [CreditoPrendarioController::class, 'getSaldo']);
+                Route::post('/creditos-prendarios', [CreditoPrendarioController::class, 'store']);
+                Route::put('/creditos-prendarios/{id}', [CreditoPrendarioController::class, 'update']);
+                Route::patch('/creditos-prendarios/{id}', [CreditoPrendarioController::class, 'update']);
+                Route::post('/credigos-prendarios/{id}/desembolsar', [CreditoPrendarioController::class, 'desembolsar']);
+                Route::post('/creditos-prendarios/{id}/pagar', [CreditoPrendarioController::class, 'pagar']);
+                Route::post('/creditos-prendarios/{id}/aprobar', [CreditoPrendarioController::class, 'aprobar']);
+                Route::post('/creditos-prendarios/{id}/rechazar', [CreditoPrendarioController::class, 'rechazar']);
+                Route::get('/creditos-prendarios/{id}/transiciones', [CreditoPrendarioController::class, 'getTransiciones']);
+                Route::get('/creditos-prendarios/{id}/auditoria', [CreditoPrendarioController::class, 'getAuditoria']);
+                Route::get('/creditos-prendarios/{id}/plan-pagos/pdf', [CreditoPrendarioController::class, 'descargarPlanPagos']);
+                Route::get('/creditos-prendarios/{id}/contrato/pdf', [CreditoPrendarioController::class, 'descargarContrato']);
+                Route::get('/creditos-prendarios/{id}/recibo/pdf', [CreditoPrendarioController::class, 'descargarRecibo']);
+                Route::get('/creditos-prendarios/{id}/recibo/ticket', [CreditoPrendarioController::class, 'descargarTicket']);
+                Route::get('/creditos-prendarios/{id}/historial-pagos/pdf', [CreditoPrendarioController::class, 'descargarHistorialPagos']);
+                Route::post('/creditos-prendarios/preliminar/recibo', [CreditoPrendarioController::class, 'generarReciboPreliminar']);
+                Route::post('/creditos-prendarios/preliminar/contrato', [CreditoPrendarioController::class, 'generarContratoPreliminar']);
+                Route::post('/creditos-prendarios/preliminar/plan-pagos', [CreditoPrendarioController::class, 'generarPlanPagosPreliminar']);
+                Route::post('/creditos-prendarios/simular-plan', [CreditoPrendarioController::class, 'simularPlan']);
+                Route::post('/creditos-prendarios/{id}/movimientos/{movimiento_id}/anular', [CreditoPrendarioController::class, 'anularMovimiento']);
+                Route::delete('/creditos-prendarios/{id}', [CreditoPrendarioController::class, 'destroy']);
 
-            // ========== REFRENDOS (Sistema de Refrendos Mejorado) ==========
-            Route::get('/creditos-prendarios/{credito_id}/refrendos', [\App\Http\Controllers\RefrendoController::class, 'index']);
-            Route::post('/creditos-prendarios/{credito_id}/refrendos/validar', [\App\Http\Controllers\RefrendoController::class, 'validar']);
-            Route::post('/creditos-prendarios/{credito_id}/refrendos/calcular', [\App\Http\Controllers\RefrendoController::class, 'calcular']);
-            Route::post('/creditos-prendarios/{credito_id}/refrendos', [\App\Http\Controllers\RefrendoController::class, 'store']);
+                // ========== REFRENDOS (Sistema de Refrendos Mejorado) ==========
+                Route::get('/creditos-prendarios/{credito_id}/refrendos', [\App\Http\Controllers\RefrendoController::class, 'index']);
+                Route::post('/creditos-prendarios/{credito_id}/refrendos/validar', [\App\Http\Controllers\RefrendoController::class, 'validar']);
+                Route::post('/creditos-prendarios/{credito_id}/refrendos/calcular', [\App\Http\Controllers\RefrendoController::class, 'calcular']);
+                Route::post('/creditos-prendarios/{credito_id}/refrendos', [\App\Http\Controllers\RefrendoController::class, 'store']);
 
-            // ========== REMATES (Sistema de Remates de Contratos Vencidos) ==========
-            Route::get('/remates', [\App\Http\Controllers\RemateController::class, 'index']);
-            Route::get('/remates/candidatos', [\App\Http\Controllers\RemateController::class, 'candidatos']);
-            Route::get('/remates/estadisticas', [\App\Http\Controllers\RemateController::class, 'estadisticas']);
-            Route::post('/remates', [\App\Http\Controllers\RemateController::class, 'store']);
-            Route::get('/remates/{id}', [\App\Http\Controllers\RemateController::class, 'show']);
-            Route::post('/remates/{id}/cancelar', [\App\Http\Controllers\RemateController::class, 'cancelar']);
+                // ========== REMATES (Sistema de Remates de Contratos Vencidos) ==========
+                Route::get('/remates', [\App\Http\Controllers\RemateController::class, 'index']);
+                Route::get('/remates/candidatos', [\App\Http\Controllers\RemateController::class, 'candidatos']);
+                Route::get('/remates/estadisticas', [\App\Http\Controllers\RemateController::class, 'estadisticas']);
+                Route::post('/remates', [\App\Http\Controllers\RemateController::class, 'store']);
+                Route::get('/remates/{id}', [\App\Http\Controllers\RemateController::class, 'show']);
+                Route::post('/remates/{id}/cancelar', [\App\Http\Controllers\RemateController::class, 'cancelar']);
 
-            // ========== TRANSFERENCIAS INTER-SUCURSALES ==========
-            Route::get('/transferencias-prendas', [\App\Http\Controllers\TransferenciaPrendaController::class, 'index']);
-            Route::get('/transferencias-prendas/estadisticas', [\App\Http\Controllers\TransferenciaPrendaController::class, 'estadisticas']);
-            Route::post('/transferencias-prendas', [\App\Http\Controllers\TransferenciaPrendaController::class, 'store']);
-            Route::get('/transferencias-prendas/{id}', [\App\Http\Controllers\TransferenciaPrendaController::class, 'show']);
-            Route::post('/transferencias-prendas/{id}/autorizar', [\App\Http\Controllers\TransferenciaPrendaController::class, 'autorizar']);
-            Route::post('/transferencias-prendas/{id}/enviar', [\App\Http\Controllers\TransferenciaPrendaController::class, 'enviar']);
-            Route::post('/transferencias-prendas/{id}/recibir', [\App\Http\Controllers\TransferenciaPrendaController::class, 'recibir']);
-            Route::post('/transferencias-prendas/{id}/rechazar', [\App\Http\Controllers\TransferenciaPrendaController::class, 'rechazar']);
+                // ========== TRANSFERENCIAS INTER-SUCURSALES ==========
+                Route::get('/transferencias-prendas', [\App\Http\Controllers\TransferenciaPrendaController::class, 'index']);
+                Route::get('/transferencias-prendas/estadisticas', [\App\Http\Controllers\TransferenciaPrendaController::class, 'estadisticas']);
+                Route::post('/transferencias-prendas', [\App\Http\Controllers\TransferenciaPrendaController::class, 'store']);
+                Route::get('/transferencias-prendas/{id}', [\App\Http\Controllers\TransferenciaPrendaController::class, 'show']);
+                Route::post('/transferencias-prendas/{id}/autorizar', [\App\Http\Controllers\TransferenciaPrendaController::class, 'autorizar']);
+                Route::post('/transferencias-prendas/{id}/enviar', [\App\Http\Controllers\TransferenciaPrendaController::class, 'enviar']);
+                Route::post('/transferencias-prendas/{id}/recibir', [\App\Http\Controllers\TransferenciaPrendaController::class, 'recibir']);
+                Route::post('/transferencias-prendas/{id}/rechazar', [\App\Http\Controllers\TransferenciaPrendaController::class, 'rechazar']);
 
-            // ========== GASTOS (Módulo de cargos para créditos) ==========
-            // Catálogo de gastos
-            Route::post('/gastos/preview', [\App\Http\Controllers\GastoController::class, 'preview']);
-            Route::get('/gastos', [\App\Http\Controllers\GastoController::class, 'index']);
-            Route::post('/gastos', [\App\Http\Controllers\GastoController::class, 'store']);
-            Route::get('/gastos/{id}', [\App\Http\Controllers\GastoController::class, 'show']);
-            Route::put('/gastos/{id}', [\App\Http\Controllers\GastoController::class, 'update']);
-            Route::delete('/gastos/{id}', [\App\Http\Controllers\GastoController::class, 'destroy']);
-            Route::post('/gastos/{id}/restaurar', [\App\Http\Controllers\GastoController::class, 'restore']);
-            Route::post('/gastos/{id}/calcular', [\App\Http\Controllers\GastoController::class, 'calcular']);
+                // ========== GASTOS (Módulo de cargos para créditos) ==========
+                Route::post('/gastos/preview', [\App\Http\Controllers\GastoController::class, 'preview']);
+                Route::get('/gastos', [\App\Http\Controllers\GastoController::class, 'index']);
+                Route::post('/gastos', [\App\Http\Controllers\GastoController::class, 'store']);
+                Route::get('/gastos/{id}', [\App\Http\Controllers\GastoController::class, 'show']);
+                Route::put('/gastos/{id}', [\App\Http\Controllers\GastoController::class, 'update']);
+                Route::delete('/gastos/{id}', [\App\Http\Controllers\GastoController::class, 'destroy']);
+                Route::post('/gastos/{id}/restaurar', [\App\Http\Controllers\GastoController::class, 'restore']);
+                Route::post('/gastos/{id}/calcular', [\App\Http\Controllers\GastoController::class, 'calcular']);
 
-            // Gastos de crédito (asociación)
-            Route::get('/creditos-prendarios/{cred_id}/gastos', [\App\Http\Controllers\CreditoGastosController::class, 'index']);
-            Route::post('/creditos-prendarios/{cred_id}/gastos', [\App\Http\Controllers\CreditoGastosController::class, 'sync']);
-            Route::delete('/creditos-prendarios/{cred_id}/gastos/{gas_id}', [\App\Http\Controllers\CreditoGastosController::class, 'destroy']);
-            Route::post('/creditos-prendarios/{cred_id}/gastos/recalcular', [\App\Http\Controllers\CreditoGastosController::class, 'recalcular']);
-            Route::post('/creditos/preview-gastos', [\App\Http\Controllers\CreditoGastosController::class, 'preview']);
-            // ========== FIN GASTOS ==========
+                // Gastos de crédito (asociación)
+                Route::get('/creditos-prendarios/{cred_id}/gastos', [\App\Http\Controllers\CreditoGastosController::class, 'index']);
+                Route::post('/creditos-prendarios/{cred_id}/gastos', [\App\Http\Controllers\CreditoGastosController::class, 'sync']);
+                Route::delete('/creditos-prendarios/{cred_id}/gastos/{gas_id}', [\App\Http\Controllers\CreditoGastosController::class, 'destroy']);
+                Route::post('/creditos-prendarios/{cred_id}/gastos/recalcular', [\App\Http\Controllers\CreditoGastosController::class, 'recalcular']);
+                Route::post('/creditos/preview-gastos', [\App\Http\Controllers\CreditoGastosController::class, 'preview']);
 
-            // Pagos y Ledger
-            Route::get('/creditos-prendarios/{id}/calculo-pago', [\App\Http\Controllers\PagoController::class, 'calcularPago']);
-            Route::post('/creditos-prendarios/{id}/pagos', [\App\Http\Controllers\PagoController::class, 'ejecutarPago']);
-            Route::get('/creditos-prendarios/{id}/movimientos/{movimientoId}/recibo', [\App\Http\Controllers\PagoController::class, 'generarReciboPago']);
-            Route::get('/creditos-prendarios/{id}/movimientos/{movimientoId}/ticket', [\App\Http\Controllers\PagoController::class, 'generarTicketPago']);
-            Route::post('/creditos-prendarios/{id}/reactivar', [CreditoPrendarioController::class, 'reactivar']);
+                // Pagos y Ledger Prendario
+                Route::get('/creditos-prendarios/{id}/calculo-pago', [\App\Http\Controllers\PagoController::class, 'calcularPago']);
+                Route::post('/creditos-prendarios/{id}/pagos', [\App\Http\Controllers\PagoController::class, 'ejecutarPago']);
+                Route::get('/creditos-prendarios/{id}/movimientos/{movimientoId}/recibo', [\App\Http\Controllers\PagoController::class, 'generarReciboPago']);
+                Route::get('/creditos-prendarios/{id}/movimientos/{movimientoId}/ticket', [\App\Http\Controllers\PagoController::class, 'generarTicketPago']);
+                Route::post('/creditos-prendarios/{id}/reactivar', [CreditoPrendarioController::class, 'reactivar']);
 
-            // Prendas
-            Route::get('/prendas/reporte', [PrendaController::class, 'reporte']);
-            Route::get('/prendas', [PrendaController::class, 'index']);
-            Route::get('/prendas/estadisticas', [PrendaController::class, 'getEstadisticas']);
-            Route::get('/prendas/en-venta', [PrendaController::class, 'getEnVenta']);
-            Route::get('/prendas/{id}', [PrendaController::class, 'show']);
-            Route::post('/prendas', [PrendaController::class, 'store']);
-            Route::put('/prendas/{id}', [PrendaController::class, 'update']);
-            Route::patch('/prendas/{id}', [PrendaController::class, 'update']); // Permitir PATCH también
-            Route::delete('/prendas/{id}', [PrendaController::class, 'destroy']);
-            Route::post('/prendas/{id}/foto', [PrendaController::class, 'uploadPhoto']);
-            Route::post('/prendas/{id}/recuperar', [PrendaController::class, 'marcarRecuperada']);
-            Route::post('/prendas/{id}/poner-venta', [PrendaController::class, 'marcarEnVenta']);
-            Route::post('/prendas/{id}/vender', [PrendaController::class, 'marcarVendida']);
-            Route::post('/prendas/{id}/reservar-temporal', [PrendaController::class, 'reservarTemporal']); // NUEVO
+                // Prendas
+                Route::get('/prendas/reporte', [PrendaController::class, 'reporte']);
+                Route::get('/prendas', [PrendaController::class, 'index']);
+                Route::get('/prendas/estadisticas', [PrendaController::class, 'getEstadisticas']);
+                Route::get('/prendas/en-venta', [PrendaController::class, 'getEnVenta']);
+                Route::get('/prendas/{id}', [PrendaController::class, 'show']);
+                Route::post('/prendas', [PrendaController::class, 'store']);
+                Route::put('/prendas/{id}', [PrendaController::class, 'update']);
+                Route::patch('/prendas/{id}', [PrendaController::class, 'update']);
+                Route::delete('/prendas/{id}', [PrendaController::class, 'destroy']);
+                Route::post('/prendas/{id}/foto', [PrendaController::class, 'uploadPhoto']);
+                Route::post('/prendas/{id}/recuperar', [PrendaController::class, 'marcarRecuperada']);
+                Route::post('/prendas/{id}/poner-venta', [PrendaController::class, 'marcarEnVenta']);
+                Route::post('/prendas/{id}/vender', [PrendaController::class, 'marcarVendida']);
+                Route::post('/prendas/{id}/reservar-temporal', [PrendaController::class, 'reservarTemporal']);
 
-            // Imágenes de Prendas (CRUD normalizado)
-            Route::get('/prendas/{prendaId}/imagenes', [\App\Http\Controllers\PrendaImagenController::class, 'index']);
-            Route::post('/prendas/{prendaId}/imagenes', [\App\Http\Controllers\PrendaImagenController::class, 'store']);
-            Route::get('/prendas/{prendaId}/imagenes/{imagenId}', [\App\Http\Controllers\PrendaImagenController::class, 'show']);
-            Route::put('/prendas/{prendaId}/imagenes/{imagenId}', [\App\Http\Controllers\PrendaImagenController::class, 'update']);
-            Route::delete('/prendas/{prendaId}/imagenes/{imagenId}', [\App\Http\Controllers\PrendaImagenController::class, 'destroy']);
-            Route::post('/prendas/{prendaId}/imagenes/reordenar', [\App\Http\Controllers\PrendaImagenController::class, 'reordenar']);
-            Route::post('/prendas/{prendaId}/imagenes/{imagenId}/principal', [\App\Http\Controllers\PrendaImagenController::class, 'establecerPrincipal']);
-            Route::get('/imagenes/duplicados', [\App\Http\Controllers\PrendaImagenController::class, 'buscarDuplicados']);
+                // Imágenes de Prendas
+                Route::get('/prendas/{prendaId}/imagenes', [\App\Http\Controllers\PrendaImagenController::class, 'index']);
+                Route::post('/prendas/{prendaId}/imagenes', [\App\Http\Controllers\PrendaImagenController::class, 'store']);
+                Route::get('/prendas/{prendaId}/imagenes/{imagenId}', [\App\Http\Controllers\PrendaImagenController::class, 'show']);
+                Route::put('/prendas/{prendaId}/imagenes/{imagenId}', [\App\Http\Controllers\PrendaImagenController::class, 'update']);
+                Route::delete('/prendas/{prendaId}/imagenes/{imagenId}', [\App\Http\Controllers\PrendaImagenController::class, 'destroy']);
+                Route::post('/prendas/{prendaId}/imagenes/reordenar', [\App\Http\Controllers\PrendaImagenController::class, 'reordenar']);
+                Route::post('/prendas/{prendaId}/imagenes/{imagenId}/principal', [\App\Http\Controllers\PrendaImagenController::class, 'establecerPrincipal']);
+                Route::get('/imagenes/duplicados', [\App\Http\Controllers\PrendaImagenController::class, 'buscarDuplicados']);
 
-            // Ventas (rutas específicas ANTES de /ventas/{id} para evitar que "planes-pago" etc. se interpreten como id)
-            Route::get('/ventas/debug', [\App\Http\Controllers\VentaController::class, 'debug']); // DEBUG TEMPORAL
-            Route::get('/ventas/pendientes-pago', [\App\Http\Controllers\VentaController::class, 'ventasPendientesPago']); // Ventas con saldo pendiente
-            Route::get('/ventas/apartados', [\App\Http\Controllers\VentaPlanPagoController::class, 'listarApartados']); // Listar apartados
-            Route::get('/ventas/planes-pago/resumen', [\App\Http\Controllers\VentaPlanPagoController::class, 'resumenGeneral']); // Estadísticas planes
-            Route::get('/ventas/planes-pago', [\App\Http\Controllers\VentaPlanPagoController::class, 'listarPlanesPago']); // Listar planes activos
-            Route::get('/ventas', [\App\Http\Controllers\VentaController::class, 'index']);
-            Route::get('/ventas/prendas-disponibles', [\App\Http\Controllers\VentaController::class, 'prendasEnVenta']);
-            Route::get('/ventas/estadisticas', [\App\Http\Controllers\VentaController::class, 'estadisticas']);
-            Route::get('/ventas/{id}/plan-pagos-pdf', [\App\Http\Controllers\VentaController::class, 'generarPDFPlanPagos']); // PDF Plan de Pagos
-            Route::get('/ventas/{id}/recibo-pos', [\App\Http\Controllers\VentaController::class, 'generarReciboPOS']); // Recibo POS 80mm
-            Route::get('/ventas/{id}', [\App\Http\Controllers\VentaController::class, 'show']);
-            Route::get('/ventas/{id}/resumen-pagos', [\App\Http\Controllers\VentaController::class, 'resumenPagos']); // Resumen de pagos
-            Route::post('/ventas', [\App\Http\Controllers\VentaController::class, 'store']); // NUEVO: crear venta multi-prenda
-            Route::put('/ventas/{id}', [\App\Http\Controllers\VentaController::class, 'update']);
-            Route::patch('/ventas/{id}', [\App\Http\Controllers\VentaController::class, 'update']);
-            Route::post('/ventas/prendas/{id}/marcar-venta', [\App\Http\Controllers\VentaController::class, 'marcarParaVenta']);
-            Route::post('/ventas/prendas/{id}/procesar', [\App\Http\Controllers\VentaController::class, 'procesarVenta']); // DEPRECADO
-            Route::post('/ventas/{id}/abonos', [\App\Http\Controllers\VentaController::class, 'registrarAbono']); // Registrar abono/pago
-            Route::post('/ventas/{id}/cancelar', [\App\Http\Controllers\VentaController::class, 'cancelar']);
-            Route::post('/ventas/{id}/pagos', [\App\Http\Controllers\VentaController::class, 'registrarPago']); // NUEVO: pagos adicionales
-            Route::post('/ventas/{id}/certificar', [\App\Http\Controllers\VentaController::class, 'certificar']);
-            Route::delete('/ventas/{id}', [\App\Http\Controllers\VentaController::class, 'destroy']);
+                // Ventas Prendarias
+                Route::get('/ventas/debug', [\App\Http\Controllers\VentaController::class, 'debug']);
+                Route::get('/ventas/pendientes-pago', [\App\Http\Controllers\VentaController::class, 'ventasPendientesPago']);
+                Route::get('/ventas/apartados', [\App\Http\Controllers\VentaPlanPagoController::class, 'listarApartados']);
+                Route::get('/ventas/planes-pago/resumen', [\App\Http\Controllers\VentaPlanPagoController::class, 'resumenGeneral']);
+                Route::get('/ventas/planes-pago', [\App\Http\Controllers\VentaPlanPagoController::class, 'listarPlanesPago']);
+                Route::get('/ventas', [\App\Http\Controllers\VentaController::class, 'index']);
+                Route::get('/ventas/prendas-disponibles', [\App\Http\Controllers\VentaController::class, 'prendasEnVenta']);
+                Route::get('/ventas/estadisticas', [\App\Http\Controllers\VentaController::class, 'estadisticas']);
+                Route::get('/ventas/{id}/plan-pagos-pdf', [\App\Http\Controllers\VentaController::class, 'generarPDFPlanPagos']);
+                Route::get('/ventas/{id}/recibo-pos', [\App\Http\Controllers\VentaController::class, 'generarReciboPOS']);
+                Route::get('/ventas/{id}', [\App\Http\Controllers\VentaController::class, 'show']);
+                Route::get('/ventas/{id}/resumen-pagos', [\App\Http\Controllers\VentaController::class, 'resumenPagos']);
+                Route::post('/ventas', [\App\Http\Controllers\VentaController::class, 'store']);
+                Route::put('/ventas/{id}', [\App\Http\Controllers\VentaController::class, 'update']);
+                Route::patch('/ventas/{id}', [\App\Http\Controllers\VentaController::class, 'update']);
+                Route::post('/ventas/prendas/{id}/marcar-venta', [\App\Http\Controllers\VentaController::class, 'marcarParaVenta']);
+                Route::post('/ventas/prendas/{id}/procesar', [\App\Http\Controllers\VentaController::class, 'procesarVenta']);
+                Route::post('/ventas/{id}/abonos', [\App\Http\Controllers\VentaController::class, 'registrarAbono']);
+                Route::post('/ventas/{id}/cancelar', [\App\Http\Controllers\VentaController::class, 'cancelar']);
+                Route::post('/ventas/{id}/pagos', [\App\Http\Controllers\VentaController::class, 'registrarPago']);
+                Route::post('/ventas/{id}/certificar', [\App\Http\Controllers\VentaController::class, 'certificar']);
+                Route::delete('/ventas/{id}', [\App\Http\Controllers\VentaController::class, 'destroy']);
 
-            // Planes de Pago de Ventas (Ventas a Crédito) — apartados/planes-pago ya definidos arriba
-            Route::post('/ventas/{id}/generar-plan', [\App\Http\Controllers\VentaPlanPagoController::class, 'generarPlan']); // Generar plan de pagos
-            Route::get('/ventas/{id}/plan-pago', [\App\Http\Controllers\VentaPlanPagoController::class, 'obtenerDetallePlan']); // Detalle del plan
-            Route::post('/ventas/cuotas/pagar-multiple', [\App\Http\Controllers\VentaPlanPagoController::class, 'pagarMultipleCuotas']); // Pago múltiple de cuotas (antes de la ruta con {cuotaId})
-            Route::post('/ventas/cuotas/{cuotaId}/pagar', [\App\Http\Controllers\VentaPlanPagoController::class, 'pagarCuota']); // Pagar cuota
-            Route::get('/ventas/cuotas/{cuotaId}/recibo', [\App\Http\Controllers\VentaPlanPagoController::class, 'generarReciboCuota']);
-            Route::get('/ventas/cuotas/{cuotaId}/ticket', [\App\Http\Controllers\VentaPlanPagoController::class, 'generarTicketCuota']);
+                // Planes de Pago de Ventas Prendarias
+                Route::post('/ventas/{id}/generar-plan', [\App\Http\Controllers\VentaPlanPagoController::class, 'generarPlan']);
+                Route::get('/ventas/{id}/plan-pago', [\App\Http\Controllers\VentaPlanPagoController::class, 'obtenerDetallePlan']);
+                Route::post('/ventas/cuotas/pagar-multiple', [\App\Http\Controllers\VentaPlanPagoController::class, 'pagarMultipleCuotas']);
+                Route::post('/ventas/cuotas/{cuotaId}/pagar', [\App\Http\Controllers\VentaPlanPagoController::class, 'pagarCuota']);
+                Route::get('/ventas/cuotas/{cuotaId}/recibo', [\App\Http\Controllers\VentaPlanPagoController::class, 'generarReciboCuota']);
+                Route::get('/ventas/cuotas/{cuotaId}/ticket', [\App\Http\Controllers\VentaPlanPagoController::class, 'generarTicketCuota']);
 
-            // Compras Directas
-            Route::get('/compras', [CompraController::class, 'index']);
-            Route::get('/compras/stats/general', [CompraController::class, 'stats']);
-            Route::post('/compras', [CompraController::class, 'store']);
-            Route::get('/compras/{id}', [CompraController::class, 'show']);
-            Route::put('/compras/{id}', [CompraController::class, 'update']);
-            Route::delete('/compras/{id}', [CompraController::class, 'destroy']);
-            Route::post('/compras/{id}/cancelar', [CompraController::class, 'cancel']);
-            Route::get('/compras/{id}/recibo-pdf', [CompraController::class, 'generarReciboPDF']);
-            Route::get('/compras/{id}/ticket-pdf', [CompraController::class, 'generarTicketPDF']);
-            Route::get('/compras/{id}/contrato-pdf', [CompraController::class, 'generarContratoPDF']);
+                // Compras Directas Prendarias
+                Route::get('/compras', [CompraController::class, 'index']);
+                Route::get('/compras/stats/general', [CompraController::class, 'stats']);
+                Route::post('/compras', [CompraController::class, 'store']);
+                Route::get('/compras/{id}', [CompraController::class, 'show']);
+                Route::put('/compras/{id}', [CompraController::class, 'update']);
+                Route::delete('/compras/{id}', [CompraController::class, 'destroy']);
+                Route::post('/compras/{id}/cancelar', [CompraController::class, 'cancel']);
+                Route::get('/compras/{id}/recibo-pdf', [CompraController::class, 'generarReciboPDF']);
+                Route::get('/compras/{id}/ticket-pdf', [CompraController::class, 'generarTicketPDF']);
+                Route::get('/compras/{id}/contrato-pdf', [CompraController::class, 'generarContratoPDF']);
 
-            // Reportes de Compras
-            Route::get('/reportes/compras/pdf', [ReporteComprasController::class, 'generarPDF']);
-            Route::get('/reportes/compras/excel', [ReporteComprasController::class, 'generarExcel']);
-            Route::get('/reportes/compras/vista-previa', [ReporteComprasController::class, 'vistaPrevia']);
+                // Reportes Prendarios
+                Route::get('/reportes/compras/pdf', [ReporteComprasController::class, 'generarPDF']);
+                Route::get('/reportes/compras/excel', [ReporteComprasController::class, 'generarExcel']);
+                Route::get('/reportes/compras/vista-previa', [ReporteComprasController::class, 'vistaPrevia']);
 
-            // Reportes de Ventas
-            Route::get('/reportes/ventas/vista-previa', [ReporteVentasController::class, 'vistaPrevia']);
-            Route::get('/reportes/ventas/pdf', [ReporteVentasController::class, 'generarPDF']);
-            Route::get('/reportes/ventas/excel', [ReporteVentasController::class, 'generarExcel']);
+                Route::get('/reportes/ventas/vista-previa', [ReporteVentasController::class, 'vistaPrevia']);
+                Route::get('/reportes/ventas/pdf', [ReporteVentasController::class, 'generarPDF']);
+                Route::get('/reportes/ventas/excel', [ReporteVentasController::class, 'generarExcel']);
 
-            // Reportes de Créditos
-            Route::get('/reportes/creditos/vigentes/vista-previa', [ReporteCreditosController::class, 'vistaPrevia']);
-            Route::get('/reportes/creditos/vigentes/pdf', [ReporteCreditosController::class, 'generarPDF']);
-            Route::get('/reportes/creditos/vigentes/excel', [ReporteCreditosController::class, 'generarExcel']);
+                Route::get('/reportes/creditos/vigentes/vista-previa', [ReporteCreditosController::class, 'vistaPrevia']);
+                Route::get('/reportes/creditos/vigentes/pdf', [ReporteCreditosController::class, 'generarPDF']);
+                Route::get('/reportes/creditos/vigentes/excel', [ReporteCreditosController::class, 'generarExcel']);
 
-            // Cotizaciones
-            Route::get('/cotizaciones', [\App\Http\Controllers\CotizacionController::class, 'index']);
-            Route::post('/cotizaciones', [\App\Http\Controllers\CotizacionController::class, 'store']);
-            Route::get('/cotizaciones/{id}', [\App\Http\Controllers\CotizacionController::class, 'show']);
-            Route::put('/cotizaciones/{id}', [\App\Http\Controllers\CotizacionController::class, 'update']);
-            Route::delete('/cotizaciones/{id}', [\App\Http\Controllers\CotizacionController::class, 'destroy']);
-            Route::get('/cotizaciones/{id}/pdf', [\App\Http\Controllers\CotizacionController::class, 'generarPDF']);
-            Route::post('/cotizaciones/{id}/convertir', [\App\Http\Controllers\CotizacionController::class, 'convertirAVenta']);
+                // Cotizaciones
+                Route::get('/cotizaciones', [\App\Http\Controllers\CotizacionController::class, 'index']);
+                Route::post('/cotizaciones', [\App\Http\Controllers\CotizacionController::class, 'store']);
+                Route::get('/cotizaciones/{id}', [\App\Http\Controllers\CotizacionController::class, 'show']);
+                Route::put('/cotizaciones/{id}', [\App\Http\Controllers\CotizacionController::class, 'update']);
+                Route::delete('/cotizaciones/{id}', [\App\Http\Controllers\CotizacionController::class, 'destroy']);
+                Route::get('/cotizaciones/{id}/pdf', [\App\Http\Controllers\CotizacionController::class, 'generarPDF']);
+                Route::post('/cotizaciones/{id}/convertir', [\App\Http\Controllers\CotizacionController::class, 'convertirAVenta']);
+            }
 
             // Caja
             Route::get('/cajas', [CajaController::class, 'index']);
@@ -642,7 +639,6 @@ Route::prefix('v1')->group(function () {
             Route::post('/configuraciones-sistema/cash-vault-integration/toggle', [ConfiguracionSistemaController::class, 'toggleCashVaultIntegration']);
             Route::get('/configuraciones-sistema/{clave}', [ConfiguracionSistemaController::class, 'show']);
             Route::put('/configuraciones-sistema', [ConfiguracionSistemaController::class, 'update']);
-            Route::post('/empresa-config', [ConfiguracionSistemaController::class, 'updateEmpresaConfig']);
 
         }); // FIN DEL GRUPO DE RUTAS CON SCOPE DE SUCURSAL
     });
@@ -650,14 +646,16 @@ Route::prefix('v1')->group(function () {
     // 🔒 Rutas de Descargas con Rate Limiting y Autenticación
     Route::middleware(['auth:sanctum', 'throttle.downloads'])->group(function () {
         // Rutas específicas de exportar ANTES de las rutas con parámetros {id}
-        Route::get('/ventas/exportar/excel', [\App\Http\Controllers\VentaController::class, 'exportarExcel']);
-        Route::get('/ventas/exportar/pdf', [\App\Http\Controllers\VentaController::class, 'exportarPDF']);
-        Route::get('/ventas/{id}/pdf', [\App\Http\Controllers\VentaController::class, 'generarPDF']);
-        Route::get('/creditos-prendarios/{id}/plan-pagos/pdf', [CreditoPrendarioController::class, 'descargarPlanPagos']);
-        Route::get('/creditos-prendarios/{id}/contrato/pdf', [CreditoPrendarioController::class, 'descargarContrato']);
-        Route::get('/creditos-prendarios/{id}/recibo/pdf', [CreditoPrendarioController::class, 'descargarRecibo']);
-        Route::get('/creditos-prendarios/{id}/recibo/ticket', [CreditoPrendarioController::class, 'descargarTicket']);
-        Route::get('/creditos-prendarios/{id}/historial-pagos/pdf', [CreditoPrendarioController::class, 'descargarHistorialPagos']);
+        if (\App\Support\EmpenosAccess::enabled()) {
+            Route::get('/ventas/exportar/excel', [\App\Http\Controllers\VentaController::class, 'exportarExcel']);
+            Route::get('/ventas/exportar/pdf', [\App\Http\Controllers\VentaController::class, 'exportarPDF']);
+            Route::get('/ventas/{id}/pdf', [\App\Http\Controllers\VentaController::class, 'generarPDF']);
+            Route::get('/creditos-prendarios/{id}/plan-pagos/pdf', [CreditoPrendarioController::class, 'descargarPlanPagos']);
+            Route::get('/creditos-prendarios/{id}/contrato/pdf', [CreditoPrendarioController::class, 'descargarContrato']);
+            Route::get('/creditos-prendarios/{id}/recibo/pdf', [CreditoPrendarioController::class, 'descargarRecibo']);
+            Route::get('/creditos-prendarios/{id}/recibo/ticket', [CreditoPrendarioController::class, 'descargarTicket']);
+            Route::get('/creditos-prendarios/{id}/historial-pagos/pdf', [CreditoPrendarioController::class, 'descargarHistorialPagos']);
+        }
         Route::get('/recibos/{id}/pdf', [ReciboController::class, 'generarPDF']);
         Route::get('/recibos/{id}/ticket', [ReciboController::class, 'generarTicket']);
         Route::get('/reportes/caja/excel', [ReporteCajaController::class, 'exportarExcel']);

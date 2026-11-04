@@ -14,8 +14,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge'
 import { 
   Receipt, CaretDown, ListBullets, PlusCircle, Printer, Eye, 
-  FilePdf, MagnifyingGlass, ArrowUp, ArrowDown, Warning, XCircle
+  FilePdf, MagnifyingGlass, ArrowUp, ArrowDown, Warning, XCircle, WhatsappLogo
 } from '@phosphor-icons/react'
+import { useEmpresaConfig } from '@/hooks/useEmpresaConfig'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -45,6 +46,7 @@ interface ConteoEfectivo {
 type VistaActual = 'lista' | 'nuevo' | 'detalle' | 'reporte'
 
 export function ReciboModule() {
+  const { config: empresaConfig } = useEmpresaConfig()
   // Estados principales
   const [vistaActual, setVistaActual] = useState<VistaActual>('lista')
   const [recibos, setRecibos] = useState<Recibo[]>([])
@@ -275,7 +277,35 @@ export function ReciboModule() {
     }
   }
 
-  // ===== HELPERS =====
+    const handleCompartirWhatsApp = (recibo: Recibo) => {
+    const cliente = recibo.cliente || {}
+    const telefonoRaw = (cliente as any).telefono || (cliente as any).telefono_principal || (cliente as any).telefono_secundario || (recibo as any).telefono || ''
+    const telefonoLimpio = String(telefonoRaw).replace(/\D/g, '')
+    const telefonoWhatsApp = telefonoLimpio.length === 8 ? ('502' + telefonoLimpio) : telefonoLimpio
+    const nombreCliente = (cliente as any).nombres
+      ? ((cliente as any).nombres + ' ' + ((cliente as any).apellidos || '')).trim()
+      : ((recibo as any).cliente_nombre || 'Estimado(a) Cliente')
+    const montoFormateado = simboloMoneda + ' ' + Number(recibo.monto || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const concepto = recibo.concepto || 'Pago de cuota'
+    const nombreEmpresa = empresaConfig?.nombreEmpresa || 'Bienes Raíces Kotanh'
+    const fechaEmision = recibo.fecha_emision ? format(new Date(recibo.fecha_emision), 'dd/MM/yyyy') : format(new Date(), 'dd/MM/yyyy')
+
+    const mensaje = 'Hola ' + nombreCliente + ', le saludamos de *' + nombreEmpresa + '*.' +
+      '\n\nLe confirmamos la recepción de su pago:' +
+      '\n🧾 *Recibo No.:* ' + recibo.numero_recibo +
+      '\n💰 *Monto:* ' + montoFormateado +
+      '\n📌 *Concepto:* ' + concepto +
+      '\n📅 *Fecha:* ' + fechaEmision +
+      '\n\n¡Gracias por su confianza y puntualidad!'
+
+    const url = telefonoWhatsApp
+      ? 'https://api.whatsapp.com/send?phone=' + telefonoWhatsApp + '&text=' + encodeURIComponent(mensaje)
+      : 'https://api.whatsapp.com/send?text=' + encodeURIComponent(mensaje)
+
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+// ===== HELPERS =====
   const updateConteoRecibo = (valor: number, cantidad: number) => {
     setConteoRecibo(prev => ({ ...prev, [valor.toString()]: cantidad }))
   }
@@ -400,6 +430,7 @@ export function ReciboModule() {
           }}
           onImprimir={handleImprimirRecibo}
           onImprimirTicket={handleImprimirTicket}
+          onCompartirWhatsApp={handleCompartirWhatsApp}
           onBuscar={loadRecibos}
         />
       )}
@@ -440,6 +471,7 @@ export function ReciboModule() {
           onAnular={() => setDialogAnular(true)}
           onImprimir={() => handleImprimirRecibo(reciboSeleccionado)}
           onImprimirTicket={() => handleImprimirTicket(reciboSeleccionado)}
+          onCompartirWhatsApp={handleCompartirWhatsApp}
         />
       )}
 
@@ -496,7 +528,7 @@ export function ReciboModule() {
 
 function VistaListaRecibos({
   recibos, filtros, setFiltros, simboloMoneda,
-  onVer, onAnular, onImprimir, onImprimirTicket, onBuscar
+  onVer, onAnular, onImprimir, onImprimirTicket, onCompartirWhatsApp, onBuscar
 }: any) {
   return (
     <div className="space-y-4">
@@ -906,7 +938,7 @@ function VistaNuevoRecibo({
 }
 
 function VistaDetalleRecibo({
-  recibo, simboloMoneda, onVolver, onAnular, onImprimir, onImprimirTicket
+  recibo, simboloMoneda, onVolver, onAnular, onImprimir, onImprimirTicket, onCompartirWhatsApp
 }: any) {
   return (
     <div className="space-y-4">

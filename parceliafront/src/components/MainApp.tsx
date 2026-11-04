@@ -32,6 +32,7 @@ const FinancistasModule = lazy(() => import('./modules/desarrolladora/Financista
 const ComisionistasModule = lazy(() => import('./modules/desarrolladora/ComisionistasModule').then((m) => ({ default: m.ComisionistasModule })))
 const NegociacionesModule = lazy(() => import('./modules/negociaciones/NegociacionesModule').then((m) => ({ default: m.NegociacionesModule })))
 const PlanoLotesModule = lazy(() => import('./modules/lotificacion/PlanoLotesModule').then((m) => ({ default: m.PlanoLotesModule })))
+const ProspectosModule = lazy(() => import('./modules/prospectos/ProspectosModule').then((m) => ({ default: m.ProspectosModule })))
 const TasasInmobiliariasModule = lazy(() => import('./modules/tasas/TasasInmobiliariasModule').then((m) => ({ default: m.TasasInmobiliariasModule })))
 import { useEmpresaConfig } from '@/hooks/useEmpresaConfig'
 import { ChatbotHelper } from './ChatbotHelper'
@@ -356,6 +357,8 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
         return <FincasModule userSession={userSession} abrirCompra />
       case 'lotes':
         return <PlanoLotesModule sessionUser={userWithPermissions} />
+      case 'prospectos':
+        return <ProspectosModule />
       case 'financistas':
         return <FinancistasModule userSession={userSession} />
       case 'comisionistas':
@@ -888,8 +891,8 @@ function Dashboard({
               <MoneyDisplay amount={totalSaldo} />
             </div>
             <div className="flex justify-between items-center text-xs sm:text-sm md:text-base">
-              <span className="text-muted-foreground">Enganches & Cuotas Recuperadas</span>
-              <MoneyDisplay amount={totalRecuperado ?? 0} className="text-accent" />
+              <span className="text-muted-foreground font-medium">Enganches & Cuotas Recuperadas</span>
+              <MoneyDisplay amount={totalRecuperado ?? 0} className="font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800" />
             </div>
           </CardContent>
         </Card>

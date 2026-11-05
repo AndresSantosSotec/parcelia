@@ -18,17 +18,17 @@ export interface EmpresaConfig {
 }
 
 export const DEFAULT_EMPRESA_CONFIG: EmpresaConfig = {
-  nombreEmpresa: 'TerraCloud',
-  slogan: 'Solución Cloud de Parcelamiento & Financiamiento',
+  nombreEmpresa: 'Parcelia',
+  slogan: 'Venta de Terrenos & Financiamiento Propio',
   logoUrl: null,
-  nit: '1098472-9',
-  telefono: '(502) 2334-8900',
-  email: 'contacto@terracloud.gt',
-  direccion: 'Avenida Reforma 12-40, Zona 10, Edificio Reforma Montúfar',
-  sitioWeb: 'www.terracloud.gt',
+  nit: '',
+  telefono: '',
+  email: '',
+  direccion: 'Guatemala',
+  sitioWeb: '',
   monedaSimbolo: 'Q',
   monedaCodigo: 'GTQ',
-  piePaginaDocumentos: 'Documento oficial emitido por TerraCloud SaaS · Válido según la legislación vigente.',
+  piePaginaDocumentos: 'Documento oficial · Válido según la legislación vigente de la República de Guatemala.',
   clausulasContrato: 'El comprador acepta formalmente los términos y condiciones de la operación, comprometiéndose al cumplimiento de los pagos en los plazos estipulados.',
   temaColor: 'esmeralda'
 }

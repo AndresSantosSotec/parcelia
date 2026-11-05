@@ -287,7 +287,7 @@ export function ReciboModule() {
       : ((recibo as any).cliente_nombre || 'Estimado(a) Cliente')
     const montoFormateado = simboloMoneda + ' ' + Number(recibo.monto || 0).toLocaleString('es-GT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     const concepto = recibo.concepto || 'Pago de cuota'
-    const nombreEmpresa = empresaConfig?.nombreEmpresa || 'Bienes Raíces Kotanh'
+    const nombreEmpresa = empresaConfig?.nombreEmpresa || 'Parcelia'
     const fechaEmision = recibo.fecha_emision ? format(new Date(recibo.fecha_emision), 'dd/MM/yyyy') : format(new Date(), 'dd/MM/yyyy')
 
     const mensaje = 'Hola ' + nombreCliente + ', le saludamos de *' + nombreEmpresa + '*.' +

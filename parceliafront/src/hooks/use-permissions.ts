@@ -76,6 +76,7 @@ export const MODULOS = [
   'pagos_terreno',
   'tasas_inmobiliarias',
   'reportes_inmobiliarios',
+  'catalogo',
 ] as const
 
 export type Modulo = typeof MODULOS[number]
@@ -117,6 +118,7 @@ export const MODULO_NAV_MAP: Record<Modulo, string> = {
   pagos_terreno: 'pagos_terreno',
   tasas_inmobiliarias: 'fincas',
   reportes_inmobiliarios: 'reportes',
+  catalogo: 'catalogo',
 }
 
 // Acciones por módulo
@@ -156,6 +158,7 @@ export const ACCIONES_POR_MODULO: Record<Modulo, string[]> = {
   pagos_terreno: ['ver', 'cobrar', 'anular'],
   tasas_inmobiliarias: ['ver', 'crear', 'editar', 'desactivar'],
   reportes_inmobiliarios: ['generar', 'exportar'],
+  catalogo: ['ver'],
 }
 
 // Nombres legibles de acciones
@@ -246,6 +249,7 @@ export const MODULO_LABELS: Record<Modulo, string> = {
   pagos_terreno: 'Pagos de terrenos',
   tasas_inmobiliarias: 'Tasas inmobiliarias',
   reportes_inmobiliarios: 'Reportes inmobiliarios',
+  catalogo: 'Catálogo Público Web',
 }
 
 interface UsePermissionsResult {

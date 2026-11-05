@@ -19,11 +19,23 @@ class Prospecto extends Model
     protected $fillable = [
         'sucursal_id',
         'nombre_completo',
+        'nombres',
+        'apellidos',
         'telefono',
+        'telefono_secundario',
         'email',
         'dpi',
+        'nit',
+        'direccion',
+        'municipio',
+        'departamento',
+        'fecha_nacimiento',
+        'genero',
+        'estado_civil',
+        'profesion',
         'finca_id',
         'lote_id',
+        'cliente_id',
         'asesor_id',
         'estado',
         'origen',
@@ -38,6 +50,7 @@ class Prospecto extends Model
 
     protected $casts = [
         'presupuesto_estimado' => 'decimal:2',
+        'fecha_nacimiento' => 'date',
         'ultimo_contacto_at' => 'datetime',
         'fecha_proximo_contacto' => 'datetime',
         'activo' => 'boolean',
@@ -97,6 +110,11 @@ class Prospecto extends Model
     public function asesor()
     {
         return $this->belongsTo(User::class, 'asesor_id');
+    }
+
+    public function cliente()
+    {
+        return $this->belongsTo(Cliente::class, 'cliente_id');
     }
 
     public function creador()

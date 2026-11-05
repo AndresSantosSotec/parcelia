@@ -8,11 +8,23 @@ export interface Prospecto {
   id: number
   sucursal_id: number | null
   nombre_completo: string
+  nombres?: string | null
+  apellidos?: string | null
   telefono: string
+  telefono_secundario?: string | null
   email: string | null
   dpi: string | null
+  nit?: string | null
+  direccion?: string | null
+  municipio?: string | null
+  departamento?: string | null
+  fecha_nacimiento?: string | null
+  genero?: 'masculino' | 'femenino' | 'otro' | null
+  estado_civil?: string | null
+  profesion?: string | null
   finca_id: number | null
   lote_id: number | null
+  cliente_id?: number | null
   asesor_id: number | null
   estado: EstadoProspecto
   origen: OrigenProspecto | string
@@ -136,6 +148,65 @@ export const prospectoService = {
 
   async deleteProspecto(id: number): Promise<{ success: boolean; message: string }> {
     const res = await api.delete<{ success: boolean; message: string }>(`/prospectos/${id}`)
+    return res.data
+  },
+
+  async descargarPlantillaCsv(): Promise<void> {
+    await api.downloadFile('/prospectos/plantilla-csv', 'plantilla_prospectos.csv')
+  },
+
+  async cargaMasiva(payload: {
+    prospectos: Array<{
+      nombre_completo: string
+      telefono: string
+      telefono_secundario?: string
+      email?: string
+      dpi?: string
+      presupuesto_estimado?: number
+      notas?: string
+      finca_id?: number
+    }>
+    asesor_id?: number
+    asesores_ids?: number[]
+    distribuir_equitativo?: boolean
+    finca_id?: number
+    origen?: string
+  }): Promise<{
+    success: boolean
+    message: string
+    total_importados: number
+    total_errores: number
+    errores: string[]
+  }> {
+    const res = await api.post<any>('/prospectos/carga-masiva', payload)
+    return res.data
+  },
+
+  async asignacionMasiva(prospectos_ids: number[], asesor_id: number): Promise<{
+    success: boolean
+    message: string
+    total_asignados: number
+  }> {
+    const res = await api.post<any>('/prospectos/asignacion-masiva', {
+      prospectos_ids,
+      asesor_id,
+    })
+    return res.data
+  },
+
+  async enviarFormularioRedes(payload: {
+    nombre_completo: string
+    telefono: string
+    email?: string
+    finca_id?: number
+    departamento_interes?: string
+    presupuesto_estimado?: number
+    red_social?: string
+    medio_contacto_preferido?: string
+    mensaje?: string
+    empresa_seguridad_bot?: string // Honeypot
+  }): Promise<{ success: boolean; message: string; data?: any }> {
+    const res = await api.post<any>('/publico/formulario-redes', payload)
     return res.data
   },
 }

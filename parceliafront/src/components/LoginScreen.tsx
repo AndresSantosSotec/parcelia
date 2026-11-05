@@ -1,16 +1,17 @@
 import { useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Wallet, Eye, EyeSlash } from '@phosphor-icons/react'
+import { Wallet, Eye, EyeSlash, Compass } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { authService } from '@/lib/api'
 import { useEmpresaConfig } from '@/hooks/useEmpresaConfig'
 
 interface LoginScreenProps {
   onLogin: (username: string, role: string, userData?: any) => void
+  onVerCatalogo?: () => void
 }
 
-export function LoginScreen({ onLogin }: LoginScreenProps) {
+export function LoginScreen({ onLogin, onVerCatalogo }: LoginScreenProps) {
   const { config: empresaConfig } = useEmpresaConfig()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -113,9 +114,23 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               )}
             </button>
           </form>
-          <p className="text-center text-[0.6875rem] text-muted-foreground/60 mt-6">
-            Sistema protegido · Solo personal autorizado
-          </p>
+
+          {/* Acceso directo al Catálogo Público Externo */}
+          <div className="pt-4 border-t border-border/60 mt-6 text-center space-y-2">
+            {onVerCatalogo && (
+              <button
+                type="button"
+                onClick={onVerCatalogo}
+                className="inline-flex items-center gap-1.5 text-xs text-emerald-600 hover:text-emerald-500 font-semibold transition-colors py-1 px-2 rounded-md hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20"
+              >
+                <Compass size={15} weight="bold" />
+                Explorar Catálogo Público de Terrenos
+              </button>
+            )}
+            <p className="text-center text-[0.6875rem] text-muted-foreground/60">
+              Sistema protegido · Solo personal autorizado
+            </p>
+          </div>
         </div>
       </div>
     </div>

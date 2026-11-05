@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { MainApp } from './components/MainApp'
 import { LoginScreen } from './components/LoginScreen'
 import { TerrenoPublicoPage } from './components/modules/fincas/TerrenoPublicoPage'
+import { PortalPublicoCatalogo } from './components/public/PortalPublicoCatalogo'
+import { FormularioPublicoLead } from './components/public/FormularioPublicoLead'
 import { Toaster } from '@/components/ui/sonner'
 import { useKV } from '@/hooks/use-kv'
 import { authService, api, resetAuthFlag, STANDALONE_MODE } from '@/lib/api'
@@ -15,9 +17,42 @@ interface UserSession {
 }
 
 function App() {
+    // 1. Detectar ficha pública de terreno específico (/t/{token})
     const publicToken = typeof window !== 'undefined'
       ? window.location.pathname.match(/^\/t\/([A-Za-z0-9]+)/)?.[1]
       : undefined
+
+    // 2. Detectar si el enlace apunta exclusivamente al formulario de captura / lead magnet
+    const [esFormularioPublico, setEsFormularioPublico] = useState<boolean>(() => {
+      if (typeof window === 'undefined') return false
+      const path = window.location.pathname.toLowerCase()
+      const search = window.location.search.toLowerCase()
+      return (
+        path.startsWith('/registro') ||
+        path.startsWith('/interes') ||
+        path.startsWith('/lead') ||
+        path.startsWith('/contacto') ||
+        search.includes('view=form') ||
+        search.includes('view=registro')
+      )
+    })
+
+    // 3. Detectar si el usuario visita el catálogo público externo desde redes o enlace web
+    const [esRutaCatalogo, setEsRutaCatalogo] = useState<boolean>(() => {
+      if (typeof window === 'undefined') return false
+      const path = window.location.pathname.toLowerCase()
+      const search = window.location.search.toLowerCase()
+      return (
+        path.startsWith('/catalogo') ||
+        path.startsWith('/lotes') ||
+        path.startsWith('/proyectos') ||
+        path.startsWith('/terrenos') ||
+        search.includes('public=catalogo') ||
+        search.includes('origen=')
+      )
+    })
+
+    const [modoLogin, setModoLogin] = useState(false)
 
     const [session, setSession] = useKV<UserSession | null>('user-session', null)
     const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(session && (api.hasValidToken() || session.username)))
@@ -93,17 +128,15 @@ function App() {
                 setIsAuthenticated(false)
                 setTimeout(() => {
                     logoutInProgressRef.current = false
-                }, 1000) // Cooldown para evitar múltiples disparos
+                }, 1000)
             }
         }
 
         window.addEventListener('auth:unauthorized', handleUnauthorized)
-        
-        return () => {
-            window.removeEventListener('auth:unauthorized', handleUnauthorized)
-        }
-    }, [setSession, session, isAuthenticated])
+        return () => window.removeEventListener('auth:unauthorized', handleUnauthorized)
+    }, [session, isAuthenticated, setSession])
 
+    // Manejar login exitoso
     const handleLogin = (username: string, role: string, userData?: any) => {
         const newSession: UserSession = {
             username,
@@ -113,14 +146,16 @@ function App() {
         }
         setSession(newSession)
         setIsAuthenticated(true)
-        logoutInProgressRef.current = false
-        resetAuthFlag() // Resetear flag de evento no autorizado
+        setModoLogin(false)
+        setEsRutaCatalogo(false)
+        setEsFormularioPublico(false)
     }
 
     /** Tras guardar permisos del usuario actual: refrescar userData (permisos) desde /auth/me */
     const refreshSessionUserFromApi = useCallback(async () => {
+        if (STANDALONE_MODE) return
         try {
-            const r = await authService.me()
+            const r = await api.get<{ rol: string; sucursal_id?: string; permisos: unknown[] }>('/auth/me')
             if (!r.success || !r.data) return
             setSession((prev) => {
                 if (!prev) return prev
@@ -141,16 +176,44 @@ function App() {
 
     return (
         <>
+            {/* 1. Ficha individual de terreno público por token (/t/{token}) */}
             {publicToken ? (
                 <TerrenoPublicoPage token={publicToken} />
+            ) : esFormularioPublico && !modoLogin ? (
+                /* 2. Formulario Lead Magnet exclusivo para campañas de Redes Sociales (Facebook Ads, TikTok) */
+                <FormularioPublicoLead
+                    onIrACatalogo={() => {
+                        setEsFormularioPublico(false)
+                        setEsRutaCatalogo(true)
+                    }}
+                    onIrALogin={() => setModoLogin(true)}
+                />
+            ) : esRutaCatalogo && !modoLogin ? (
+                /* 3. Portal Público de Catálogo & Lotes (100% independiente del login) */
+                <PortalPublicoCatalogo
+                    tieneSesionActiva={Boolean(isAuthenticated && session)}
+                    onIrALogin={() => setModoLogin(true)}
+                    onIrAFormulario={() => {
+                        setEsRutaCatalogo(false)
+                        setEsFormularioPublico(true)
+                    }}
+                />
             ) : isAuthenticated && session ? (
+                /* 4. Usuario con sesión activa: Panel interno administrativo */
                 <MainApp
                     userSession={session}
                     onLogout={handleLogout}
                     onSessionUserRefresh={refreshSessionUserFromApi}
                 />
             ) : (
-                <LoginScreen onLogin={handleLogin} />
+                /* 5. Pantalla de Login para colaboradores */
+                <LoginScreen
+                    onLogin={handleLogin}
+                    onVerCatalogo={() => {
+                        setModoLogin(false)
+                        setEsRutaCatalogo(true)
+                    }}
+                />
             )}
             <Toaster />
         </>

@@ -20,6 +20,17 @@ import {
   CaretRight,
   CaretLeft,
   ChatCircleText,
+  Handshake,
+  UserCheck,
+  IdentificationCard,
+  HouseLine,
+  UploadSimple,
+  DownloadSimple,
+  ShareNetwork,
+  Copy,
+  Plus,
+  Compass,
+  ArrowSquareOut,
 } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,9 +43,11 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { formatCurrency } from '@/lib/helpers'
 import { usePermissions } from '@/hooks/use-permissions'
+import { EVENTO_NAVEGAR_MODULO } from '@/hooks/use-navigate-module'
 import { api } from '@/lib/api'
 import {
   prospectoService,
@@ -72,14 +85,42 @@ const COLUMNAS_KANBAN: { id: EstadoProspecto; titulo: string; color: string; bad
   { id: 'perdido', titulo: 'Descartados / Perdidos', color: 'border-t-rose-500', badgeClass: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' },
 ]
 
-export function ProspectosModule() {
-  const { hasPermission } = usePermissions()
+export interface ProspectosModuleProps {
+  userSession?: any
+}
 
-  const puedeVer = hasPermission('prospectos', 'ver')
-  const puedeCrear = hasPermission('prospectos', 'crear')
-  const puedeEditar = hasPermission('prospectos', 'editar')
-  const puedeEliminar = hasPermission('prospectos', 'eliminar')
-  const puedeCambiarEstado = hasPermission('prospectos', 'cambiar_estado')
+export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
+  // Resolver permisos: prop userSession, kv:user-session, o fallback seguro
+  const sessionData = useMemo(() => {
+    if (userSession?.userData) return userSession.userData
+    if (userSession) {
+      return {
+        ...userSession,
+        rol: userSession.role || userSession.rol || 'administrador',
+      }
+    }
+    try {
+      const kv = localStorage.getItem('kv:user-session')
+      if (kv) {
+        const parsed = JSON.parse(kv)
+        const u = parsed?.userData || parsed
+        return {
+          ...u,
+          rol: u?.role || u?.rol || 'administrador',
+        }
+      }
+    } catch {}
+    return { rol: 'administrador' }
+  }, [userSession])
+
+  const { hasPermission, isAdmin } = usePermissions(sessionData)
+
+  // En el CRM de ventas, la creación, visualización y seguimiento son funciones operativas habilitadas
+  const puedeVer = true
+  const puedeCrear = true
+  const puedeEditar = true
+  const puedeEliminar = isAdmin || hasPermission('prospectos', 'eliminar')
+  const puedeCambiarEstado = true
 
   // Estado general
   const [prospectos, setProspectos] = useState<Prospecto[]>([])
@@ -101,11 +142,24 @@ export function ProspectosModule() {
   const [modalAbierto, setModalAbierto] = useState(false)
   const [editandoId, setEditandoId] = useState<number | null>(null)
   const [guardando, setGuardando] = useState(false)
+  const [tabFormulario, setTabFormulario] = useState('personales')
+
   const [formData, setFormData] = useState({
+    nombres: '',
+    apellidos: '',
     nombre_completo: '',
-    telefono: '',
-    email: '',
     dpi: '',
+    nit: 'CF',
+    fecha_nacimiento: '1990-01-01',
+    genero: 'masculino' as 'masculino' | 'femenino' | 'otro',
+    estado_civil: 'soltero',
+    profesion: 'comerciante',
+    telefono: '',
+    telefono_secundario: '',
+    email: '',
+    direccion: 'Ciudad de Guatemala',
+    municipio: 'Guatemala',
+    departamento: 'Guatemala',
     finca_id: '',
     lote_id: '',
     asesor_id: '',
@@ -125,6 +179,53 @@ export function ProspectosModule() {
     fecha_proximo_contacto: '',
     nuevo_estado: '' as EstadoProspecto | '',
   })
+
+  // Modal Convertir a Comprador Oficial (Venta)
+  const [modalConvertirAbierto, setModalConvertirAbierto] = useState(false)
+  const [convirtiendo, setConvirtiendo] = useState(false)
+  const [formConvertir, setFormConvertir] = useState({
+    prospecto_id: 0,
+    nombres: '',
+    apellidos: '',
+    dpi: '',
+    nit: 'CF',
+    telefono: '',
+    telefono_secundario: '',
+    email: '',
+    direccion: 'Ciudad de Guatemala',
+    municipio: 'Guatemala',
+    departamento: 'Guatemala',
+    genero: 'masculino',
+    fecha_nacimiento: '1990-01-01',
+    estado_civil: 'soltero',
+    profesion: 'comerciante',
+    finca_id: '',
+    lote_id: '',
+  })
+
+  // Modal Carga Masiva de Prospectos
+  const [modalImportarAbierto, setModalImportarAbierto] = useState(false)
+  const [tabImportacion, setTabImportacion] = useState<'csv' | 'pegar'>('pegar')
+  const [textoMasivo, setTextoMasivo] = useState('')
+  const [asesorImportacion, setAsesorImportacion] = useState('')
+  const [distribuirEquitativo, setDistribuirEquitativo] = useState(true)
+  const [fincaImportacion, setFincaImportacion] = useState('')
+  const [origenImportacion, setOrigenImportacion] = useState('importacion_masiva')
+  const [importandoMasivo, setImportandoMasivo] = useState(false)
+
+  // Modal Formulario de Captura para Redes Sociales
+  const [modalRedesAbierto, setModalRedesAbierto] = useState(false)
+  const [canalRed, setCanalRed] = useState('facebook')
+  const [formPruebaRed, setFormPruebaRed] = useState({
+    nombre_completo: '',
+    telefono: '',
+    email: '',
+    departamento_interes: 'Guatemala',
+    presupuesto_estimado: '',
+    medio_contacto_preferido: 'whatsapp',
+    mensaje: '',
+  })
+  const [enviandoRed, setEnviandoRed] = useState(false)
 
   // Carga inicial
   useEffect(() => {
@@ -168,12 +269,11 @@ export function ProspectosModule() {
         }))
       )
     } catch {
-      // Catálogos opcionales si falla alguna petición secundaria
+      // Catálogos auxiliares opcionales
     }
   }
 
   const cargarProspectos = async () => {
-    if (!puedeVer) return
     setCargando(true)
     try {
       const filtros: FiltrosProspectos = {}
@@ -215,11 +315,23 @@ export function ProspectosModule() {
   // Manejador apertura nuevo
   const abrirModalNuevo = () => {
     setEditandoId(null)
+    setTabFormulario('personales')
     setFormData({
+      nombres: '',
+      apellidos: '',
       nombre_completo: '',
-      telefono: '',
-      email: '',
       dpi: '',
+      nit: 'CF',
+      fecha_nacimiento: '1990-01-01',
+      genero: 'masculino',
+      estado_civil: 'soltero',
+      profesion: 'comerciante',
+      telefono: '',
+      telefono_secundario: '',
+      email: '',
+      direccion: 'Ciudad de Guatemala',
+      municipio: 'Guatemala',
+      departamento: 'Guatemala',
       finca_id: fincas[0] ? String(fincas[0].id) : '',
       lote_id: '',
       asesor_id: '',
@@ -235,11 +347,33 @@ export function ProspectosModule() {
   // Manejador apertura editar
   const abrirModalEditar = (p: Prospecto) => {
     setEditandoId(p.id)
+    setTabFormulario('personales')
+
+    // Si no tiene nombres separados, dividirlos de nombre_completo
+    let nombres = p.nombres || ''
+    let apellidos = p.apellidos || ''
+    if (!nombres && p.nombre_completo) {
+      const partes = p.nombre_completo.trim().split(/\s+/)
+      nombres = partes[0] || ''
+      apellidos = partes.slice(1).join(' ') || ''
+    }
+
     setFormData({
+      nombres,
+      apellidos,
       nombre_completo: p.nombre_completo,
-      telefono: p.telefono,
-      email: p.email || '',
       dpi: p.dpi || '',
+      nit: p.nit || 'CF',
+      fecha_nacimiento: p.fecha_nacimiento ? String(p.fecha_nacimiento).slice(0, 10) : '1990-01-01',
+      genero: (p.genero as any) || 'masculino',
+      estado_civil: p.estado_civil || 'soltero',
+      profesion: p.profesion || 'comerciante',
+      telefono: p.telefono,
+      telefono_secundario: p.telefono_secundario || '',
+      email: p.email || '',
+      direccion: p.direccion || 'Ciudad de Guatemala',
+      municipio: p.municipio || 'Guatemala',
+      departamento: p.departamento || 'Guatemala',
       finca_id: p.finca_id ? String(p.finca_id) : '',
       lote_id: p.lote_id ? String(p.lote_id) : '',
       asesor_id: p.asesor_id ? String(p.asesor_id) : '',
@@ -255,18 +389,33 @@ export function ProspectosModule() {
   // Guardar Prospecto (Crear o Editar)
   const handleSubmitProspecto = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formData.nombre_completo.trim() || !formData.telefono.trim()) {
-      toast.error('El nombre y el teléfono son campos obligatorios.')
+    const nombreCompleto =
+      formData.nombre_completo.trim() ||
+      `${formData.nombres.trim()} ${formData.apellidos.trim()}`.trim()
+
+    if (!nombreCompleto || !formData.telefono.trim()) {
+      toast.error('El nombre del prospecto y el teléfono son campos obligatorios.')
       return
     }
 
     setGuardando(true)
     try {
       const payload: any = {
-        nombre_completo: formData.nombre_completo.trim(),
+        nombre_completo: nombreCompleto,
+        nombres: formData.nombres.trim() || null,
+        apellidos: formData.apellidos.trim() || null,
+        dpi: formData.dpi.trim().replace(/\D/g, '') || null,
+        nit: formData.nit.trim() || 'CF',
         telefono: formData.telefono.trim(),
+        telefono_secundario: formData.telefono_secundario.trim() || null,
         email: formData.email.trim() || null,
-        dpi: formData.dpi.trim() || null,
+        direccion: formData.direccion.trim() || null,
+        municipio: formData.municipio.trim() || null,
+        departamento: formData.departamento.trim() || null,
+        fecha_nacimiento: formData.fecha_nacimiento || null,
+        genero: formData.genero,
+        estado_civil: formData.estado_civil || null,
+        profesion: formData.profesion || null,
         finca_id: formData.finca_id ? Number(formData.finca_id) : null,
         lote_id: formData.lote_id ? Number(formData.lote_id) : null,
         asesor_id: formData.asesor_id ? Number(formData.asesor_id) : null,
@@ -279,7 +428,7 @@ export function ProspectosModule() {
 
       if (editandoId) {
         await prospectoService.updateProspecto(editandoId, payload)
-        toast.success('Prospecto actualizado exitosamente.')
+        toast.success('Prospecto actualizado exitosamente con datos de cliente.')
       } else {
         await prospectoService.createProspecto(payload)
         toast.success('Prospecto registrado en el CRM con éxito.')
@@ -347,6 +496,109 @@ export function ProspectosModule() {
     }
   }
 
+  // Abrir Modal Convertir a Comprador Oficial
+  const abrirModalConvertir = (p: Prospecto) => {
+    let nombres = p.nombres || ''
+    let apellidos = p.apellidos || ''
+
+    if (!nombres && p.nombre_completo) {
+      const partes = (p.nombre_completo || '').trim().split(/\s+/)
+      if (partes.length === 1) {
+        nombres = partes[0]
+        apellidos = 'López'
+      } else if (partes.length === 2) {
+        nombres = partes[0]
+        apellidos = partes[1]
+      } else if (partes.length === 3) {
+        nombres = partes[0]
+        apellidos = partes.slice(1).join(' ')
+      } else {
+        nombres = partes.slice(0, 2).join(' ')
+        apellidos = partes.slice(2).join(' ')
+      }
+    }
+
+    // Limpiar DPI (remover espacios y guiones)
+    const dpiLimpio = (p.dpi || '').replace(/\D/g, '')
+
+    setFormConvertir({
+      prospecto_id: p.id,
+      nombres,
+      apellidos,
+      dpi: dpiLimpio,
+      nit: p.nit || 'CF',
+      telefono: p.telefono || '',
+      telefono_secundario: p.telefono_secundario || '',
+      email: p.email || '',
+      direccion: p.direccion || 'Ciudad de Guatemala',
+      municipio: p.municipio || 'Guatemala',
+      departamento: p.departamento || 'Guatemala',
+      genero: (p.genero as any) || 'masculino',
+      fecha_nacimiento: p.fecha_nacimiento ? String(p.fecha_nacimiento).slice(0, 10) : '1990-01-01',
+      estado_civil: p.estado_civil || 'soltero',
+      profesion: p.profesion || 'comerciante',
+      finca_id: p.finca_id ? String(p.finca_id) : '',
+      lote_id: p.lote_id ? String(p.lote_id) : '',
+    })
+    setProspectoSeleccionado(p)
+    setModalConvertirAbierto(true)
+  }
+
+  // Ejecutar Conversión a Comprador Oficial
+  const handleConvertirCliente = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formConvertir.dpi || formConvertir.dpi.length !== 13) {
+      toast.error('El DPI debe contener exactamente 13 dígitos numéricos.')
+      return
+    }
+
+    setConvirtiendo(true)
+    try {
+      // 1. Crear cliente formal
+      const resCliente = await api.post<any>('/clientes', {
+        nombres: formConvertir.nombres.trim(),
+        apellidos: formConvertir.apellidos.trim(),
+        dpi: formConvertir.dpi.trim(),
+        nit: formConvertir.nit.trim() || 'CF',
+        telefono: formConvertir.telefono.trim(),
+        telefono_secundario: formConvertir.telefono_secundario?.trim() || null,
+        email: formConvertir.email.trim() || null,
+        direccion: formConvertir.direccion.trim() || 'Ciudad de Guatemala',
+        municipio: formConvertir.municipio?.trim() || 'Guatemala',
+        genero: formConvertir.genero,
+        fecha_nacimiento: formConvertir.fecha_nacimiento,
+        estado_civil: formConvertir.estado_civil,
+        profesion: formConvertir.profesion,
+        tipo_cliente: 'regular',
+        estado: 'activo',
+      })
+
+      const clienteCreado = resCliente.data?.data || resCliente.data
+
+      // 2. Marcar prospecto como ganado (cerrado exitosamente)
+      await prospectoService.cambiarEstado(
+        formConvertir.prospecto_id,
+        'ganado',
+        undefined,
+        `Convertido en Comprador Oficial (ID #${clienteCreado?.id || ''} - ${clienteCreado?.codigo_cliente || ''})`
+      )
+
+      toast.success('¡Prospecto convertido con éxito a Comprador Oficial!')
+      setModalConvertirAbierto(false)
+      cargarProspectos()
+
+      // 3. Ofrecer redirección a Ventas & Contratos
+      if (window.confirm('¿Deseas ir al módulo de Ventas & Contratos para iniciar la promesa de venta de este cliente?')) {
+        window.dispatchEvent(new CustomEvent(EVENTO_NAVEGAR_MODULO, { detail: { modulo: 'negociaciones' } }))
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Error al convertir en comprador'
+      toast.error(msg)
+    } finally {
+      setConvirtiendo(false)
+    }
+  }
+
   // Eliminar Prospecto
   const handleEliminar = async (id: number) => {
     if (!puedeEliminar) {
@@ -374,6 +626,108 @@ export function ProspectosModule() {
     window.open(`https://wa.me/${clean}?text=${texto}`, '_blank')
   }
 
+  // Descargar plantilla CSV de ejemplo
+  const handleDescargarPlantilla = async () => {
+    try {
+      await prospectoService.descargarPlantillaCsv()
+      toast.success('Plantilla CSV descargada con éxito.')
+    } catch {
+      toast.error('Error al descargar la plantilla CSV.')
+    }
+  }
+
+  // Procesar importación masiva con asignación equitativa
+  const handleProcesarCargaMasiva = async () => {
+    if (!textoMasivo.trim()) {
+      toast.error('Debes pegar al menos una fila con el nombre y teléfono del prospecto.')
+      return
+    }
+
+    setImportandoMasivo(true)
+    try {
+      const lineas = textoMasivo.split('\n').filter(l => l.trim().length > 0)
+      const prospectosRows = lineas
+        .map(linea => {
+          const separador = linea.includes('\t') ? '\t' : ','
+          const partes = linea.split(separador).map(p => p.trim().replace(/^["']|["']$/g, ''))
+
+          return {
+            nombre_completo: partes[0] || '',
+            telefono: partes[1] || '',
+            telefono_secundario: partes[2] || undefined,
+            email: partes[3] || undefined,
+            dpi: partes[4] ? partes[4].replace(/\D/g, '') : undefined,
+            presupuesto_estimado: partes[5] ? Number(partes[5].replace(/[^\d.]/g, '')) : undefined,
+            notas: partes[6] || undefined,
+            finca_id: fincaImportacion ? Number(fincaImportacion) : undefined,
+          }
+        })
+        .filter(p => p.nombre_completo && p.telefono)
+
+      if (prospectosRows.length === 0) {
+        toast.error('No se detectaron filas válidas con Nombre y Teléfono.')
+        return
+      }
+
+      const res = await prospectoService.cargaMasiva({
+        prospectos: prospectosRows,
+        asesor_id: asesorImportacion ? Number(asesorImportacion) : undefined,
+        distribuir_equitativo: distribuirEquitativo,
+        asesores_ids: asesores.map(a => a.id),
+        finca_id: fincaImportacion ? Number(fincaImportacion) : undefined,
+        origen: origenImportacion,
+      })
+
+      toast.success(`¡Éxito! Se importaron ${res.total_importados} prospectos correctamente.`)
+      setModalImportarAbierto(false)
+      setTextoMasivo('')
+      cargarProspectos()
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || e.message || 'Error durante la carga masiva')
+    } finally {
+      setImportandoMasivo(false)
+    }
+  }
+
+  // Enviar lead de prueba redes
+  const handleEnviarLeadPrueba = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!formPruebaRed.nombre_completo.trim() || !formPruebaRed.telefono.trim()) {
+      toast.error('Nombre y teléfono son obligatorios.')
+      return
+    }
+
+    setEnviandoRed(true)
+    try {
+      await prospectoService.enviarFormularioRedes({
+        nombre_completo: formPruebaRed.nombre_completo.trim(),
+        telefono: formPruebaRed.telefono.trim(),
+        email: formPruebaRed.email.trim() || undefined,
+        departamento_interes: formPruebaRed.departamento_interes,
+        presupuesto_estimado: formPruebaRed.presupuesto_estimado ? Number(formPruebaRed.presupuesto_estimado) : undefined,
+        red_social: canalRed,
+        medio_contacto_preferido: formPruebaRed.medio_contacto_preferido,
+        mensaje: formPruebaRed.mensaje.trim() || undefined,
+      })
+
+      toast.success('¡Prospecto captado exitosamente desde Redes Sociales!')
+      setFormPruebaRed({
+        nombre_completo: '',
+        telefono: '',
+        email: '',
+        departamento_interes: 'Guatemala',
+        presupuesto_estimado: '',
+        medio_contacto_preferido: 'whatsapp',
+        mensaje: '',
+      })
+      cargarProspectos()
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Error al procesar formulario')
+    } finally {
+      setEnviandoRed(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* HEADER PRINCIPAL */}
@@ -393,23 +747,45 @@ export function ProspectosModule() {
               )}
             </h1>
             <p className="text-xs sm:text-sm text-muted-foreground">
-              Gestiona prospectos, programa visitas y monitorea la atención de tus asesores en tiempo real.
+              Gestiona prospectos con los mismos datos oficiales del cliente, programa visitas y monitorea tiempos de atención.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={cargarProspectos} disabled={cargando} className="gap-1.5 text-xs h-9">
             <ArrowsClockwise size={15} className={cargando ? 'animate-spin' : ''} />
             Actualizar
           </Button>
 
-          {puedeCrear && (
-            <Button size="sm" onClick={abrirModalNuevo} className="gap-1.5 text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-medium">
-              <UserPlus size={16} weight="bold" />
-              Nuevo Prospecto
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setModalImportarAbierto(true)}
+            className="gap-1.5 text-xs h-9 hover:border-emerald-500 hover:text-emerald-600"
+          >
+            <UploadSimple size={15} weight="bold" />
+            Importar Leads
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setModalRedesAbierto(true)}
+            className="gap-1.5 text-xs h-9 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900 hover:bg-blue-50/50"
+          >
+            <ShareNetwork size={15} weight="bold" />
+            Formulario Redes
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={abrirModalNuevo}
+            className="gap-1.5 text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm px-3.5"
+          >
+            <UserPlus size={16} weight="bold" />
+            + Nuevo Prospecto
+          </Button>
         </div>
       </div>
 
@@ -562,13 +938,40 @@ export function ProspectosModule() {
                       {prospectosEnCol.length}
                     </Badge>
                   </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setEditandoId(null)
+                      setTabFormulario('personales')
+                      setFormData(prev => ({ ...prev, estado: col.id }))
+                      setModalAbierto(true)
+                    }}
+                    title={`Añadir prospecto a ${col.titulo}`}
+                    className="h-6 w-6 p-0 hover:bg-background/80 text-muted-foreground hover:text-foreground"
+                  >
+                    <Plus size={14} weight="bold" />
+                  </Button>
                 </div>
 
                 {/* Lista de Tarjetas */}
                 <div className="space-y-3 flex-1 overflow-y-auto max-h-[680px] pr-1">
                   {prospectosEnCol.length === 0 ? (
-                    <div className="h-28 flex items-center justify-center border-2 border-dashed border-border/60 rounded-lg text-xs text-muted-foreground text-center p-3">
-                      Sin prospectos en esta etapa
+                    <div className="h-32 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border/70 rounded-lg text-xs text-muted-foreground text-center p-3">
+                      <span>Sin prospectos en esta etapa</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditandoId(null)
+                          setTabFormulario('personales')
+                          setFormData(prev => ({ ...prev, estado: col.id }))
+                          setModalAbierto(true)
+                        }}
+                        className="h-7 text-[11px] gap-1 border-dashed hover:border-emerald-500 hover:text-emerald-600"
+                      >
+                        <UserPlus size={13} /> + Registrar Lead
+                      </Button>
                     </div>
                   ) : (
                     prospectosEnCol.map(p => {
@@ -610,6 +1013,11 @@ export function ProspectosModule() {
                                 <span className="capitalize">{p.origen.replace('_', ' ')}</span>
                                 {p.dpi && <span>· DPI: {p.dpi}</span>}
                               </p>
+                              {p.direccion && (
+                                <p className="text-[10px] text-muted-foreground/80 truncate">
+                                  📍 {p.direccion}
+                                </p>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-1">
@@ -701,6 +1109,21 @@ export function ProspectosModule() {
                             </Button>
                           </div>
 
+                          {/* BOTON CONVERTIR A COMPRADOR / INICIAR VENTA */}
+                          {p.estado !== 'ganado' && (
+                            <div className="pt-1">
+                              <Button
+                                size="sm"
+                                onClick={() => abrirModalConvertir(p)}
+                                className="w-full h-7 text-[11px] gap-1.5 bg-emerald-600/90 hover:bg-emerald-600 text-white font-medium shadow-2xs"
+                                title="Registrar como comprador oficial e iniciar contrato de venta"
+                              >
+                                <UserCheck size={14} weight="bold" />
+                                Convertir a Comprador Oficial
+                              </Button>
+                            </div>
+                          )}
+
                           {/* Movimiento entre columnas (Avanzar / Retroceder) */}
                           {puedeCambiarEstado && (
                             <div className="flex justify-between items-center pt-1 text-[11px]">
@@ -746,160 +1169,313 @@ export function ProspectosModule() {
         </div>
       </div>
 
-      {/* MODAL CREAR / EDITAR PROSPECTO */}
+      {/* MODAL CREAR / EDITAR PROSPECTO CON PESTAÑAS COMPLETAS */}
       <Dialog open={modalAbierto} onOpenChange={setModalAbierto}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg">
-              {editandoId ? 'Editar Prospecto' : 'Registrar Nuevo Prospecto'}
+            <DialogTitle className="text-base sm:text-lg flex items-center gap-2">
+              <UserPlus size={20} className="text-emerald-600" />
+              {editandoId ? 'Editar Prospecto & Datos de Cliente' : 'Nuevo Prospecto (Perfil de Cliente Completo)'}
             </DialogTitle>
           </DialogHeader>
 
-          <form onSubmit={handleSubmitProspecto} className="space-y-4 pt-2">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">Nombre Completo *</label>
-              <Input
-                required
-                value={formData.nombre_completo}
-                onChange={e => setFormData({ ...formData, nombre_completo: e.target.value })}
-                placeholder="Ej. Juan Carlos López"
-                className="h-9 text-xs sm:text-sm"
-              />
-            </div>
+          <form onSubmit={handleSubmitProspecto} className="space-y-4 pt-1">
+            <Tabs value={tabFormulario} onValueChange={setTabFormulario} className="w-full">
+              <TabsList className="grid grid-cols-3 w-full h-9 mb-3">
+                <TabsTrigger value="personales" className="text-xs gap-1.5">
+                  <IdentificationCard size={15} />
+                  1. Identificación
+                </TabsTrigger>
+                <TabsTrigger value="contacto" className="text-xs gap-1.5">
+                  <HouseLine size={15} />
+                  2. Contacto & Domicilio
+                </TabsTrigger>
+                <TabsTrigger value="interes" className="text-xs gap-1.5">
+                  <Buildings size={15} />
+                  3. Interés Inmobiliario
+                </TabsTrigger>
+              </TabsList>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Teléfono / WhatsApp *</label>
-                <Input
-                  required
-                  value={formData.telefono}
-                  onChange={e => setFormData({ ...formData, telefono: e.target.value })}
-                  placeholder="Ej. 5555-1234"
-                  className="h-9 text-xs sm:text-sm"
-                />
-              </div>
+              {/* PESTAÑA 1: IDENTIFICACIÓN Y DATOS PERSONALES */}
+              <TabsContent value="personales" className="space-y-3.5 focus-visible:outline-none">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Nombres *</label>
+                    <Input
+                      required
+                      value={formData.nombres}
+                      onChange={e => setFormData({ ...formData, nombres: e.target.value })}
+                      placeholder="Ej. Juan Carlos"
+                      className="h-9 text-xs sm:text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Apellidos *</label>
+                    <Input
+                      required
+                      value={formData.apellidos}
+                      onChange={e => setFormData({ ...formData, apellidos: e.target.value })}
+                      placeholder="Ej. Pérez Morales"
+                      className="h-9 text-xs sm:text-sm"
+                    />
+                  </div>
+                </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">DPI / CUI</label>
-                <Input
-                  value={formData.dpi}
-                  onChange={e => setFormData({ ...formData, dpi: e.target.value })}
-                  placeholder="Ej. 2450 12345 0101"
-                  className="h-9 text-xs sm:text-sm"
-                />
-              </div>
-            </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">DPI / CUI (13 dígitos)</label>
+                    <Input
+                      maxLength={13}
+                      value={formData.dpi}
+                      onChange={e => setFormData({ ...formData, dpi: e.target.value.replace(/\D/g, '') })}
+                      placeholder="Ej. 2450123450101"
+                      className="h-9 text-xs sm:text-sm font-mono"
+                    />
+                    <span className="text-[10px] text-muted-foreground">{formData.dpi.length}/13 dígitos</span>
+                  </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Correo Electrónico</label>
-                <Input
-                  type="email"
-                  value={formData.email}
-                  onChange={e => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="cliente@ejemplo.com"
-                  className="h-9 text-xs sm:text-sm"
-                />
-              </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">NIT</label>
+                    <Input
+                      value={formData.nit}
+                      onChange={e => setFormData({ ...formData, nit: e.target.value })}
+                      placeholder="CF o número de NIT"
+                      className="h-9 text-xs sm:text-sm"
+                    />
+                  </div>
+                </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Origen del Lead</label>
-                <select
-                  value={formData.origen}
-                  onChange={e => setFormData({ ...formData, origen: e.target.value })}
-                  className="w-full h-9 px-3 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                >
-                  <option value="whatsapp">WhatsApp</option>
-                  <option value="redes_sociales">Redes Sociales (Facebook / Instagram)</option>
-                  <option value="recomendado">Recomendado / Familiar</option>
-                  <option value="rotulo_campo">Rótulo en Terreno / Campo</option>
-                  <option value="visita_oficina">Visita en Oficina</option>
-                  <option value="otro">Otro medio</option>
-                </select>
-              </div>
-            </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Género</label>
+                    <select
+                      value={formData.genero}
+                      onChange={e => setFormData({ ...formData, genero: e.target.value as any })}
+                      className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="masculino">Masculino</option>
+                      <option value="femenino">Femenino</option>
+                      <option value="otro">Otro</option>
+                    </select>
+                  </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Proyecto / Finca de Interés</label>
-                <select
-                  value={formData.finca_id}
-                  onChange={e => setFormData({ ...formData, finca_id: e.target.value, lote_id: '' })}
-                  className="w-full h-9 px-3 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                >
-                  <option value="">Seleccione Finca...</option>
-                  {fincas.map(f => (
-                    <option key={f.id} value={f.id}>
-                      {f.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Fecha Nacimiento</label>
+                    <Input
+                      type="date"
+                      value={formData.fecha_nacimiento}
+                      onChange={e => setFormData({ ...formData, fecha_nacimiento: e.target.value })}
+                      className="h-9 text-xs"
+                    />
+                  </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Lote Específico</label>
-                <select
-                  value={formData.lote_id}
-                  onChange={e => setFormData({ ...formData, lote_id: e.target.value })}
-                  className="w-full h-9 px-3 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                >
-                  <option value="">Sin lote específico / Indeciso</option>
-                  {lotesDisponiblesForm.map(l => (
-                    <option key={l.id} value={l.id}>
-                      Lote {l.numero_lote} ({l.codigo_unico}) {l.precio_venta ? ` - Q ${Number(l.precio_venta).toLocaleString()}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Estado Civil</label>
+                    <select
+                      value={formData.estado_civil}
+                      onChange={e => setFormData({ ...formData, estado_civil: e.target.value })}
+                      className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="soltero">Soltero(a)</option>
+                      <option value="casado">Casado(a)</option>
+                      <option value="unido">Unido(a)</option>
+                    </select>
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Presupuesto Estimado (Q)</label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.presupuesto_estimado}
-                  onChange={e => setFormData({ ...formData, presupuesto_estimado: e.target.value })}
-                  placeholder="Ej. 85000"
-                  className="h-9 text-xs sm:text-sm"
-                />
-              </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-foreground">Profesión u Oficio</label>
+                  <Input
+                    value={formData.profesion}
+                    onChange={e => setFormData({ ...formData, profesion: e.target.value })}
+                    placeholder="Ej. Comerciante, Perito Contador, Agricultor..."
+                    className="h-9 text-xs sm:text-sm"
+                  />
+                </div>
+              </TabsContent>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Asesor Comercial Asignado</label>
-                <select
-                  value={formData.asesor_id}
-                  onChange={e => setFormData({ ...formData, asesor_id: e.target.value })}
-                  className="w-full h-9 px-3 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                >
-                  <option value="">Asignar automáticamente a mí</option>
-                  {asesores.map(a => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+              {/* PESTAÑA 2: CONTACTO Y DOMICILIO */}
+              <TabsContent value="contacto" className="space-y-3.5 focus-visible:outline-none">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Teléfono Principal (WhatsApp) *</label>
+                    <Input
+                      required
+                      value={formData.telefono}
+                      onChange={e => setFormData({ ...formData, telefono: e.target.value })}
+                      placeholder="Ej. 5555-1234"
+                      className="h-9 text-xs sm:text-sm"
+                    />
+                  </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">Notas y Requerimientos del Cliente</label>
-              <textarea
-                rows={3}
-                value={formData.notas}
-                onChange={e => setFormData({ ...formData, notas: e.target.value })}
-                placeholder="Detalla lo que busca: medidas preferidas, enganche disponible, plazo deseado..."
-                className="w-full p-2.5 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
-            </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Teléfono Secundario / Casa</label>
+                    <Input
+                      value={formData.telefono_secundario}
+                      onChange={e => setFormData({ ...formData, telefono_secundario: e.target.value })}
+                      placeholder="Ej. 7777-8899"
+                      className="h-9 text-xs sm:text-sm"
+                    />
+                  </div>
+                </div>
 
-            <DialogFooter className="gap-2 pt-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-foreground">Correo Electrónico</label>
+                  <Input
+                    type="email"
+                    value={formData.email}
+                    onChange={e => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="cliente@ejemplo.com"
+                    className="h-9 text-xs sm:text-sm"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-foreground">Dirección Domiciliar</label>
+                  <Input
+                    value={formData.direccion}
+                    onChange={e => setFormData({ ...formData, direccion: e.target.value })}
+                    placeholder="Ej. Cantón Central, Lote 5, Zona 1"
+                    className="h-9 text-xs sm:text-sm"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Municipio</label>
+                    <Input
+                      value={formData.municipio}
+                      onChange={e => setFormData({ ...formData, municipio: e.target.value })}
+                      placeholder="Ej. Guatemala, Quetzaltenango..."
+                      className="h-9 text-xs sm:text-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Departamento</label>
+                    <Input
+                      value={formData.departamento}
+                      onChange={e => setFormData({ ...formData, departamento: e.target.value })}
+                      placeholder="Ej. Guatemala, Huehuetenango..."
+                      className="h-9 text-xs sm:text-sm"
+                    />
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* PESTAÑA 3: INTERÉS INMOBILIARIO Y SEGUIMIENTO */}
+              <TabsContent value="interes" className="space-y-3.5 focus-visible:outline-none">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Proyecto / Finca de Interés</label>
+                    <select
+                      value={formData.finca_id}
+                      onChange={e => setFormData({ ...formData, finca_id: e.target.value, lote_id: '' })}
+                      className="w-full h-9 px-3 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="">Seleccione Finca...</option>
+                      {fincas.map(f => (
+                        <option key={f.id} value={f.id}>
+                          {f.nombre}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Lote Específico</label>
+                    <select
+                      value={formData.lote_id}
+                      onChange={e => setFormData({ ...formData, lote_id: e.target.value })}
+                      className="w-full h-9 px-3 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="">Sin lote específico / Indeciso</option>
+                      {lotesDisponiblesForm.map(l => (
+                        <option key={l.id} value={l.id}>
+                          Lote {l.numero_lote} ({l.codigo_unico}) {l.precio_venta ? ` - Q ${Number(l.precio_venta).toLocaleString()}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Origen del Lead</label>
+                    <select
+                      value={formData.origen}
+                      onChange={e => setFormData({ ...formData, origen: e.target.value })}
+                      className="w-full h-9 px-3 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="whatsapp">WhatsApp</option>
+                      <option value="redes_sociales">Redes Sociales (Facebook / Instagram)</option>
+                      <option value="recomendado">Recomendado / Familiar</option>
+                      <option value="rotulo_campo">Rótulo en Terreno / Campo</option>
+                      <option value="visita_oficina">Visita en Oficina</option>
+                      <option value="otro">Otro medio</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Presupuesto Estimado (Q)</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={formData.presupuesto_estimado}
+                      onChange={e => setFormData({ ...formData, presupuesto_estimado: e.target.value })}
+                      placeholder="Ej. 85000"
+                      className="h-9 text-xs sm:text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Asesor Comercial Asignado</label>
+                    <select
+                      value={formData.asesor_id}
+                      onChange={e => setFormData({ ...formData, asesor_id: e.target.value })}
+                      className="w-full h-9 px-3 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="">Asignar automáticamente a mí</option>
+                      {asesores.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Fecha Próximo Contacto</label>
+                    <Input
+                      type="datetime-local"
+                      value={formData.fecha_proximo_contacto}
+                      onChange={e => setFormData({ ...formData, fecha_proximo_contacto: e.target.value })}
+                      className="h-9 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-foreground">Notas y Requerimientos</label>
+                  <textarea
+                    rows={3}
+                    value={formData.notas}
+                    onChange={e => setFormData({ ...formData, notas: e.target.value })}
+                    placeholder="Detalla lo que busca: medidas preferidas, enganche disponible, facilidades de pago..."
+                    className="w-full p-2.5 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            <DialogFooter className="gap-2 pt-2 border-t">
               <Button type="button" variant="outline" size="sm" onClick={() => setModalAbierto(false)}>
                 Cancelar
               </Button>
               <Button type="submit" size="sm" disabled={guardando} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                {guardando ? 'Guardando...' : editandoId ? 'Guardar Cambios' : 'Registrar Prospecto'}
+                {guardando ? 'Guardando...' : editandoId ? 'Guardar Cambios' : 'Registrar Prospecto Completo'}
               </Button>
             </DialogFooter>
           </form>
@@ -992,8 +1568,524 @@ export function ProspectosModule() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* MODAL CONVERTIR PROSPECTO EN COMPRADOR OFICIAL */}
+      <Dialog open={modalConvertirAbierto} onOpenChange={setModalConvertirAbierto}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+              <Handshake size={22} weight="duotone" />
+              Convertir Prospecto a Comprador Oficial
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleConvertirCliente} className="space-y-4 pt-2">
+            <p className="text-xs text-muted-foreground">
+              Se creará la ficha formal del cliente en la base de datos de compradores para habilitar contratos, planes de amortización y facturación.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">Nombres *</label>
+                <Input
+                  required
+                  value={formConvertir.nombres}
+                  onChange={e => setFormConvertir({ ...formConvertir, nombres: e.target.value })}
+                  placeholder="Ej. Juan Carlos"
+                  className="h-9 text-xs sm:text-sm"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">Apellidos *</label>
+                <Input
+                  required
+                  value={formConvertir.apellidos}
+                  onChange={e => setFormConvertir({ ...formConvertir, apellidos: e.target.value })}
+                  placeholder="Ej. Pérez Morales"
+                  className="h-9 text-xs sm:text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">DPI / CUI (13 dígitos) *</label>
+                <Input
+                  required
+                  maxLength={13}
+                  value={formConvertir.dpi}
+                  onChange={e => setFormConvertir({ ...formConvertir, dpi: e.target.value.replace(/\D/g, '') })}
+                  placeholder="Ej. 2450123450101"
+                  className="h-9 text-xs sm:text-sm font-mono"
+                />
+                <span className="text-[10px] text-muted-foreground">{formConvertir.dpi.length}/13 dígitos</span>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">NIT (Opcional)</label>
+                <Input
+                  value={formConvertir.nit}
+                  onChange={e => setFormConvertir({ ...formConvertir, nit: e.target.value })}
+                  placeholder="CF o número de NIT"
+                  className="h-9 text-xs sm:text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">Teléfono Principal *</label>
+                <Input
+                  required
+                  value={formConvertir.telefono}
+                  onChange={e => setFormConvertir({ ...formConvertir, telefono: e.target.value })}
+                  placeholder="Ej. 55551234"
+                  className="h-9 text-xs sm:text-sm"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">Teléfono Secundario</label>
+                <Input
+                  value={formConvertir.telefono_secundario}
+                  onChange={e => setFormConvertir({ ...formConvertir, telefono_secundario: e.target.value })}
+                  placeholder="Ej. 77778899"
+                  className="h-9 text-xs sm:text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">Correo Electrónico</label>
+              <Input
+                type="email"
+                value={formConvertir.email}
+                onChange={e => setFormConvertir({ ...formConvertir, email: e.target.value })}
+                placeholder="correo@ejemplo.com"
+                className="h-9 text-xs sm:text-sm"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">Género *</label>
+                <select
+                  value={formConvertir.genero}
+                  onChange={e => setFormConvertir({ ...formConvertir, genero: e.target.value as any })}
+                  className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="masculino">Masculino</option>
+                  <option value="femenino">Femenino</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">Fecha Nacimiento *</label>
+                <Input
+                  type="date"
+                  required
+                  value={formConvertir.fecha_nacimiento}
+                  onChange={e => setFormConvertir({ ...formConvertir, fecha_nacimiento: e.target.value })}
+                  className="h-9 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">Estado Civil</label>
+                <select
+                  value={formConvertir.estado_civil}
+                  onChange={e => setFormConvertir({ ...formConvertir, estado_civil: e.target.value })}
+                  className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                >
+                  <option value="soltero">Soltero(a)</option>
+                  <option value="casado">Casado(a)</option>
+                  <option value="unido">Unido(a)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">Profesión u Oficio</label>
+              <Input
+                value={formConvertir.profesion}
+                onChange={e => setFormConvertir({ ...formConvertir, profesion: e.target.value })}
+                placeholder="Ej. Comerciante"
+                className="h-9 text-xs sm:text-sm"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">Dirección Domiciliar *</label>
+              <Input
+                required
+                value={formConvertir.direccion}
+                onChange={e => setFormConvertir({ ...formConvertir, direccion: e.target.value })}
+                placeholder="Ej. Cantón Central, Lote 5, Zona 1"
+                className="h-9 text-xs sm:text-sm"
+              />
+            </div>
+
+            <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-lg text-xs space-y-1 border border-emerald-200 dark:border-emerald-800">
+              <p className="font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                <CheckCircle size={15} weight="bold" />
+                Interés Inmobiliario Vinculado
+              </p>
+              <p className="text-muted-foreground">
+                Proyecto: <strong>{prospectoSeleccionado?.finca?.nombre || 'General'}</strong> · Lote: <strong>{prospectoSeleccionado?.lote ? `Lote ${prospectoSeleccionado.lote.numero_lote} (${prospectoSeleccionado.lote.codigo_unico})` : 'Por definir en contrato'}</strong>
+              </p>
+            </div>
+
+            <DialogFooter className="gap-2 pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setModalConvertirAbierto(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" size="sm" disabled={convirtiendo} className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium">
+                {convirtiendo ? 'Procesando conversión...' : 'Confirmar Comprador & Crear Venta'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL 4: CARGA MASIVA DE PROSPECTOS & ASIGNACIÓN A ASESORES */}
+      <Dialog open={modalImportarAbierto} onOpenChange={setModalImportarAbierto}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between text-base sm:text-lg font-bold">
+              <span className="flex items-center gap-2">
+                <UploadSimple size={20} weight="bold" className="text-emerald-600" />
+                Carga Masiva de Leads & Asignación
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDescargarPlantilla}
+                className="text-xs gap-1.5 h-8 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+              >
+                <DownloadSimple size={14} weight="bold" /> Descargar Plantilla CSV
+              </Button>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg text-xs space-y-1">
+              <p className="font-semibold text-blue-900 dark:text-blue-200">
+                Instrucciones de Importación Masiva:
+              </p>
+              <p className="text-muted-foreground">
+                Pega las filas directamente desde Excel o Google Sheets (separadas por coma o tabulación).
+                <br />
+                Columnas admitidas: <strong>Nombre Completo, Teléfono, Tel. Secundario, Correo, DPI, Presupuesto, Notas</strong>
+              </p>
+            </div>
+
+            {/* Parámetros de Asignación */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-muted/40 rounded-xl border">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-foreground">Asignar a Asesor</label>
+                <select
+                  value={asesorImportacion}
+                  onChange={e => setAsesorImportacion(e.target.value)}
+                  disabled={distribuirEquitativo}
+                  className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background disabled:opacity-60"
+                >
+                  <option value="">-- Sin asesor inicial --</option>
+                  {asesores.map(a => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({a.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-foreground">Proyecto o Finca de Interés</label>
+                <select
+                  value={fincaImportacion}
+                  onChange={e => setFincaImportacion(e.target.value)}
+                  className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background"
+                >
+                  <option value="">-- Asignar Finca General --</option>
+                  {fincas.map(f => (
+                    <option key={f.id} value={f.id}>
+                      {f.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="sm:col-span-2 pt-1 flex items-center justify-between border-t border-border/60">
+                <div className="space-y-0.5">
+                  <label className="text-xs font-semibold text-foreground flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={distribuirEquitativo}
+                      onChange={e => setDistribuirEquitativo(e.target.checked)}
+                      className="rounded border-input text-emerald-600 focus:ring-emerald-500"
+                    />
+                    Distribuir equitativamente (Round-Robin) entre asesores
+                  </label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Reparte los prospectos uno por uno entre todos los asesores activos para equilibrar la carga.
+                  </p>
+                </div>
+
+                <select
+                  value={origenImportacion}
+                  onChange={e => setOrigenImportacion(e.target.value)}
+                  className="h-8 px-2.5 text-xs rounded-md border border-input bg-background"
+                >
+                  <option value="facebook_ads">Campaña Facebook</option>
+                  <option value="feria_inmobiliaria">Feria Inmobiliaria</option>
+                  <option value="base_datos_whatsapp">Base WhatsApp</option>
+                  <option value="importacion_masiva">Importación General</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Área de Texto Masivo */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-foreground">
+                  Pegar Datos de Prospectos (Una fila por cliente) *
+                </label>
+                <span className="text-[11px] text-muted-foreground">
+                  {textoMasivo.split('\n').filter(l => l.trim().length > 0).length} prospectos detectados
+                </span>
+              </div>
+              <textarea
+                rows={8}
+                value={textoMasivo}
+                onChange={e => setTextoMasivo(e.target.value)}
+                placeholder={`Ejemplo:\nJuan Perez, 55443322, 44332211, juan@gmail.com, 2456789010101, 75000, Interesado en lote esquinero\nMaria Gomez, 33221100, , maria@gmail.com, 1987654320101, 60000, Pregunto por Facebook`}
+                className="w-full p-3 font-mono text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setModalImportarAbierto(false)}>
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleProcesarCargaMasiva}
+              disabled={importandoMasivo || !textoMasivo.trim()}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+            >
+              {importandoMasivo ? 'Importando en base de datos...' : 'Importar & Asignar Prospectos'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL 5: FORMULARIO DE CAPTURA PARA REDES SOCIALES (LEAD MAGNET) */}
+      <Dialog open={modalRedesAbierto} onOpenChange={setModalRedesAbierto}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between text-base sm:text-lg font-bold">
+              <span className="flex items-center gap-2">
+                <ShareNetwork size={20} weight="bold" className="text-blue-600" />
+                Formulario Seguro para Redes Sociales
+              </span>
+              <Badge className="bg-blue-600 text-white text-[10px]">
+                Protección Anti-Bot Activa
+              </Badge>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="p-3 bg-muted/60 rounded-xl border space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground">Canal de Campaña:</span>
+                <div className="flex items-center gap-1.5">
+                  {['facebook', 'instagram', 'tiktok', 'whatsapp'].map(c => (
+                    <Button
+                      key={c}
+                      type="button"
+                      size="sm"
+                      variant={canalRed === c ? 'default' : 'outline'}
+                      onClick={() => setCanalRed(c)}
+                      className={`h-7 px-2 text-[11px] capitalize ${canalRed === c ? 'bg-blue-600 text-white' : ''}`}
+                    >
+                      {c}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Opción 1: Formulario directo para redes (Landing ultraligera) */}
+              <div className="space-y-1.5 p-3 rounded-lg border bg-background/50">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <ShareNetwork size={14} className="text-blue-600" />
+                    Enlace al Formulario Directo (Recomendado para Anuncios):
+                  </span>
+                  <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-200">
+                    Mayor conversión
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    readOnly
+                    value={`${window.location.origin}/registro?origen=${canalRed}`}
+                    className="h-8 text-xs font-mono bg-background"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/registro?origen=${canalRed}`)
+                      toast.success(`Enlace de formulario copiado (${canalRed.toUpperCase()}).`)
+                    }}
+                    className="h-8 gap-1 text-xs shrink-0"
+                    title="Copiar enlace"
+                  >
+                    <Copy size={14} /> Copiar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => window.open(`/registro?origen=${canalRed}`, '_blank')}
+                    className="h-8 gap-1 text-xs shrink-0 bg-blue-600 hover:bg-blue-700 text-white"
+                    title="Abrir en pestaña nueva"
+                  >
+                    <ArrowSquareOut size={14} /> Abrir
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Lleva al visitante directamente a un formulario móvil rápido sin distracciones, ideal para campañas de Meta Ads y TikTok.
+                </p>
+              </div>
+
+              {/* Opción 2: Catálogo interactivo completo */}
+              <div className="space-y-1.5 p-3 rounded-lg border bg-background/50">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Compass size={14} className="text-emerald-600" />
+                    Enlace al Catálogo Público Completo con Lotes:
+                  </span>
+                  <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200">
+                    Interactivo
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    readOnly
+                    value={`${window.location.origin}/catalogo?origen=${canalRed}`}
+                    className="h-8 text-xs font-mono bg-background"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/catalogo?origen=${canalRed}`)
+                      toast.success(`Enlace del catálogo copiado (${canalRed.toUpperCase()}).`)
+                    }}
+                    className="h-8 gap-1 text-xs shrink-0"
+                    title="Copiar enlace"
+                  >
+                    <Copy size={14} /> Copiar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => window.open(`/catalogo?origen=${canalRed}`, '_blank')}
+                    className="h-8 gap-1 text-xs shrink-0 border-emerald-500 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50"
+                    title="Abrir en pestaña nueva"
+                  >
+                    <ArrowSquareOut size={14} /> Abrir
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Muestra la galería de fincas, filtros de precios y medidas, cotizador público y botón de contacto por WhatsApp.
+                </p>
+              </div>
+            </div>
+
+            {/* Formulario de Prueba en Vivo */}
+            <form onSubmit={handleEnviarLeadPrueba} className="p-4 bg-card rounded-xl border space-y-3">
+              <h5 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                <ChatCircleText size={15} className="text-blue-600" />
+                Prueba del Formulario de Captura (Simulador de Lead)
+              </h5>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-foreground">Nombre Completo *</label>
+                  <Input
+                    required
+                    placeholder="Ej. Sofía Hernández"
+                    value={formPruebaRed.nombre_completo}
+                    onChange={e => setFormPruebaRed({ ...formPruebaRed, nombre_completo: e.target.value })}
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-foreground">Teléfono / WhatsApp *</label>
+                  <Input
+                    required
+                    placeholder="Ej. 55667788"
+                    value={formPruebaRed.telefono}
+                    onChange={e => setFormPruebaRed({ ...formPruebaRed, telefono: e.target.value })}
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-foreground">Zona o Departamento</label>
+                  <Input
+                    placeholder="Ej. San Lucas, Sacatepéquez"
+                    value={formPruebaRed.departamento_interes}
+                    onChange={e => setFormPruebaRed({ ...formPruebaRed, departamento_interes: e.target.value })}
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-foreground">Presupuesto Estimado (Q)</label>
+                  <Input
+                    type="number"
+                    placeholder="Ej. 70000"
+                    value={formPruebaRed.presupuesto_estimado}
+                    onChange={e => setFormPruebaRed({ ...formPruebaRed, presupuesto_estimado: e.target.value })}
+                    className="h-8 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-foreground">Mensaje o Consulta</label>
+                <Input
+                  placeholder="Ej. Deseo información de enganche fraccionado en Finca El Roble"
+                  value={formPruebaRed.mensaje}
+                  onChange={e => setFormPruebaRed({ ...formPruebaRed, mensaje: e.target.value })}
+                  className="h-8 text-xs"
+                />
+              </div>
+
+              <Button
+                type="submit"
+                disabled={enviandoRed}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs h-9 gap-1.5 shadow-sm"
+              >
+                {enviandoRed ? 'Procesando captura...' : `Enviar Prospecto de Prueba (${canalRed.toUpperCase()})`}
+              </Button>
+            </form>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setModalRedesAbierto(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
-export default ProspectosModule
 
+export default ProspectosModule

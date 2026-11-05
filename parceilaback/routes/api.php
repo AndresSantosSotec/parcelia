@@ -90,6 +90,12 @@ Route::prefix('v1')->group(function () {
     Route::get('/publico/terrenos/{token}', [LoteController::class, 'publico'])->middleware('throttle:60,1');
     Route::get('/publico/media/lotes/{id}', [LoteController::class, 'media'])->middleware('throttle:120,1');
 
+    // 🌐 Portal Público de Catálogo y Captación Web de Leads (Sin autenticación)
+    Route::get('/publico/catalogo', [\App\Http\Controllers\Api\PublicCatalogoController::class, 'index'])->middleware('throttle:60,1');
+    Route::get('/publico/catalogo/fincas/{id}', [\App\Http\Controllers\Api\PublicCatalogoController::class, 'showFinca'])->middleware('throttle:60,1');
+    Route::post('/publico/prospectos', [\App\Http\Controllers\Api\PublicCatalogoController::class, 'storeLead'])->middleware('throttle:20,1');
+    Route::post('/publico/formulario-redes', [\App\Http\Controllers\Api\PublicCatalogoController::class, 'formularioRedes'])->middleware('throttle:15,1');
+
     // Rutas protegidas
     Route::middleware('auth:sanctum')->group(function () {
         // ==========================================
@@ -189,6 +195,9 @@ Route::prefix('v1')->group(function () {
             Route::delete('/lotes/{loteId}/imagenes/{imagenId}', [LoteController::class, 'destroyImagen'])->middleware('permiso:lotes,imagenes');
 
             // CRM y Embudo de Prospectos
+            Route::get('/prospectos/plantilla-csv', [ProspectoController::class, 'plantillaCsv'])->middleware('permiso:prospectos,ver');
+            Route::post('/prospectos/carga-masiva', [ProspectoController::class, 'cargaMasiva'])->middleware('permiso:prospectos,crear');
+            Route::post('/prospectos/asignacion-masiva', [ProspectoController::class, 'asignacionMasiva'])->middleware('permiso:prospectos,asignar');
             Route::get('/prospectos', [ProspectoController::class, 'index'])->middleware('permiso:prospectos,ver');
             Route::post('/prospectos', [ProspectoController::class, 'store'])->middleware('permiso:prospectos,crear');
             Route::get('/prospectos/{id}', [ProspectoController::class, 'show'])->middleware('permiso:prospectos,ver');

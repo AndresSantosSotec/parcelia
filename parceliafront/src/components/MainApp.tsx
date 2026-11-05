@@ -33,11 +33,12 @@ const ComisionistasModule = lazy(() => import('./modules/desarrolladora/Comision
 const NegociacionesModule = lazy(() => import('./modules/negociaciones/NegociacionesModule').then((m) => ({ default: m.NegociacionesModule })))
 const PlanoLotesModule = lazy(() => import('./modules/lotificacion/PlanoLotesModule').then((m) => ({ default: m.PlanoLotesModule })))
 const ProspectosModule = lazy(() => import('./modules/prospectos/ProspectosModule').then((m) => ({ default: m.ProspectosModule })))
+const CatalogoPublicoModule = lazy(() => import('./modules/catalogo/CatalogoPublicoModule').then((m) => ({ default: m.CatalogoPublicoModule })))
 const TasasInmobiliariasModule = lazy(() => import('./modules/tasas/TasasInmobiliariasModule').then((m) => ({ default: m.TasasInmobiliariasModule })))
 import { useEmpresaConfig } from '@/hooks/useEmpresaConfig'
 import { ChatbotHelper } from './ChatbotHelper'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Package, Wallet, Receipt, ChartBar, UserCircle, ClockCounterClockwise, CreditCard as CreditCardIcon, List, SignOut, Moon, Sun, Monitor, Lock, Storefront, Users, CurrencyDollar, Warning, PaintBrush, Handshake, TreeStructure, Chats } from '@phosphor-icons/react'
+import { Package, Wallet, Receipt, ChartBar, UserCircle, ClockCounterClockwise, CreditCard as CreditCardIcon, List, SignOut, Moon, Sun, Monitor, Lock, Storefront, Users, CurrencyDollar, Warning, PaintBrush, Handshake, TreeStructure, Chats, Compass, ShareNetwork } from '@phosphor-icons/react'
 import { useKV } from '@/hooks/use-kv'
 import { EVENTO_NAVEGAR_MODULO } from '@/hooks/use-navigate-module'
 import { Cliente, Credito } from '@/lib/types'
@@ -211,6 +212,11 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
   // Filtrar navegación según permisos
   const filteredNavigation = useMemo(() => {
     return navigation.filter(item => {
+      // El catálogo público nunca va en la barra lateral interna del ERP
+      if (item.id === 'catalogo') {
+        return false
+      }
+
       const modulo = item.id as Modulo
 
       if (isModuloOcultoEnOperacion(item.id, esSuperAdmin)) {
@@ -357,8 +363,10 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
         return <FincasModule userSession={userSession} abrirCompra />
       case 'lotes':
         return <PlanoLotesModule sessionUser={userWithPermissions} />
+      case 'catalogo':
+        return <CatalogoPublicoModule />
       case 'prospectos':
-        return <ProspectosModule />
+        return <ProspectosModule userSession={userSession} />
       case 'financistas':
         return <FinancistasModule userSession={userSession} />
       case 'comisionistas':
@@ -478,6 +486,22 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
                         )
                       })}
                       <div className="sidebar-separator my-3" />
+                      <div className="px-2 py-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Enlaces Públicos Externos</div>
+                      <button
+                        className="sidebar-nav-item text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                        onClick={() => window.open('/catalogo', '_blank')}
+                      >
+                        <span className="nav-icon"><Compass size={20} weight="bold" /></span>
+                        Ver Catálogo Web
+                      </button>
+                      <button
+                        className="sidebar-nav-item text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                        onClick={() => window.open('/registro', '_blank')}
+                      >
+                        <span className="nav-icon"><ShareNetwork size={20} weight="bold" /></span>
+                        Formulario Redes (Leads)
+                      </button>
+                      <div className="sidebar-separator my-3" />
                       <button
                         className="sidebar-nav-item text-destructive hover:bg-destructive/10"
                         onClick={handleLogout}
@@ -514,7 +538,31 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* Acceso Rápido al Catálogo Público Web Externo */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open('/catalogo', '_blank')}
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs h-8 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 shadow-2xs"
+                title="Abrir Catálogo Público de Terrenos en una pestaña nueva"
+              >
+                <Compass size={15} weight="bold" />
+                <span>Catálogo Web</span>
+              </Button>
+
+              {/* Acceso Rápido al Formulario de Captura para Redes Sociales */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open('/registro', '_blank')}
+                className="hidden md:inline-flex items-center gap-1.5 text-xs h-8 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800 bg-blue-50/70 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 shadow-2xs"
+                title="Abrir Formulario de Captura de Leads (Redes Sociales) en pestaña nueva"
+              >
+                <ShareNetwork size={15} weight="bold" />
+                <span>Formulario Redes</span>
+              </Button>
+
               <Button
                 variant="outline"
                 size="icon"
@@ -604,6 +652,15 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
                     )}
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => window.open('/catalogo', '_blank')} className="cursor-pointer gap-2">
+                  <Compass size={16} weight="bold" className="text-emerald-600" />
+                  <span>Ver Catálogo Web (Público)</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => window.open('/registro', '_blank')} className="cursor-pointer gap-2">
+                  <ShareNetwork size={16} weight="bold" className="text-blue-600" />
+                  <span>Formulario Redes (Captura)</span>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => setModuloActivo('perfil')} className="cursor-pointer">
                   <UserCircle size={16} weight="duotone" className="mr-2" />

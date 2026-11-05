@@ -155,6 +155,38 @@ export const prospectoService = {
     await api.downloadFile('/prospectos/plantilla-csv', 'plantilla_prospectos.csv')
   },
 
+  async descargarPlantillaExcel(): Promise<void> {
+    await api.downloadFile('/prospectos/plantilla-excel', 'plantilla_prospectos_parcelia.xlsx')
+  },
+
+  async exportarExcel(filtros?: {
+    finca_id?: string | number
+    asesor_id?: string | number
+    estado?: string
+    buscar?: string
+  }): Promise<void> {
+    const params = new URLSearchParams()
+    if (filtros?.finca_id) params.append('finca_id', String(filtros.finca_id))
+    if (filtros?.asesor_id) params.append('asesor_id', String(filtros.asesor_id))
+    if (filtros?.estado) params.append('estado', filtros.estado)
+    if (filtros?.buscar) params.append('buscar', filtros.buscar)
+
+    const query = params.toString() ? `?${params.toString()}` : ''
+    const fecha = new Date().toISOString().slice(0, 10)
+    await api.downloadFile(`/prospectos/exportar-excel${query}`, `prospectos_crm_parcelia_${fecha}.xlsx`)
+  },
+
+  async cargarArchivoExcel(formData: FormData): Promise<{
+    success: boolean
+    message: string
+    total_importados: number
+    total_errores: number
+    errores: string[]
+  }> {
+    const res = await api.post<any>('/prospectos/cargar-excel', formData)
+    return res.data
+  },
+
   async cargaMasiva(payload: {
     prospectos: Array<{
       nombre_completo: string

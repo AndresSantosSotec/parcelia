@@ -31,6 +31,9 @@ import {
   Plus,
   Compass,
   ArrowSquareOut,
+  FileXls,
+  FileArrowDown,
+  Table,
 } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -45,10 +48,11 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
+import * as XLSX from 'xlsx'
 import { formatCurrency } from '@/lib/helpers'
 import { usePermissions } from '@/hooks/use-permissions'
 import { EVENTO_NAVEGAR_MODULO } from '@/hooks/use-navigate-module'
-import { api } from '@/lib/api'
+import { api, geoNamesService, Departamento, Municipio } from '@/lib/api'
 import {
   prospectoService,
   Prospecto,
@@ -115,12 +119,15 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
 
   const { hasPermission, isAdmin } = usePermissions(sessionData)
 
-  // En el CRM de ventas, la creación, visualización y seguimiento son funciones operativas habilitadas
-  const puedeVer = true
-  const puedeCrear = true
-  const puedeEditar = true
+  // Control estricto de permisos para funciones del CRM
+  const puedeVer = isAdmin || hasPermission('prospectos', 'ver')
+  const puedeCrear = isAdmin || hasPermission('prospectos', 'crear')
+  const puedeEditar = isAdmin || hasPermission('prospectos', 'editar')
   const puedeEliminar = isAdmin || hasPermission('prospectos', 'eliminar')
-  const puedeCambiarEstado = true
+  const puedeCambiarEstado = isAdmin || hasPermission('prospectos', 'cambiar_estado')
+  const puedeAsignar = isAdmin || hasPermission('prospectos', 'asignar')
+  const puedeImportar = isAdmin || hasPermission('prospectos', 'crear')
+  const puedeExportar = isAdmin || hasPermission('prospectos', 'ver')
 
   // Estado general
   const [prospectos, setProspectos] = useState<Prospecto[]>([])
@@ -137,6 +144,23 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
   const [fincas, setFincas] = useState<FincaOption[]>([])
   const [lotes, setLotes] = useState<LoteOption[]>([])
   const [asesores, setAsesores] = useState<AsesorOption[]>([])
+
+  // Departamentos y Municipios para prospectos (igual que en clientes)
+  const DEPARTAMENTOS_GT_FALLBACK = useMemo(() => [
+    'Alta Verapaz', 'Baja Verapaz', 'Chimaltenango', 'Chiquimula', 'El Progreso',
+    'Escuintla', 'Guatemala', 'Huehuetenango', 'Izabal', 'Jalapa', 'Jutiapa',
+    'Petén', 'Quetzaltenango', 'Quiché', 'Retalhuleu', 'Sacatepéquez', 'San Marcos',
+    'Santa Rosa', 'Sololá', 'Suchitepéquez', 'Totonicapán', 'Zacapa'
+  ], [])
+  const [departamentos, setDepartamentos] = useState<Departamento[]>([])
+  const [municipios, setMunicipios] = useState<Municipio[]>([])
+  const [cargandoDepartamentos, setCargandoDepartamentos] = useState(false)
+  const [cargandoMunicipios, setCargandoMunicipios] = useState(false)
+  const [departamentoSeleccionadoId, setDepartamentoSeleccionadoId] = useState<number | null>(null)
+
+  // Archivo para carga masiva
+  const [nombreArchivoCargado, setNombreArchivoCargado] = useState<string>('')
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null)
 
   // Modal Crear / Editar
   const [modalAbierto, setModalAbierto] = useState(false)
@@ -268,12 +292,85 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
           email: u.email,
         }))
       )
+
+      // Cargar Departamentos oficiales de Guatemala
+      setCargandoDepartamentos(true)
+      geoNamesService.getDepartamentos()
+        .then(res => {
+          if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+            setDepartamentos(res.data)
+            const deptoGuate = res.data.find((d: any) => d.name?.toLowerCase() === 'guatemala')
+            if (deptoGuate) {
+              setDepartamentoSeleccionadoId(deptoGuate.geonameId)
+              cargarMunicipios(deptoGuate.geonameId)
+            }
+          }
+        })
+        .catch(err => console.error('Error cargando departamentos:', err))
+        .finally(() => setCargandoDepartamentos(false))
     } catch {
       // Catálogos auxiliares opcionales
     }
   }
 
+  // Cargar Municipios según departamento seleccionado
+  const cargarMunicipios = async (departamentoId: number) => {
+    setCargandoMunicipios(true)
+    try {
+      const res = await geoNamesService.getMunicipios(departamentoId)
+      if (res.success && Array.isArray(res.data)) {
+        setMunicipios(res.data)
+      }
+    } catch (e) {
+      console.error('Error cargando municipios:', e)
+    } finally {
+      setCargandoMunicipios(false)
+    }
+  }
+
+  const handleDepartamentoChange = (deptoNombreOrId: string) => {
+    if (!deptoNombreOrId) {
+      setDepartamentoSeleccionadoId(null)
+      setFormData(prev => ({ ...prev, departamento: '', municipio: '' }))
+      setMunicipios([])
+      return
+    }
+
+    const deptoEncontrado = departamentos.find(
+      d => String(d.geonameId) === deptoNombreOrId || d.name.toLowerCase() === deptoNombreOrId.toLowerCase()
+    )
+
+    if (deptoEncontrado) {
+      setDepartamentoSeleccionadoId(deptoEncontrado.geonameId)
+      setFormData(prev => ({
+        ...prev,
+        departamento: deptoEncontrado.name,
+        municipio: '',
+      }))
+      cargarMunicipios(deptoEncontrado.geonameId)
+    } else {
+      setDepartamentoSeleccionadoId(null)
+      setFormData(prev => ({
+        ...prev,
+        departamento: deptoNombreOrId,
+        municipio: '',
+      }))
+      setMunicipios([])
+    }
+  }
+
+  const handleMunicipioChange = (munNombreOrId: string) => {
+    const munEncontrado = municipios.find(
+      m => String(m.geonameId) === munNombreOrId || m.name.toLowerCase() === munNombreOrId.toLowerCase()
+    )
+    setFormData(prev => ({
+      ...prev,
+      municipio: munEncontrado ? munEncontrado.name : munNombreOrId,
+    }))
+  }
+
   const cargarProspectos = async () => {
+    if (!puedeVer) return
     setCargando(true)
     try {
       const filtros: FiltrosProspectos = {}
@@ -341,6 +438,11 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
       notas: '',
       fecha_proximo_contacto: '',
     })
+    const deptoGuate = departamentos.find(d => d.name.toLowerCase() === 'guatemala')
+    if (deptoGuate) {
+      setDepartamentoSeleccionadoId(deptoGuate.geonameId)
+      cargarMunicipios(deptoGuate.geonameId)
+    }
     setModalAbierto(true)
   }
 
@@ -356,6 +458,12 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
       const partes = p.nombre_completo.trim().split(/\s+/)
       nombres = partes[0] || ''
       apellidos = partes.slice(1).join(' ') || ''
+    }
+
+    const deptoExistente = departamentos.find(d => d.name.toLowerCase() === (p.departamento || '').toLowerCase())
+    if (deptoExistente) {
+      setDepartamentoSeleccionadoId(deptoExistente.geonameId)
+      cargarMunicipios(deptoExistente.geonameId)
     }
 
     setFormData({
@@ -626,30 +734,268 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
     window.open(`https://wa.me/${clean}?text=${texto}`, '_blank')
   }
 
-  // Descargar plantilla CSV de ejemplo
-  const handleDescargarPlantilla = async () => {
+  // Descargar plantilla oficial en formato Microsoft Excel (.xlsx) con columnas completas
+  const handleDescargarPlantillaExcel = async () => {
     try {
-      await prospectoService.descargarPlantillaCsv()
-      toast.success('Plantilla CSV descargada con éxito.')
+      // 1. Intentar descargar mediante el endpoint oficial de backend (genera .xlsx binario estilizado con PhpSpreadsheet)
+      await prospectoService.descargarPlantillaExcel()
+      toast.success('Plantilla oficial de Excel (.xlsx) descargada correctamente.')
     } catch {
-      toast.error('Error al descargar la plantilla CSV.')
+      // 2. Fallback de cliente con SheetJS generando un auténtico libro Microsoft Excel (.xlsx)
+      try {
+        const headers = [
+          'nombre_completo',
+          'nombres',
+          'apellidos',
+          'telefono',
+          'telefono_secundario',
+          'email',
+          'dpi',
+          'nit',
+          'departamento',
+          'municipio',
+          'direccion',
+          'presupuesto_estimado',
+          'notas'
+        ]
+
+        const sampleRows = [
+          [
+            'Carlos Estuardo Morales Lopez',
+            'Carlos Estuardo',
+            'Morales Lopez',
+            '55443322',
+            '44332211',
+            'carlos.morales@ejemplo.com',
+            '2456789010101',
+            '1234567-8',
+            'Guatemala',
+            'Guatemala',
+            'Zona 10, Edificio Reforma',
+            75000,
+            'Interesado en lote esquinero con facilidades de pago'
+          ],
+          [
+            'Maria Eugenia Perez Hernandez',
+            'Maria Eugenia',
+            'Perez Hernandez',
+            '33221100',
+            '',
+            'maria.perez@ejemplo.com',
+            '1987654320101',
+            'CF',
+            'Sacatepéquez',
+            'Antigua Guatemala',
+            'Calle Ancha #14',
+            60000,
+            'Pregunto por Facebook sobre enganche fraccionado'
+          ],
+          [
+            'Jose Fernando Alvarez Ruiz',
+            'Jose Fernando',
+            'Alvarez Ruiz',
+            '58990011',
+            '',
+            'jose.alvarez@ejemplo.com',
+            '',
+            'CF',
+            'Escuintla',
+            'Santa Lucía Cotzumalguapa',
+            'Barrio El Carmen',
+            50000,
+            'Lead captado en feria inmobiliaria'
+          ]
+        ]
+
+        const wb = XLSX.utils.book_new()
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...sampleRows])
+        ws['!cols'] = [
+          { wch: 30 }, { wch: 18 }, { wch: 18 }, { wch: 15 }, { wch: 15 },
+          { wch: 25 }, { wch: 16 }, { wch: 12 }, { wch: 15 }, { wch: 22 },
+          { wch: 30 }, { wch: 20 }, { wch: 45 }
+        ]
+        XLSX.utils.book_append_sheet(wb, ws, 'Plantilla Prospectos')
+        XLSX.writeFile(wb, 'plantilla_prospectos_parcelia.xlsx')
+        toast.success('Plantilla oficial de Excel (.xlsx) generada correctamente.')
+      } catch (clientErr) {
+        console.error('Error generando Excel:', clientErr)
+        toast.error('Error al generar la plantilla Excel.')
+      }
+    }
+  }
+
+  // Cargar archivo Microsoft Excel (.xlsx, .xls) o CSV seleccionado por el usuario
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setNombreArchivoCargado(file.name)
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls')
+
+    if (isExcel) {
+      try {
+        const buffer = await file.arrayBuffer()
+        const wb = XLSX.read(buffer, { type: 'array' })
+        const sheetName = wb.SheetNames[0]
+        const worksheet = wb.Sheets[sheetName]
+        const csv = XLSX.utils.sheet_to_csv(worksheet)
+        setTextoMasivo(csv.trim())
+        const rowCount = csv.split('\n').filter(l => l.trim().length > 0).length - 1
+        toast.success(`Libro Excel "${file.name}" cargado (${Math.max(0, rowCount)} filas detectadas).`)
+      } catch (err) {
+        console.error('Error leyendo archivo Excel:', err)
+        toast.error('Error al procesar el archivo Excel. Verifica que sea un formato válido.')
+      }
+    } else {
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const text = event.target?.result as string
+        if (text) {
+          setTextoMasivo(text.trim())
+          const count = text.split('\n').filter(l => l.trim().length > 0).length - 1
+          toast.success(`Archivo "${file.name}" cargado (${Math.max(0, count)} filas detectadas).`)
+        }
+      }
+      reader.onerror = () => {
+        toast.error('Error al leer el archivo seleccionado.')
+      }
+      reader.readAsText(file, 'UTF-8')
+    }
+  }
+
+  // Exportar prospectos actuales a Microsoft Excel (.xlsx)
+  const handleExportarExcel = async () => {
+    if (prospectosFiltrados.length === 0) {
+      toast.error('No hay prospectos para exportar con los filtros seleccionados.')
+      return
+    }
+
+    try {
+      // 1. Intentar descargar mediante el endpoint de backend oficial
+      await prospectoService.exportarExcel({
+        finca_id: fincaFiltro !== 'todas' ? fincaFiltro : undefined,
+        asesor_id: asesorFiltro !== 'todos' ? asesorFiltro : undefined,
+        estado: estadoFiltro !== 'todos' ? estadoFiltro : undefined,
+        buscar: busquedaFiltro || undefined
+      })
+      toast.success(`${prospectosFiltrados.length} prospectos exportados a Excel (.xlsx) correctamente.`)
+    } catch {
+      // 2. Fallback de cliente con SheetJS generando auténtico .xlsx
+      try {
+        const headers = [
+          'ID',
+          'Fecha Registro',
+          'Nombre Completo',
+          'Nombres',
+          'Apellidos',
+          'Teléfono Principal',
+          'Teléfono Secundario',
+          'Correo',
+          'DPI',
+          'NIT',
+          'Departamento',
+          'Municipio',
+          'Dirección Domiciliar',
+          'Finca de Interés',
+          'Lote',
+          'Asesor Asignado',
+          'Estado CRM',
+          'Origen de Captación',
+          'Presupuesto Estimado (Q)',
+          'Notas',
+          'Último Contacto'
+        ]
+
+        const rows = prospectosFiltrados.map(p => [
+          p.id,
+          p.created_at ? p.created_at.substring(0, 10) : '',
+          p.nombre_completo || '',
+          p.nombres || '',
+          p.apellidos || '',
+          p.telefono || '',
+          p.telefono_secundario || '',
+          p.email || '',
+          p.dpi || '',
+          p.nit || '',
+          p.departamento || '',
+          p.municipio || '',
+          p.direccion || '',
+          p.finca?.nombre || '',
+          p.lote?.numero_lote || '',
+          p.asesor?.name || 'Sin Asignar',
+          p.estado,
+          p.origen || '',
+          p.presupuesto_estimado ?? '',
+          p.notas || '',
+          p.ultimo_contacto_at ? p.ultimo_contacto_at.substring(0, 16) : ''
+        ])
+
+        const wb = XLSX.utils.book_new()
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+        ws['!cols'] = [
+          { wch: 6 }, { wch: 12 }, { wch: 28 }, { wch: 18 }, { wch: 18 },
+          { wch: 16 }, { wch: 16 }, { wch: 25 }, { wch: 15 }, { wch: 12 },
+          { wch: 16 }, { wch: 22 }, { wch: 30 }, { wch: 22 }, { wch: 10 },
+          { wch: 20 }, { wch: 16 }, { wch: 18 }, { wch: 20 }, { wch: 35 },
+          { wch: 18 }
+        ]
+        XLSX.utils.book_append_sheet(wb, ws, 'Prospectos CRM')
+        XLSX.writeFile(wb, `prospectos_crm_parcelia_${new Date().toISOString().slice(0, 10)}.xlsx`)
+        toast.success(`${prospectosFiltrados.length} prospectos exportados a Excel (.xlsx) correctamente.`)
+      } catch (err) {
+        console.error('Error exportando Excel:', err)
+        toast.error('Error al exportar prospectos a Excel.')
+      }
     }
   }
 
   // Procesar importación masiva con asignación equitativa
   const handleProcesarCargaMasiva = async () => {
     if (!textoMasivo.trim()) {
-      toast.error('Debes pegar al menos una fila con el nombre y teléfono del prospecto.')
+      toast.error('Debes cargar un archivo o pegar al menos una fila con el nombre y teléfono del prospecto.')
       return
     }
 
     setImportandoMasivo(true)
     try {
       const lineas = textoMasivo.split('\n').filter(l => l.trim().length > 0)
-      const prospectosRows = lineas
+      if (lineas.length === 0) {
+        toast.error('No se detectaron líneas válidas.')
+        return
+      }
+
+      // Omitir cabecera si viene incluida
+      const primerLinea = lineas[0].toLowerCase()
+      const lineasProcesar = (primerLinea.includes('nombre') || primerLinea.includes('telefono'))
+        ? lineas.slice(1)
+        : lineas
+
+      const prospectosRows = lineasProcesar
         .map(linea => {
-          const separador = linea.includes('\t') ? '\t' : ','
+          const separador = linea.includes('\t') ? '\t' : (linea.includes(';') ? ';' : ',')
           const partes = linea.split(separador).map(p => p.trim().replace(/^["']|["']$/g, ''))
+
+          // Detección inteligente si trae nombres separados (columna 3 es teléfono) o directo (columna 1 es teléfono)
+          const esFormatoExtendido = partes.length >= 8 && /\d{7,}/.test(partes[3] || '')
+
+          if (esFormatoExtendido) {
+            return {
+              nombre_completo: partes[0] || `${partes[1]} ${partes[2]}`.trim(),
+              nombres: partes[1] || undefined,
+              apellidos: partes[2] || undefined,
+              telefono: partes[3] || '',
+              telefono_secundario: partes[4] || undefined,
+              email: partes[5] || undefined,
+              dpi: partes[6] ? partes[6].replace(/\D/g, '') : undefined,
+              nit: partes[7] || undefined,
+              departamento: partes[8] || undefined,
+              municipio: partes[9] || undefined,
+              direccion: partes[10] || undefined,
+              presupuesto_estimado: partes[11] ? Number(partes[11].replace(/[^\d.]/g, '')) : undefined,
+              notas: partes[12] || undefined,
+              finca_id: fincaImportacion ? Number(fincaImportacion) : undefined,
+            }
+          }
 
           return {
             nombre_completo: partes[0] || '',
@@ -678,12 +1024,17 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
         origen: origenImportacion,
       })
 
-      toast.success(`¡Éxito! Se importaron ${res.total_importados} prospectos correctamente.`)
-      setModalImportarAbierto(false)
-      setTextoMasivo('')
-      cargarProspectos()
-    } catch (e: any) {
-      toast.error(e.response?.data?.message || e.message || 'Error durante la carga masiva')
+      if (res.success) {
+        toast.success(`¡Éxito! Se importaron ${res.total_importados} prospectos correctamente.`)
+        setTextoMasivo('')
+        setNombreArchivoCargado('')
+        setModalImportarAbierto(false)
+        cargarProspectos()
+      } else {
+        toast.error(res.message || 'Error en la importación masiva.')
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || 'Error al procesar la carga masiva')
     } finally {
       setImportandoMasivo(false)
     }
@@ -728,6 +1079,20 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
     }
   }
 
+  if (!puedeVer) {
+    return (
+      <div className="p-8 text-center bg-card border rounded-xl max-w-lg mx-auto my-12 space-y-3 shadow-xs">
+        <div className="w-12 h-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mx-auto">
+          <WarningCircle size={28} />
+        </div>
+        <h2 className="text-lg font-bold">Acceso Restringido</h2>
+        <p className="text-sm text-muted-foreground">
+          No tienes permisos para visualizar o gestionar el Embudo de Prospectos & CRM. Consulta con el administrador del sistema.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* HEADER PRINCIPAL */}
@@ -758,34 +1123,53 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
             Actualizar
           </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setModalImportarAbierto(true)}
-            className="gap-1.5 text-xs h-9 hover:border-emerald-500 hover:text-emerald-600"
-          >
-            <UploadSimple size={15} weight="bold" />
-            Importar Leads
-          </Button>
+          {puedeExportar && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportarExcel}
+              className="gap-1.5 text-xs h-9 hover:border-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-400"
+              title="Descargar todos los prospectos filtrados en formato Excel"
+            >
+              <FileXls size={16} weight="bold" className="text-emerald-600 dark:text-emerald-400" />
+              Exportar Excel
+            </Button>
+          )}
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setModalRedesAbierto(true)}
-            className="gap-1.5 text-xs h-9 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900 hover:bg-blue-50/50"
-          >
-            <ShareNetwork size={15} weight="bold" />
-            Formulario Redes
-          </Button>
+          {puedeImportar && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModalImportarAbierto(true)}
+              className="gap-1.5 text-xs h-9 hover:border-emerald-500 hover:text-emerald-600"
+            >
+              <UploadSimple size={15} weight="bold" />
+              Importar Leads
+            </Button>
+          )}
 
-          <Button
-            size="sm"
-            onClick={abrirModalNuevo}
-            className="gap-1.5 text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm px-3.5"
-          >
-            <UserPlus size={16} weight="bold" />
-            + Nuevo Prospecto
-          </Button>
+          {puedeCrear && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModalRedesAbierto(true)}
+              className="gap-1.5 text-xs h-9 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900 hover:bg-blue-50/50"
+            >
+              <ShareNetwork size={15} weight="bold" />
+              Formulario Redes
+            </Button>
+          )}
+
+          {puedeCrear && (
+            <Button
+              size="sm"
+              onClick={abrirModalNuevo}
+              className="gap-1.5 text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm px-3.5"
+            >
+              <UserPlus size={16} weight="bold" />
+              + Nuevo Prospecto
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1110,7 +1494,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                           </div>
 
                           {/* BOTON CONVERTIR A COMPRADOR / INICIAR VENTA */}
-                          {p.estado !== 'ganado' && (
+                          {puedeCrear && p.estado !== 'ganado' && (
                             <div className="pt-1">
                               <Button
                                 size="sm"
@@ -1342,23 +1726,66 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Municipio</label>
-                    <Input
-                      value={formData.municipio}
-                      onChange={e => setFormData({ ...formData, municipio: e.target.value })}
-                      placeholder="Ej. Guatemala, Quetzaltenango..."
-                      className="h-9 text-xs sm:text-sm"
-                    />
+                    <label className="text-xs font-medium text-foreground flex items-center justify-between">
+                      <span>Departamento *</span>
+                      {cargandoDepartamentos && <span className="text-[10px] text-muted-foreground animate-pulse">Cargando...</span>}
+                    </label>
+                    <select
+                      value={
+                        departamentos.find(d => d.name === formData.departamento || String(d.geonameId) === String(departamentoSeleccionadoId))
+                          ? String(departamentos.find(d => d.name === formData.departamento || String(d.geonameId) === String(departamentoSeleccionadoId))?.geonameId)
+                          : formData.departamento
+                      }
+                      onChange={e => handleDepartamentoChange(e.target.value)}
+                      disabled={cargandoDepartamentos}
+                      className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      <option value="">{cargandoDepartamentos ? 'Cargando departamentos...' : '-- Seleccionar Departamento --'}</option>
+                      {departamentos.length > 0 ? (
+                        departamentos.map(d => (
+                          <option key={d.geonameId} value={String(d.geonameId)}>
+                            {d.name}
+                          </option>
+                        ))
+                      ) : (
+                        DEPARTAMENTOS_GT_FALLBACK.map(dep => (
+                          <option key={dep} value={dep}>
+                            {dep}
+                          </option>
+                        ))
+                      )}
+                    </select>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Departamento</label>
-                    <Input
-                      value={formData.departamento}
-                      onChange={e => setFormData({ ...formData, departamento: e.target.value })}
-                      placeholder="Ej. Guatemala, Huehuetenango..."
-                      className="h-9 text-xs sm:text-sm"
-                    />
+                    <label className="text-xs font-medium text-foreground flex items-center justify-between">
+                      <span>Municipio</span>
+                      {cargandoMunicipios && <span className="text-[10px] text-muted-foreground animate-pulse">Cargando...</span>}
+                    </label>
+                    {municipios.length > 0 ? (
+                      <select
+                        value={
+                          municipios.find(m => m.name.toLowerCase() === formData.municipio.toLowerCase())?.name || formData.municipio
+                        }
+                        onChange={e => handleMunicipioChange(e.target.value)}
+                        disabled={cargandoMunicipios}
+                        className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      >
+                        <option value="">{cargandoMunicipios ? 'Cargando municipios...' : '-- Seleccionar Municipio --'}</option>
+                        {municipios.map(m => (
+                          <option key={m.geonameId} value={m.name}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <Input
+                        value={formData.municipio}
+                        onChange={e => setFormData({ ...formData, municipio: e.target.value })}
+                        placeholder={cargandoMunicipios ? 'Cargando municipios...' : 'Ej. Guatemala, Quetzaltenango...'}
+                        className="h-9 text-xs sm:text-sm"
+                      />
+                    )}
                   </div>
                 </div>
               </TabsContent>
@@ -1761,24 +2188,68 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleDescargarPlantilla}
+                onClick={handleDescargarPlantillaExcel}
                 className="text-xs gap-1.5 h-8 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                title="Descargar archivo plantilla oficial en Microsoft Excel (.xlsx)"
               >
-                <DownloadSimple size={14} weight="bold" /> Descargar Plantilla CSV
+                <FileXls size={15} weight="bold" className="text-emerald-600" /> Descargar Plantilla Excel (.xlsx)
               </Button>
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg text-xs space-y-1">
-              <p className="font-semibold text-blue-900 dark:text-blue-200">
-                Instrucciones de Importación Masiva:
-              </p>
-              <p className="text-muted-foreground">
-                Pega las filas directamente desde Excel o Google Sheets (separadas por coma o tabulación).
+            <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+                  <Table size={15} className="text-blue-600" />
+                  Estructura Oficial para Microsoft Excel (.xlsx):
+                </span>
+                <span className="text-[11px] text-blue-700 dark:text-blue-300 font-mono">
+                  13 Columnas Compatibles
+                </span>
+              </div>
+              <p className="text-muted-foreground text-[11px] leading-relaxed">
+                Descarga la plantilla oficial en Excel (.xlsx) con el botón superior, llénala con los datos de tus prospectos y selecciónala aquí abajo.
                 <br />
-                Columnas admitidas: <strong>Nombre Completo, Teléfono, Tel. Secundario, Correo, DPI, Presupuesto, Notas</strong>
+                <strong>Columnas:</strong> <code>nombre_completo, nombres, apellidos, telefono, telefono_secundario, email, dpi, nit, departamento, municipio, direccion, presupuesto_estimado, notas</code>
               </p>
+            </div>
+
+            {/* Selector de Archivo Excel / CSV */}
+            <div className="p-3 bg-muted/30 border border-dashed border-border/80 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <UploadSimple size={15} className="text-emerald-600" />
+                  Opción 1: Seleccionar Archivo Excel desde tu Equipo (.xlsx / .xls / .csv)
+                </span>
+                {nombreArchivoCargado && (
+                  <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300">
+                    Cargado
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  id="input-archivo-leads"
+                  ref={fileInputRef}
+                  accept=".csv,.txt,.xlsx,.xls"
+                  onChange={handleFileSelected}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-8 gap-1.5 text-xs border-emerald-500 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                >
+                  <FileArrowDown size={14} weight="bold" /> Seleccionar Archivo
+                </Button>
+                <span className="text-xs text-muted-foreground truncate">
+                  {nombreArchivoCargado || 'Ningún archivo seleccionado todavía'}
+                </span>
+              </div>
             </div>
 
             {/* Parámetros de Asignación */}
@@ -1849,10 +2320,10 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-foreground">
-                  Pegar Datos de Prospectos (Una fila por cliente) *
+                  Opción 2: O Pegar Filas Directamente (Copiar desde Excel / Google Sheets) *
                 </label>
-                <span className="text-[11px] text-muted-foreground">
-                  {textoMasivo.split('\n').filter(l => l.trim().length > 0).length} prospectos detectados
+                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  {textoMasivo.split('\n').filter(l => l.trim().length > 0).length} filas detectadas
                 </span>
               </div>
               <textarea

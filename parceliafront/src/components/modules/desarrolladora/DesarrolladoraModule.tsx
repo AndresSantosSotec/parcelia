@@ -20,7 +20,13 @@ import { AccionesRegistro, PaginacionLista } from './AccionesRegistro'
 import { AvisoCaja, useCajaOperable } from '@/components/shared/AvisoCaja'
 import { SelectorUbicacion } from '@/components/shared/SelectorUbicacion'
 import { MarcoDocumento, VistaPreviaDocumento } from './VistaPreviaDocumento'
-import { TreeStructure } from '@phosphor-icons/react'
+import { TreeStructure, FilePdf, FileXls, Clock, CaretDown, FileText } from '@phosphor-icons/react'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
 import { TableSkeleton } from '@/components/ui/TableSkeleton'
 
 const q = (n: number | string | null | undefined) =>
@@ -394,11 +400,36 @@ export function DesarrolladoraModule({
                 <TreeStructure size={15} weight="duotone" /> Ir a Inventario de Lotes
               </Button>
             )}
-            {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/listado?formato=pdf', 'reporte-fincas.pdf')}>Listado PDF</Button>}
-            {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/listado?formato=xlsx', 'reporte-fincas.xlsx')}>Listado Excel</Button>}
-            {puedeReportes && <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/cuotas-pendientes?formato=pdf', 'cuotas-pendientes.pdf')}>Cuotas pendientes</Button>}
+            {puedeReportes && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                    <FileText size={15} className="text-primary" /> Reportes <CaretDown size={13} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuItem
+                    onClick={() => bajar('/reportes-compra-fincas/listado?formato=pdf', 'reporte-fincas.pdf')}
+                    className="gap-2 cursor-pointer text-xs"
+                  >
+                    <FilePdf size={16} className="text-red-500" /> Listado en PDF
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => bajar('/reportes-compra-fincas/listado?formato=xlsx', 'reporte-fincas.xlsx')}
+                    className="gap-2 cursor-pointer text-xs"
+                  >
+                    <FileXls size={16} className="text-emerald-600" /> Listado en Excel
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => bajar('/reportes-compra-fincas/cuotas-pendientes?formato=pdf', 'cuotas-pendientes.pdf')}
+                    className="gap-2 cursor-pointer text-xs"
+                  >
+                    <Clock size={16} className="text-amber-500" /> Cuotas pendientes
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             {puedeCrear && <Button size="sm" onClick={abrirCrear}>Nueva compra</Button>}
-            <Button size="sm" variant="outline" onClick={() => bajar('/reportes-compra-fincas/requisitos', 'registro-modulos.pdf')}>Registro PDF</Button>
           </div>
         </div>
         <div className="grid gap-2 md:grid-cols-4">

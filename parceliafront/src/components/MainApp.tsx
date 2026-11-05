@@ -35,7 +35,7 @@ const PlanoLotesModule = lazy(() => import('./modules/lotificacion/PlanoLotesMod
 const ProspectosModule = lazy(() => import('./modules/prospectos/ProspectosModule').then((m) => ({ default: m.ProspectosModule })))
 const CatalogoPublicoModule = lazy(() => import('./modules/catalogo/CatalogoPublicoModule').then((m) => ({ default: m.CatalogoPublicoModule })))
 const TasasInmobiliariasModule = lazy(() => import('./modules/tasas/TasasInmobiliariasModule').then((m) => ({ default: m.TasasInmobiliariasModule })))
-import { useEmpresaConfig } from '@/hooks/useEmpresaConfig'
+import { useEmpresaConfig, resolveLogoUrl } from '@/hooks/useEmpresaConfig'
 import { ChatbotHelper } from './ChatbotHelper'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Package, Wallet, Receipt, ChartBar, UserCircle, ClockCounterClockwise, CreditCard as CreditCardIcon, List, SignOut, Moon, Sun, Monitor, Lock, Storefront, Users, CurrencyDollar, Warning, PaintBrush, Handshake, TreeStructure, Chats, Compass, ShareNetwork } from '@phosphor-icons/react'
@@ -106,6 +106,11 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
   const { isDesktop } = useResponsive()
   const { theme, setTheme } = useTheme()
   const { config: empresaConfig } = useEmpresaConfig()
+  const [logoError, setLogoError] = useState(false)
+
+  useEffect(() => {
+    setLogoError(false)
+  }, [empresaConfig.logoUrl])
 
   // Cargar sucursales activas al montar Y cuando cambie el trigger
   useEffect(() => {
@@ -523,9 +528,14 @@ export function MainApp({ userSession, onLogout, onSessionUserRefresh }: MainApp
                 </Button>
               )}
               <div className="flex items-center gap-2 sm:gap-3 cursor-pointer min-w-0" onClick={() => setModuloActivo('dashboard')}>
-                {empresaConfig.logoUrl ? (
+                {empresaConfig.logoUrl && !logoError ? (
                   <div className="h-8 sm:h-10 max-w-[72px] sm:max-w-[120px] shrink-0 flex items-center justify-center p-1 rounded-xl bg-card border border-border/80 shadow-sm overflow-hidden">
-                    <img src={empresaConfig.logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
+                    <img
+                      src={resolveLogoUrl(empresaConfig.logoUrl) || empresaConfig.logoUrl}
+                      alt={empresaConfig.nombreEmpresa || 'Logo'}
+                      className="max-h-full max-w-full object-contain"
+                      onError={() => setLogoError(true)}
+                    />
                   </div>
                 ) : (
                   <div className="modern-header-logo shrink-0">

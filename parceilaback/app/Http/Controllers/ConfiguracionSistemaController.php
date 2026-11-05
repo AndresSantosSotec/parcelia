@@ -179,7 +179,7 @@ class ConfiguracionSistemaController extends Controller
 
         $data = $request->all();
 
-        // Si se envió un logo en Base64, guardar respaldo en disco y preservar en BD
+        // Si se envió un logo en Base64, guardar en disco público y asignar URL estática
         if (!empty($data['logoUrl']) && str_starts_with($data['logoUrl'], 'data:image/')) {
             try {
                 if (preg_match('/^data:image\/(\w+);base64,/', $data['logoUrl'], $type)) {
@@ -188,9 +188,12 @@ class ConfiguracionSistemaController extends Controller
                     if ($extension === 'jpeg') $extension = 'jpg';
                     $decoded = base64_decode($imageData);
                     if ($decoded !== false) {
+                        \Illuminate\Support\Facades\Storage::disk('public')->makeDirectory('logos');
                         $filename = 'logo_oficial.' . $extension;
                         $path = 'logos/' . $filename;
                         \Illuminate\Support\Facades\Storage::disk('public')->put($path, $decoded);
+                        // Convertir a URL pública para que no sature la base de datos ni el localStorage
+                        $data['logoUrl'] = url('storage/' . $path) . '?v=' . time();
                     }
                 }
             } catch (\Throwable $e) {
@@ -204,6 +207,49 @@ class ConfiguracionSistemaController extends Controller
             'success' => true,
             'data'    => $guardado,
             'message' => 'Configuración de empresa y logo guardada exitosamente.',
+        ]);
+    }
+
+    /**
+     * Subir archivo de logo oficial de la empresa vía multipart/form-data
+     * POST /api/v1/empresa-config/logo
+     */
+    public function uploadLogo(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+
+        $esAdmin = $user && (
+            in_array($user->rol, ['superadmin', 'administrador', 'admin', 'gerente'], true) ||
+            (method_exists($user, 'normalizedRole') && in_array($user->normalizedRole(), ['superadmin', 'administrador'], true))
+        );
+
+        if (!$esAdmin) {
+            return response()->json(['error' => 'Solo administradores pueden cambiar el logo de la empresa.'], 403);
+        }
+
+        $request->validate([
+            'logo' => 'required|image|mimes:jpeg,png,jpg,webp,svg|max:4096',
+        ]);
+
+        $file = $request->file('logo');
+        $ext = $file->getClientOriginalExtension() ?: 'png';
+        $filename = 'logo_oficial.' . $ext;
+
+        \Illuminate\Support\Facades\Storage::disk('public')->makeDirectory('logos');
+        $path = $file->storeAs('logos', $filename, 'public');
+
+        $url = url('storage/' . $path) . '?v=' . time();
+
+        // Actualizar la configuración en BD
+        $config = \App\Helpers\EmpresaConfigHelper::getConfig();
+        $config['logoUrl'] = $url;
+        \App\Helpers\EmpresaConfigHelper::setConfig($config);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Logo oficial actualizado correctamente.',
+            'logoUrl' => $url,
+            'data'    => $config,
         ]);
     }
 }

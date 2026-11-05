@@ -195,6 +195,9 @@ Route::prefix('v1')->group(function () {
             Route::delete('/lotes/{loteId}/imagenes/{imagenId}', [LoteController::class, 'destroyImagen'])->middleware('permiso:lotes,imagenes');
 
             // CRM y Embudo de Prospectos
+            Route::get('/prospectos/plantilla-excel', [ProspectoController::class, 'plantillaExcel'])->middleware('permiso:prospectos,ver');
+            Route::get('/prospectos/exportar-excel', [ProspectoController::class, 'exportarExcel'])->middleware('permiso:prospectos,ver');
+            Route::post('/prospectos/cargar-excel', [ProspectoController::class, 'cargarArchivoExcel'])->middleware('permiso:prospectos,crear');
             Route::get('/prospectos/plantilla-csv', [ProspectoController::class, 'plantillaCsv'])->middleware('permiso:prospectos,ver');
             Route::post('/prospectos/carga-masiva', [ProspectoController::class, 'cargaMasiva'])->middleware('permiso:prospectos,crear');
             Route::post('/prospectos/asignacion-masiva', [ProspectoController::class, 'asignacionMasiva'])->middleware('permiso:prospectos,asignar');
@@ -244,7 +247,8 @@ Route::prefix('v1')->group(function () {
         // ==========================================
         // 🎨 CONFIGURACIÓN DE EMPRESA, MARCA & LOGO
         // ==========================================
-        Route::post('/empresa-config', [ConfiguracionSistemaController::class, 'updateEmpresaConfig'])->middleware('permiso:configuracion,editar');
+        Route::post('/empresa-config', [ConfiguracionSistemaController::class, 'updateEmpresaConfig']);
+        Route::post('/empresa-config/logo', [ConfiguracionSistemaController::class, 'uploadLogo']);
 
         // Dashboard
         Route::get('/dashboard', [DashboardController::class, 'index']);

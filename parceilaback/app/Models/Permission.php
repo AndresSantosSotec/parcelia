@@ -115,6 +115,7 @@ class Permission extends Model
         'prospectos' => ['ver', 'crear', 'editar', 'eliminar', 'cambiar_estado', 'asignar'],
         'planes_interes' => ['ver', 'crear', 'editar', 'eliminar'],
         'transferencias' => ['ver', 'crear', 'aprobar', 'anular'],
+        'configuracion' => ['ver', 'editar'],
     ];
 
     /**

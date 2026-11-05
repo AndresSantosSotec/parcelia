@@ -33,6 +33,21 @@ export const DEFAULT_EMPRESA_CONFIG: EmpresaConfig = {
   temaColor: 'esmeralda'
 }
 
+/**
+ * Resuelve la URL de la imagen del logo asegurando que rutas relativas del backend
+ * (/storage/...) se direccionen al origen correcto de la API.
+ */
+export function resolveLogoUrl(url: string | null | undefined): string | null {
+  if (!url || typeof url !== 'string' || !url.trim()) return null
+  const trimmed = url.trim()
+  if (trimmed.startsWith('data:image/') || trimmed.startsWith('blob:') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed
+  }
+  const backendBase = (import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1').replace(/\/api\/v1\/?$/, '')
+  const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  return `${backendBase}${cleanPath}`
+}
+
 const STORAGE_KEY = 'parcelia_empresa_config'
 const EVENT_NAME = 'parcelia:config_updated'
 

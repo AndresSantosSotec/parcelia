@@ -6,7 +6,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { useEmpresaConfig, EmpresaConfig } from '@/hooks/useEmpresaConfig'
+import { useEmpresaConfig, EmpresaConfig, resolveLogoUrl } from '@/hooks/useEmpresaConfig'
+import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import {
   PaintBrush,
@@ -34,8 +35,8 @@ export function PersonalizacionModule() {
   const [guardando, setGuardando] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Manejar carga de archivo de logo y convertir a Base64
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Manejar carga de archivo de logo y sincronizar con servidor y local
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -44,9 +45,28 @@ export function PersonalizacionModule() {
       return
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('El tamaño de la imagen debe ser menor a 2MB')
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('El tamaño de la imagen debe ser menor a 5MB')
       return
+    }
+
+    // Previsualización instantánea
+    const objectUrl = URL.createObjectURL(file)
+    setLogoPreview(objectUrl)
+
+    try {
+      const uploadData = new FormData()
+      uploadData.append('logo', file)
+      const res = await api.post<any>('/empresa-config/logo', uploadData)
+      if (res?.success && res.logoUrl) {
+        setLogoPreview(res.logoUrl)
+        setFormData(prev => ({ ...prev, logoUrl: res.logoUrl }))
+        updateConfig({ logoUrl: res.logoUrl })
+        toast.success('Logo oficial subido y guardado exitosamente.')
+        return
+      }
+    } catch (uploadErr) {
+      console.warn('Subida directa no completada, aplicando conversión local:', uploadErr)
     }
 
     const reader = new FileReader()
@@ -170,9 +190,10 @@ export function PersonalizacionModule() {
                     <div className="space-y-4 text-center">
                       <div className="w-48 h-32 mx-auto rounded-xl bg-card border border-border/80 flex items-center justify-center p-3 shadow-inner overflow-hidden">
                         <img
-                          src={logoPreview}
+                          src={resolveLogoUrl(logoPreview) || logoPreview}
                           alt="Logo Preview"
                           className="max-h-full max-w-full object-contain"
+                          onError={() => setLogoPreview(null)}
                         />
                       </div>
                       <div className="flex items-center justify-center gap-2">
@@ -441,7 +462,7 @@ export function PersonalizacionModule() {
                     <div className="flex items-center gap-3">
                       {formData.logoUrl ? (
                         <img
-                          src={formData.logoUrl}
+                          src={resolveLogoUrl(formData.logoUrl) || formData.logoUrl}
                           alt="Logo Empresa"
                           className="h-14 max-w-[140px] object-contain"
                         />

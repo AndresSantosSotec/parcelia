@@ -16,11 +16,13 @@ import {
   ACCIONES_POR_MODULO, 
   MODULO_LABELS, 
   ACCION_LABELS,
+  MODULOS_EXCLUSIVOS_SUPERADMIN,
   Modulo 
 } from '@/hooks/use-permissions'
 import { isModuloVisible, isModuloEmpeno, EMPENOS_ENABLED } from '@/lib/empenos'
 
 const MODULOS_VISIBLES = MODULOS.filter((modulo) => isModuloVisible(modulo))
+const MODULOS_OPERATIVOS = MODULOS_VISIBLES.filter((modulo) => !MODULOS_EXCLUSIVOS_SUPERADMIN.includes(modulo))
 const MODULOS_NUEVOS: Modulo[] = ['compra_fincas', 'financistas', 'comisionistas']
 
 // Permisos por defecto según el rol (copia de seguridad local)
@@ -29,7 +31,7 @@ const PERMISOS_POR_ROL: Record<string, Permiso[]> = {
     modulo,
     acciones: ACCIONES_POR_MODULO[modulo],
   })),
-  administrador: MODULOS_VISIBLES.map(modulo => ({
+  administrador: MODULOS_OPERATIVOS.map(modulo => ({
     modulo,
     acciones: ACCIONES_POR_MODULO[modulo],
   })),
@@ -391,7 +393,7 @@ export function PermisosDialog({
               </div>
               <ScrollArea className="h-[400px] pr-4">
                 <div className="space-y-4">
-                  {MODULOS_VISIBLES
+                  {(usuario?.rol?.toLowerCase() === 'superadmin' ? MODULOS_VISIBLES : MODULOS_OPERATIVOS)
                     .filter((modulo) => {
                       const texto = `${MODULO_LABELS[modulo]} ${modulo}`.toLowerCase()
                       return texto.includes(busqueda.trim().toLowerCase())
@@ -415,6 +417,7 @@ export function PermisosDialog({
                             <Label htmlFor={`modulo-${modulo}`} className="font-semibold cursor-pointer">
                               {MODULO_LABELS[modulo]}
                               {MODULOS_NUEVOS.includes(modulo) && <Badge className="ml-2" variant="secondary">Módulo propio</Badge>}
+                              {MODULOS_EXCLUSIVOS_SUPERADMIN.includes(modulo) && <Badge className="ml-2" variant="destructive">Solo Superadmin</Badge>}
                             </Label>
                           </div>
                           <Badge variant="outline">

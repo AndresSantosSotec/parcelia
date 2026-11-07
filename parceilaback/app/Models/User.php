@@ -134,7 +134,12 @@ class User extends Authenticatable
     {
         $rol = $this->normalizedRole();
 
-        // superadmin y administrador tienen acceso total sin depender de la tabla user_permissions
+        // Módulos exclusivos de superadmin (auditoría, migración, prospectos, catálogo web)
+        if (in_array($modulo, Permission::$modulosExclusivosSuperadmin ?? [], true)) {
+            return $rol === 'superadmin';
+        }
+
+        // superadmin y administrador tienen acceso total a los módulos operativos regulares
         if (in_array($rol, ['superadmin', 'administrador'], true)) {
             return true;
         }
@@ -156,7 +161,12 @@ class User extends Authenticatable
     {
         $rol = $this->normalizedRole();
 
-        // superadmin y administrador tienen acceso total
+        // Módulos exclusivos de superadmin (auditoría, migración, prospectos, catálogo web)
+        if (in_array($modulo, Permission::$modulosExclusivosSuperadmin ?? [], true)) {
+            return $rol === 'superadmin';
+        }
+
+        // superadmin y administrador tienen acceso total a los módulos operativos regulares
         if (in_array($rol, ['superadmin', 'administrador'], true)) {
             return true;
         }
@@ -176,10 +186,14 @@ class User extends Authenticatable
     public function getFormattedPermissions(): array
     {
         $rol = $this->normalizedRole();
+        $exclusivosSuperadmin = Permission::$modulosExclusivosSuperadmin ?? [];
 
         if (in_array($rol, ['superadmin', 'administrador'], true)) {
             $permisos = [];
             foreach (Permission::$permisosPorModulo as $modulo => $acciones) {
+                if ($rol !== 'superadmin' && in_array($modulo, $exclusivosSuperadmin, true)) {
+                    continue;
+                }
                 $permisos[] = [
                     'modulo' => $modulo,
                     'acciones' => $acciones,
@@ -197,6 +211,9 @@ class User extends Authenticatable
         $resultado = [];
 
         foreach ($permisos as $modulo => $permisosModulo) {
+            if (in_array($modulo, $exclusivosSuperadmin, true)) {
+                continue;
+            }
             $resultado[] = [
                 'modulo' => $modulo,
                 'acciones' => $permisosModulo->pluck('accion')->toArray(),

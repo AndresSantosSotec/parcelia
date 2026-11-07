@@ -62,6 +62,9 @@ class Permission extends Model
                     'prospectos.eliminar' => 'Eliminar prospecto del embudo',
                     'prospectos.cambiar_estado' => 'Avanzar o mover prospecto en el embudo comercial',
                     'prospectos.asignar' => 'Asignar o reasignar asesor comercial a un prospecto',
+                    'catalogo.ver' => 'Ver accesos y herramientas del Catálogo Público Web y Captación Externa',
+                    'catalogo.acceso_web_externa' => 'Mostrar botón directo al Portal de Catálogo Público Web (/catalogo)',
+                    'catalogo.formulario_leads' => 'Mostrar botón directo al Formulario de Captura en Redes Sociales (/registro)',
                     default => ucfirst(str_replace('_', ' ', (string) $accion)).' en '.ucfirst(str_replace('_', ' ', (string) $modulo)),
                 };
 
@@ -112,18 +115,29 @@ class Permission extends Model
         'historial' => ['ver'],
         'otros_gastos' => ['ver', 'crear', 'editar', 'eliminar', 'anular'],
         'cotizaciones' => ['ver', 'crear', 'editar', 'eliminar', 'convertir'],
-        'prospectos' => ['ver', 'crear', 'editar', 'eliminar', 'cambiar_estado', 'asignar'],
+        'prospectos' => ['ver', 'crear', 'editar', 'eliminar', 'cambiar_estado', 'asignar'], // Exclusivo superadmin / permiso restringido
+        'catalogo' => ['ver', 'acceso_web_externa', 'formulario_leads'], // Exclusivo superadmin / permiso restringido (Web Externa y Captación)
         'planes_interes' => ['ver', 'crear', 'editar', 'eliminar'],
         'transferencias' => ['ver', 'crear', 'aprobar', 'anular'],
         'configuracion' => ['ver', 'editar'],
     ];
 
     /**
+     * Módulos que NO se otorgan por defecto ni a administradores (solo superadmin)
+     */
+    public static array $modulosExclusivosSuperadmin = [
+        'auditoria',
+        'migracion',
+        'prospectos',
+        'catalogo',
+    ];
+
+    /**
      * Permisos por rol por defecto
      */
     public static array $permisosPorRol = [
-        'superadmin' => '*', // Soporte: auditoría, logs, generador de formularios y operación completa
-        'administrador' => '*', // Operación completa (incluye contabilidad); la UI oculta auditoría/migración de soporte
+        'superadmin' => '*', // Soporte: auditoría, logs, prospectos, catálogo web externo y operación completa
+        'administrador' => '*', // Operación completa salvo módulos exclusivos de superadmin (auditoría, migración, prospectos, catálogo web)
         'cajero' => [
             'dashboard' => ['ver'],
             'clientes' => ['ver', 'crear', 'editar'],
@@ -145,7 +159,6 @@ class Permission extends Model
             'cobros' => ['realizar', 'ver', 'imprimir_recibo'],
             'recibos' => ['ver', 'crear', 'imprimir'],
             'historial' => ['ver'],
-            'prospectos' => ['ver', 'crear'],
             'otros_gastos' => ['ver', 'crear'],
             'planes_interes' => ['ver'],
         ],
@@ -182,7 +195,6 @@ class Permission extends Model
             'cobros' => ['realizar', 'ver', 'imprimir_recibo'],
             'recibos' => ['ver', 'crear', 'imprimir'],
             'historial' => ['ver'],
-            'prospectos' => ['ver', 'crear', 'editar', 'cambiar_estado'],
         ],
         'supervisor' => [
             'dashboard' => ['ver'],
@@ -212,7 +224,6 @@ class Permission extends Model
             'historial' => ['ver'],
             'otros_gastos' => ['ver', 'crear', 'anular'],
             'cotizaciones' => ['ver', 'crear', 'editar', 'eliminar', 'convertir'],
-            'prospectos' => ['ver', 'crear', 'editar', 'eliminar', 'cambiar_estado', 'asignar'],
             'planes_interes' => ['ver'],
             'transferencias' => ['ver', 'crear', 'aprobar', 'anular'],
         ],

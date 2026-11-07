@@ -158,8 +158,16 @@ export const ACCIONES_POR_MODULO: Record<Modulo, string[]> = {
   pagos_terreno: ['ver', 'cobrar', 'anular'],
   tasas_inmobiliarias: ['ver', 'crear', 'editar', 'desactivar'],
   reportes_inmobiliarios: ['generar', 'exportar'],
-  catalogo: ['ver'],
+  catalogo: ['ver', 'acceso_web_externa', 'formulario_leads'],
 }
+
+// Módulos restringidos exclusivamente a superadmin / soporte (ocultos para el resto de usuarios)
+export const MODULOS_EXCLUSIVOS_SUPERADMIN: Modulo[] = [
+  'auditoria',
+  'migracion',
+  'prospectos',
+  'catalogo',
+]
 
 // Nombres legibles de acciones
 export const ACCION_LABELS: Record<string, string> = {
@@ -210,6 +218,8 @@ export const ACCION_LABELS: Record<string, string> = {
   pagar: 'Registrar pagos',
   reglas: 'Parametrizar reglas',
   asignar: 'Asignar asesor',
+  acceso_web_externa: 'Ver enlace al Catálogo Público Web',
+  formulario_leads: 'Ver enlace al Formulario Redes (Leads)',
 }
 
 // Nombres legibles de módulos
@@ -249,7 +259,7 @@ export const MODULO_LABELS: Record<Modulo, string> = {
   pagos_terreno: 'Pagos de terrenos',
   tasas_inmobiliarias: 'Tasas inmobiliarias',
   reportes_inmobiliarios: 'Reportes inmobiliarios',
-  catalogo: 'Catálogo Público Web',
+  catalogo: 'Catálogo Público Web & Captación Externa',
 }
 
 interface UsePermissionsResult {
@@ -272,26 +282,35 @@ interface UsePermissionsResult {
 export function usePermissions(user: { rol?: string | null; permisos?: unknown } | null | undefined): UsePermissionsResult {
   const permisos = useMemo(() => normalizePermisosInput(user?.permisos ?? []), [user?.permisos])
   const rol = (user?.rol || '').toLowerCase()
-  const isSuperAdmin = rol === 'superadmin'
+  const isSuperAdmin = rol === 'superadmin' || rol === 'soporte'
   const isAdmin = isSuperAdmin || rol === 'administrador'
 
   const hasPermission = (modulo: Modulo, accion: string): boolean => {
+    if (MODULOS_EXCLUSIVOS_SUPERADMIN.includes(modulo)) {
+      return isSuperAdmin
+    }
     if (isAdmin) return true
     const found = permisos.find((p) => p.modulo === modulo)
     return !!found && found.acciones.includes(accion)
   }
 
   const hasModuleAccess = (modulo: Modulo): boolean => {
+    if (MODULOS_EXCLUSIVOS_SUPERADMIN.includes(modulo)) {
+      return isSuperAdmin
+    }
     if (isAdmin) return true
     return permisos.some((p) => p.modulo === modulo)
   }
 
   const getModuleActions = (modulo: Modulo): string[] => {
+    if (MODULOS_EXCLUSIVOS_SUPERADMIN.includes(modulo)) {
+      return isSuperAdmin ? (ACCIONES_POR_MODULO[modulo] || ['ver']) : []
+    }
     if (isAdmin) return ACCIONES_POR_MODULO[modulo] || ['ver']
     return permisos.find((p) => p.modulo === modulo)?.acciones ?? []
   }
 
-  const accessibleModules = isAdmin
+  const accessibleModules = isSuperAdmin
     ? [...MODULOS]
     : MODULOS.filter((m) => hasModuleAccess(m))
 

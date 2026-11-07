@@ -115,18 +115,7 @@ export function LoginScreen({ onLogin, onVerCatalogo }: LoginScreenProps) {
             </button>
           </form>
 
-          {/* Acceso directo al Catálogo Público Externo */}
-          <div className="pt-4 border-t border-border/60 mt-6 text-center space-y-2">
-            {onVerCatalogo && (
-              <button
-                type="button"
-                onClick={onVerCatalogo}
-                className="inline-flex items-center gap-1.5 text-xs text-emerald-600 hover:text-emerald-500 font-semibold transition-colors py-1 px-2 rounded-md hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20"
-              >
-                <Compass size={15} weight="bold" />
-                Explorar Catálogo Público de Terrenos
-              </button>
-            )}
+          <div className="pt-4 border-t border-border/60 mt-6 text-center">
             <p className="text-center text-[0.6875rem] text-muted-foreground/60">
               Sistema protegido · Solo personal autorizado
             </p>

@@ -146,6 +146,15 @@ export const cajaService = {
         return response as any
     },
 
+    updateMovimiento: async (id: number, data: { 
+        monto: number, 
+        concepto: string, 
+        tipo?: string 
+    }) => {
+        const response = await api.put<any>(`/cajas/movimientos/${id}`, data)
+        return response as any
+    },
+
     getHistorial: async (filters: any): Promise<any> => {
         const query = new URLSearchParams()
         if (filters?.user_id) query.append('user_id', filters.user_id)

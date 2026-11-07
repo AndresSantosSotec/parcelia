@@ -16,7 +16,7 @@ import {
   Wallet, LockKey, ArrowDown, ArrowUp, ClockCounterClockwise, Bank, Receipt, 
   MinusCircle, PlusCircle, CaretDown, ListBullets, ClockClockwise, 
   Warning, CheckCircle, FilePdf, Printer, ArrowsClockwise, FileXls, ChartBar,
-  Eye, ArrowLeft, ShieldCheck
+  Eye, ArrowLeft, ShieldCheck, Pencil
 } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
@@ -119,6 +119,11 @@ export function CajaModule({ userSession }: CajaModuleProps) {
   const [movimientoData, setMovimientoData] = useState({ tipo: 'incremento', monto: '', concepto: '' })
   const [conteoMovimiento, setConteoMovimiento] = useState<ConteoEfectivo>({})
   const [usarDesglose, setUsarDesglose] = useState(true)
+
+  // Edición de movimiento manual de caja (incremento / decremento)
+  const [movCajaEditando, setMovCajaEditando] = useState<MovimientoCaja | null>(null)
+  const [formEditCajaMov, setFormEditCajaMov] = useState({ concepto: '', monto: '' })
+  const [guardandoEditCajaMov, setGuardandoEditCajaMov] = useState(false)
 
   // ===== CARGA DE DATOS =====
   const loadDenominaciones = useCallback(async () => {
@@ -535,6 +540,47 @@ export function CajaModule({ userSession }: CajaModuleProps) {
       }
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Error al registrar movimiento')
+    }
+  }
+
+  // ===== EDITAR MOVIMIENTO MANUAL (ADMIN / GESTIÓN) =====
+  const handleGuardarEditCajaMov = async () => {
+    if (!movCajaEditando) return
+    const montoNum = parseFloat(formEditCajaMov.monto)
+    if (isNaN(montoNum) || montoNum <= 0) {
+      toast.error('Ingresa un monto válido mayor a 0')
+      return
+    }
+    if (!formEditCajaMov.concepto.trim()) {
+      toast.error('El concepto o motivo es obligatorio')
+      return
+    }
+
+    try {
+      setGuardandoEditCajaMov(true)
+      await cajaService.updateMovimiento(movCajaEditando.id, {
+        monto: montoNum,
+        concepto: formEditCajaMov.concepto.trim(),
+        tipo: movCajaEditando.tipo,
+      })
+      toast.success('Movimiento de caja actualizado correctamente')
+      setMovCajaEditando(null)
+
+      if (modoVisualizacion && cajaVisualizando) {
+        handleVerCajaAjena(cajaVisualizando)
+        loadCajasAbiertas()
+      } else if (cajaActual) {
+        await loadMovimientos(cajaActual.id)
+        await checkEstado()
+      }
+      if (canManageOtherCashRegisters) {
+        loadCajasAbiertas()
+      }
+    } catch (error: any) {
+      console.error('Error al actualizar movimiento:', error)
+      toast.error(error?.response?.data?.error || error?.message || 'Error al actualizar el movimiento')
+    } finally {
+      setGuardandoEditCajaMov(false)
     }
   }
 
@@ -1082,6 +1128,51 @@ export function CajaModule({ userSession }: CajaModuleProps) {
         bovedaMovimientoId={bovedaMovimientoId}
         onBovedaMovimientoChange={setBovedaMovimientoId}
       />
+
+      {/* Diálogo Editar Movimiento Manual de Caja */}
+      <Dialog open={movCajaEditando !== null} onOpenChange={(open) => { if (!open) setMovCajaEditando(null) }}>
+        <DialogContent className="w-[min(95vw,460px)]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-primary" />
+              Editar {movCajaEditando?.tipo === 'incremento' ? 'Ingreso' : 'Egreso'} de Caja
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label>Concepto / Motivo *</Label>
+              <Input
+                value={formEditCajaMov.concepto}
+                onChange={(e) => setFormEditCajaMov(f => ({ ...f, concepto: e.target.value }))}
+                placeholder="Ej. Ingreso por cambio..."
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Monto ({simboloMoneda}) *</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={formEditCajaMov.monto}
+                onChange={(e) => setFormEditCajaMov(f => ({ ...f, monto: e.target.value }))}
+                placeholder="0.00"
+                className="font-bold text-lg"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
+            <Button variant="outline" onClick={() => setMovCajaEditando(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleGuardarEditCajaMov} disabled={guardandoEditCajaMov}>
+              {guardandoEditCajaMov ? 'Guardando...' : 'Guardar Cambios'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -1211,50 +1302,6 @@ function VistaDashboard({
           </div>
         </CardContent>
       </Card>
-      {/* Diálogo Editar Movimiento Manual de Caja */}
-      <Dialog open={movCajaEditando !== null} onOpenChange={(open) => { if (!open) setMovCajaEditando(null) }}>
-        <DialogContent className="w-[min(95vw,460px)]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Pencil className="h-5 w-5 text-primary" />
-              Editar {movCajaEditando?.tipo === 'incremento' ? 'Ingreso' : 'Egreso'} de Caja
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-3 py-2">
-            <div className="space-y-1.5">
-              <Label>Concepto / Motivo *</Label>
-              <Input
-                value={formEditCajaMov.concepto}
-                onChange={(e) => setFormEditCajaMov(f => ({ ...f, concepto: e.target.value }))}
-                placeholder="Ej. Ingreso por cambio..."
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Monto ({simboloMoneda}) *</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={formEditCajaMov.monto}
-                onChange={(e) => setFormEditCajaMov(f => ({ ...f, monto: e.target.value }))}
-                placeholder="0.00"
-                className="font-bold text-lg"
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t">
-            <Button variant="outline" onClick={() => setMovCajaEditando(null)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleGuardarEditCajaMov} disabled={guardandoEditCajaMov}>
-              {guardandoEditCajaMov ? 'Guardando...' : 'Guardar Cambios'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

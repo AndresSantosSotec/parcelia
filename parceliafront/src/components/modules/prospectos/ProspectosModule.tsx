@@ -117,17 +117,17 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
     return { rol: 'administrador' }
   }, [userSession])
 
-  const { hasPermission, isAdmin } = usePermissions(sessionData)
+  const { hasPermission, isSuperAdmin } = usePermissions(sessionData)
 
-  // Control estricto de permisos para funciones del CRM
-  const puedeVer = isAdmin || hasPermission('prospectos', 'ver')
-  const puedeCrear = isAdmin || hasPermission('prospectos', 'crear')
-  const puedeEditar = isAdmin || hasPermission('prospectos', 'editar')
-  const puedeEliminar = isAdmin || hasPermission('prospectos', 'eliminar')
-  const puedeCambiarEstado = isAdmin || hasPermission('prospectos', 'cambiar_estado')
-  const puedeAsignar = isAdmin || hasPermission('prospectos', 'asignar')
-  const puedeImportar = isAdmin || hasPermission('prospectos', 'crear')
-  const puedeExportar = isAdmin || hasPermission('prospectos', 'ver')
+  // Control estricto de permisos para funciones del CRM (exclusivo superadmin o con permiso explícito)
+  const puedeVer = isSuperAdmin || hasPermission('prospectos', 'ver')
+  const puedeCrear = isSuperAdmin || hasPermission('prospectos', 'crear')
+  const puedeEditar = isSuperAdmin || hasPermission('prospectos', 'editar')
+  const puedeEliminar = isSuperAdmin || hasPermission('prospectos', 'eliminar')
+  const puedeCambiarEstado = isSuperAdmin || hasPermission('prospectos', 'cambiar_estado')
+  const puedeAsignar = isSuperAdmin || hasPermission('prospectos', 'asignar')
+  const puedeImportar = isSuperAdmin || hasPermission('prospectos', 'crear')
+  const puedeExportar = isSuperAdmin || hasPermission('prospectos', 'ver')
 
   // Estado general
   const [prospectos, setProspectos] = useState<Prospecto[]>([])
@@ -1094,32 +1094,38 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
   }
 
   return (
-    <div className="space-y-6">
-      {/* HEADER PRINCIPAL */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-card p-5 rounded-xl border shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 rounded-xl border border-emerald-200 dark:border-emerald-800">
-            <UsersThree size={28} weight="duotone" />
+    <div className="space-y-6 antialiased">
+      {/* HEADER PRINCIPAL — APPLE CUPERTINO SURFACE */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-xl p-5 sm:p-6 rounded-3xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_8px_30px_rgb(0,0,0,0.03)]">
+        <div className="flex items-center gap-4">
+          <div className="h-12 w-12 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-[0_6px_16px_rgba(16,185,129,0.28)] shrink-0">
+            <UsersThree size={26} weight="duotone" />
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              Embudo Comercial & CRM
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white flex flex-wrap items-center gap-2.5">
+              <span>Embudo Comercial & CRM</span>
               {estadisticas && estadisticas.total_sin_seguimiento > 0 && (
-                <Badge variant="destructive" className="animate-pulse text-xs font-semibold gap-1 px-2">
-                  <WarningCircle size={14} weight="fill" />
+                <Badge variant="destructive" className="rounded-full animate-pulse text-[11px] font-semibold gap-1 px-2.5 py-0.5 shadow-2xs">
+                  <WarningCircle size={13} weight="fill" />
                   {estadisticas.total_sin_seguimiento} desatendidos (&gt;48h)
                 </Badge>
               )}
             </h1>
-            <p className="text-xs sm:text-sm text-muted-foreground">
-              Gestiona prospectos con los mismos datos oficiales del cliente, programa visitas y monitorea tiempos de atención.
+            <p className="text-xs sm:text-[13px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+              Gestiona prospectos con perfil completo de cliente, programa visitas y monitorea tiempos de atención.
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={cargarProspectos} disabled={cargando} className="gap-1.5 text-xs h-9">
-            <ArrowsClockwise size={15} className={cargando ? 'animate-spin' : ''} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={cargarProspectos}
+            disabled={cargando}
+            className="rounded-xl gap-1.5 text-xs h-9 px-3.5 border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-zinc-800 hover:bg-zinc-50 transition-all active:scale-[0.98]"
+          >
+            <ArrowsClockwise size={15} className={cargando ? 'animate-spin text-emerald-600' : ''} />
             Actualizar
           </Button>
 
@@ -1128,10 +1134,10 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
               variant="outline"
               size="sm"
               onClick={handleExportarExcel}
-              className="gap-1.5 text-xs h-9 hover:border-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-400"
+              className="rounded-xl gap-1.5 text-xs h-9 px-3.5 border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-zinc-800 hover:border-emerald-500/50 hover:text-emerald-700 dark:hover:text-emerald-400 transition-all active:scale-[0.98]"
               title="Descargar todos los prospectos filtrados en formato Excel"
             >
-              <FileXls size={16} weight="bold" className="text-emerald-600 dark:text-emerald-400" />
+              <FileXls size={16} weight="duotone" className="text-emerald-600 dark:text-emerald-400" />
               Exportar Excel
             </Button>
           )}
@@ -1141,7 +1147,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
               variant="outline"
               size="sm"
               onClick={() => setModalImportarAbierto(true)}
-              className="gap-1.5 text-xs h-9 hover:border-emerald-500 hover:text-emerald-600"
+              className="rounded-xl gap-1.5 text-xs h-9 px-3.5 border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-zinc-800 hover:border-emerald-500/50 hover:text-emerald-600 transition-all active:scale-[0.98]"
             >
               <UploadSimple size={15} weight="bold" />
               Importar Leads
@@ -1153,9 +1159,9 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
               variant="outline"
               size="sm"
               onClick={() => setModalRedesAbierto(true)}
-              className="gap-1.5 text-xs h-9 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900 hover:bg-blue-50/50"
+              className="rounded-xl gap-1.5 text-xs h-9 px-3.5 text-blue-600 dark:text-blue-400 border-blue-200/80 dark:border-blue-900/60 bg-blue-50/40 dark:bg-blue-950/20 hover:bg-blue-50 transition-all active:scale-[0.98]"
             >
-              <ShareNetwork size={15} weight="bold" />
+              <ShareNetwork size={15} weight="duotone" />
               Formulario Redes
             </Button>
           )}
@@ -1164,99 +1170,93 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
             <Button
               size="sm"
               onClick={abrirModalNuevo}
-              className="gap-1.5 text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm px-3.5"
+              className="rounded-xl gap-1.5 text-xs h-9 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-[0_4px_12px_rgba(16,185,129,0.28)] transition-all active:scale-[0.98]"
             >
               <UserPlus size={16} weight="bold" />
-              + Nuevo Prospecto
+              Nuevo Prospecto
             </Button>
           )}
         </div>
       </div>
 
-      {/* METRICAS DEL PIPELINE */}
+      {/* METRICAS DEL PIPELINE — APPLE BENTO KPI CARDS */}
       {estadisticas && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="border shadow-xs">
-            <CardContent className="p-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Prospectos Activos</p>
-                <h3 className="text-2xl font-bold text-foreground mt-1">{estadisticas.total_prospectos_activos}</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">En proceso de atención</p>
-              </div>
-              <div className="p-2.5 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-lg">
-                <UsersThree size={24} weight="duotone" />
-              </div>
-            </CardContent>
-          </Card>
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl p-5 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_4px_20px_rgb(0,0,0,0.02)] flex items-center justify-between">
+            <div>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-semibold uppercase tracking-wider">Prospectos Activos</p>
+              <h3 className="text-2xl sm:text-3xl font-bold text-zinc-900 dark:text-white mt-1 tabular-nums tracking-tight">
+                {estadisticas.total_prospectos_activos}
+              </h3>
+              <p className="text-xs text-zinc-400 mt-0.5">En proceso de atención</p>
+            </div>
+            <div className="h-12 w-12 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center shrink-0">
+              <UsersThree size={24} weight="duotone" />
+            </div>
+          </div>
 
-          <Card className="border shadow-xs">
-            <CardContent className="p-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Monto en Pipeline</p>
-                <h3 className="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">
-                  {formatCurrency(estadisticas.monto_pipeline_estimado)}
-                </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Presupuesto estimado acumulado</p>
-              </div>
-              <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-lg">
-                <CurrencyDollar size={24} weight="duotone" />
-              </div>
-            </CardContent>
-          </Card>
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl p-5 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_4px_20px_rgb(0,0,0,0.02)] flex items-center justify-between">
+            <div>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-semibold uppercase tracking-wider">Monto en Pipeline</p>
+              <h3 className="text-2xl sm:text-3xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 tabular-nums tracking-tight">
+                {formatCurrency(estadisticas.monto_pipeline_estimado)}
+              </h3>
+              <p className="text-xs text-zinc-400 mt-0.5">Presupuesto estimado acumulado</p>
+            </div>
+            <div className="h-12 w-12 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center shrink-0">
+              <CurrencyDollar size={24} weight="duotone" />
+            </div>
+          </div>
 
-          <Card
-            className={`border shadow-xs cursor-pointer transition-all ${
-              soloSinSeguimiento
-                ? 'ring-2 ring-rose-500 bg-rose-50/40 dark:bg-rose-950/20'
-                : 'hover:border-rose-300'
-            }`}
+          <div
             onClick={() => setSoloSinSeguimiento(!soloSinSeguimiento)}
+            className={`rounded-3xl p-5 border cursor-pointer transition-all duration-200 flex items-center justify-between ${
+              soloSinSeguimiento
+                ? 'bg-rose-50/80 dark:bg-rose-950/30 border-rose-400 ring-4 ring-rose-500/15'
+                : 'bg-white dark:bg-zinc-900 border-black/[0.06] dark:border-white/[0.08] shadow-[0_4px_20px_rgb(0,0,0,0.02)] hover:border-rose-300'
+            }`}
           >
-            <CardContent className="p-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs text-rose-600 dark:text-rose-400 font-semibold uppercase tracking-wider flex items-center gap-1">
-                  <WarningCircle size={14} weight="fill" /> Sin Contacto (+48h)
-                </p>
-                <h3 className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1">
-                  {estadisticas.total_sin_seguimiento}
-                </h3>
-                <p className="text-xs text-rose-500/80 mt-0.5">
-                  {soloSinSeguimiento ? '✓ Filtrando desatendidos' : 'Click para filtrar urgentes'}
-                </p>
-              </div>
-              <div className="p-2.5 bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 rounded-lg animate-pulse">
-                <ClockCountdown size={24} weight="bold" />
-              </div>
-            </CardContent>
-          </Card>
+            <div>
+              <p className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold uppercase tracking-wider flex items-center gap-1">
+                <WarningCircle size={13} weight="fill" /> Sin Contacto (+48h)
+              </p>
+              <h3 className="text-2xl sm:text-3xl font-bold text-rose-600 dark:text-rose-400 mt-1 tabular-nums tracking-tight">
+                {estadisticas.total_sin_seguimiento}
+              </h3>
+              <p className="text-xs text-rose-500/80 mt-0.5">
+                {soloSinSeguimiento ? '✓ Filtrando desatendidos' : 'Click para filtrar urgentes'}
+              </p>
+            </div>
+            <div className="h-12 w-12 bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-2xl flex items-center justify-center shrink-0 animate-pulse">
+              <ClockCountdown size={24} weight="duotone" />
+            </div>
+          </div>
 
-          <Card className="border shadow-xs">
-            <CardContent className="p-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Cierres Exitosos</p>
-                <h3 className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                  {estadisticas.conteos_por_estado?.ganado || 0}
-                </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">Ventas formalizadas</p>
-              </div>
-              <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-lg">
-                <CheckCircle size={24} weight="duotone" />
-              </div>
-            </CardContent>
-          </Card>
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl p-5 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_4px_20px_rgb(0,0,0,0.02)] flex items-center justify-between">
+            <div>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-semibold uppercase tracking-wider">Cierres Exitosos</p>
+              <h3 className="text-2xl sm:text-3xl font-bold text-emerald-600 dark:text-emerald-400 mt-1 tabular-nums tracking-tight">
+                {estadisticas.conteos_por_estado?.ganado || 0}
+              </h3>
+              <p className="text-xs text-zinc-400 mt-0.5">Ventas formalizadas</p>
+            </div>
+            <div className="h-12 w-12 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center shrink-0">
+              <CheckCircle size={24} weight="duotone" />
+            </div>
+          </div>
         </div>
       )}
 
-      {/* BARRA DE FILTROS */}
-      <div className="bg-card p-4 rounded-xl border shadow-xs space-y-3">
+      {/* BARRA DE FILTROS — SPOTLIGHT STYLE */}
+      <div className="bg-white dark:bg-zinc-900 p-3.5 sm:p-4 rounded-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_4px_20px_rgb(0,0,0,0.02)]">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div className="relative flex-1">
-            <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <MagnifyingGlass size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
             <Input
               value={busqueda}
               onChange={e => setBusqueda(e.target.value)}
               placeholder="Buscar por cliente, teléfono, DPI o lote..."
-              className="pl-9 text-xs sm:text-sm h-9"
+              className="pl-9 text-xs sm:text-sm h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-transparent focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500 focus-visible:ring-4 focus-visible:ring-emerald-500/10"
             />
           </div>
 
@@ -1265,7 +1265,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
               value={fincaFiltro}
               onChange={e => setFincaFiltro(e.target.value)}
               aria-label="Filtrar por Proyecto o Finca"
-              className="h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className="h-10 px-3.5 text-xs font-medium rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-100 focus:outline-none focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
             >
               <option value="">Todas las Fincas</option>
               {fincas.map(f => (
@@ -1279,7 +1279,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
               value={asesorFiltro}
               onChange={e => setAsesorFiltro(e.target.value)}
               aria-label="Filtrar por Asesor Comercial"
-              className="h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              className="h-10 px-3.5 text-xs font-medium rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-100 focus:outline-none focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
             >
               <option value="">Todos los Asesores</option>
               {asesores.map(a => (
@@ -1293,16 +1293,16 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
               variant={soloSinSeguimiento ? 'destructive' : 'outline'}
               size="sm"
               onClick={() => setSoloSinSeguimiento(!soloSinSeguimiento)}
-              className="h-9 text-xs gap-1.5"
+              className="h-10 rounded-xl text-xs gap-1.5 px-3.5 border-black/[0.08] dark:border-white/[0.1]"
             >
-              <ClockCountdown size={14} weight="bold" />
+              <ClockCountdown size={15} weight="bold" />
               {soloSinSeguimiento ? 'Mostrando desatendidos' : 'Solo sin contacto (+48h)'}
             </Button>
           </div>
         </div>
       </div>
 
-      {/* TABLERO KANBAN */}
+      {/* TABLERO KANBAN — APPLE STAGE MANAGER COLUMNS */}
       <div className="overflow-x-auto pb-4">
         <div className="flex gap-4 min-w-[1280px]">
           {COLUMNAS_KANBAN.map(col => {
@@ -1310,15 +1310,15 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
             return (
               <div
                 key={col.id}
-                className={`flex-1 min-w-[280px] max-w-[320px] bg-muted/40 rounded-xl border border-t-4 ${col.color} p-3 flex flex-col gap-3 min-h-[500px]`}
+                className={`flex-1 min-w-[285px] max-w-[325px] bg-[#F5F5F7]/90 dark:bg-zinc-900/60 rounded-3xl border border-black/[0.05] dark:border-white/[0.07] border-t-4 ${col.color} p-3.5 flex flex-col gap-3 min-h-[520px]`}
               >
                 {/* Cabecera de Columna */}
-                <div className="flex items-center justify-between pb-2 border-b border-border/60">
+                <div className="flex items-center justify-between pb-2.5 px-1 border-b border-black/[0.06] dark:border-white/[0.06]">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold text-xs uppercase tracking-wide text-foreground">
+                    <span className="font-semibold text-xs tracking-tight text-zinc-800 dark:text-zinc-100">
                       {col.titulo}
                     </span>
-                    <Badge variant="secondary" className={`text-xs px-2 py-0.5 font-bold ${col.badgeClass}`}>
+                    <Badge variant="secondary" className={`rounded-full text-[11px] px-2 py-0.5 font-bold tabular-nums border-0 ${col.badgeClass}`}>
                       {prospectosEnCol.length}
                     </Badge>
                   </div>
@@ -1332,7 +1332,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                       setModalAbierto(true)
                     }}
                     title={`Añadir prospecto a ${col.titulo}`}
-                    className="h-6 w-6 p-0 hover:bg-background/80 text-muted-foreground hover:text-foreground"
+                    className="h-7 w-7 rounded-full p-0 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
                   >
                     <Plus size={14} weight="bold" />
                   </Button>
@@ -1341,7 +1341,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                 {/* Lista de Tarjetas */}
                 <div className="space-y-3 flex-1 overflow-y-auto max-h-[680px] pr-1">
                   {prospectosEnCol.length === 0 ? (
-                    <div className="h-32 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border/70 rounded-lg text-xs text-muted-foreground text-center p-3">
+                    <div className="h-36 flex flex-col items-center justify-center gap-2.5 border border-dashed border-black/[0.1] dark:border-white/[0.1] rounded-2xl text-xs text-zinc-400 text-center p-4 bg-white/40 dark:bg-zinc-900/30">
                       <span>Sin prospectos en esta etapa</span>
                       <Button
                         size="sm"
@@ -1352,9 +1352,9 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                           setFormData(prev => ({ ...prev, estado: col.id }))
                           setModalAbierto(true)
                         }}
-                        className="h-7 text-[11px] gap-1 border-dashed hover:border-emerald-500 hover:text-emerald-600"
+                        className="h-8 rounded-xl text-[11px] gap-1 bg-white dark:bg-zinc-900 border-black/[0.08] hover:border-emerald-500 hover:text-emerald-600 shadow-2xs"
                       >
-                        <UserPlus size={13} /> + Registrar Lead
+                        <UserPlus size={13} /> Registrar Lead
                       </Button>
                     </div>
                   ) : (
@@ -1363,24 +1363,24 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                       return (
                         <div
                           key={p.id}
-                          className={`bg-card p-3.5 rounded-lg border shadow-xs transition-all hover:shadow-md space-y-2.5 ${
+                          className={`bg-white dark:bg-zinc-900 p-4 rounded-2xl border transition-all duration-200 hover:shadow-[0_8px_24px_rgb(0,0,0,0.06)] space-y-2.5 ${
                             requiereAtencion
-                              ? 'border-rose-400 dark:border-rose-600/80 ring-1 ring-rose-400/40 bg-rose-50/20 dark:bg-rose-950/10'
-                              : 'border-border'
+                              ? 'border-rose-400/80 dark:border-rose-600/80 ring-2 ring-rose-500/15'
+                              : 'border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_10px_rgb(0,0,0,0.02)]'
                           }`}
                         >
                           {/* ALERTA DE INACTIVIDAD (+48H) */}
                           {requiereAtencion && (
-                            <div className="bg-rose-100 dark:bg-rose-950/70 text-rose-700 dark:text-rose-300 px-2 py-1 rounded text-[11px] font-semibold flex items-center justify-between animate-pulse">
+                            <div className="bg-rose-500/10 text-rose-700 dark:text-rose-300 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold flex items-center justify-between">
                               <span className="flex items-center gap-1">
-                                <WarningCircle size={13} weight="fill" />
+                                <WarningCircle size={13} weight="fill" className="text-rose-500" />
                                 Sin contacto (+{p.horas_sin_contacto}h)
                               </span>
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => abrirModalContacto(p)}
-                                className="h-5 px-1.5 text-[10px] bg-rose-200/80 hover:bg-rose-200 text-rose-900 dark:bg-rose-800 dark:text-rose-100"
+                                className="h-5 px-2 rounded-full text-[10px] bg-rose-500 text-white hover:bg-rose-600 font-semibold"
                               >
                                 Atender
                               </Button>
@@ -1390,26 +1390,26 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                           {/* Nombre del Prospecto y Origen */}
                           <div className="flex items-start justify-between gap-1">
                             <div>
-                              <h4 className="font-semibold text-xs sm:text-sm text-foreground line-clamp-1">
+                              <h4 className="font-semibold text-[13px] sm:text-sm text-zinc-900 dark:text-white line-clamp-1 tracking-tight">
                                 {p.nombre_completo}
                               </h4>
-                              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                                <span className="capitalize">{p.origen.replace('_', ' ')}</span>
-                                {p.dpi && <span>· DPI: {p.dpi}</span>}
+                              <p className="text-[11px] text-zinc-400 flex items-center gap-1 mt-0.5">
+                                <span className="capitalize font-medium text-zinc-500 dark:text-zinc-400">{p.origen.replace('_', ' ')}</span>
+                                {p.dpi && <span className="tabular-nums">· DPI: {p.dpi}</span>}
                               </p>
                               {p.direccion && (
-                                <p className="text-[10px] text-muted-foreground/80 truncate">
+                                <p className="text-[10px] text-zinc-400 truncate mt-0.5">
                                   📍 {p.direccion}
                                 </p>
                               )}
                             </div>
 
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-0.5">
                               {puedeEditar && (
                                 <button
                                   onClick={() => abrirModalEditar(p)}
                                   aria-label="Editar prospecto"
-                                  className="text-muted-foreground hover:text-foreground p-1 rounded"
+                                  className="text-zinc-400 hover:text-zinc-800 dark:hover:text-white p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                                 >
                                   <PencilSimple size={13} />
                                 </button>
@@ -1418,7 +1418,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                                 <button
                                   onClick={() => handleEliminar(p.id)}
                                   aria-label="Eliminar prospecto"
-                                  className="text-muted-foreground hover:text-rose-600 p-1 rounded"
+                                  className="text-zinc-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
                                 >
                                   <Trash size={13} />
                                 </button>
@@ -1428,17 +1428,17 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
 
                           {/* Lote / Finca de Interés */}
                           {(p.finca || p.lote) && (
-                            <div className="p-2 bg-muted/60 rounded text-[11px] space-y-0.5">
+                            <div className="p-2.5 bg-[#F5F5F7] dark:bg-zinc-800/70 rounded-xl text-[11px] space-y-0.5">
                               {p.finca && (
-                                <div className="flex items-center gap-1 text-foreground font-medium">
-                                  <Buildings size={12} className="text-emerald-600" />
+                                <div className="flex items-center gap-1.5 text-zinc-800 dark:text-zinc-200 font-medium">
+                                  <Buildings size={12} className="text-emerald-600 shrink-0" />
                                   <span className="truncate">{p.finca.nombre}</span>
                                 </div>
                               )}
                               {p.lote && (
-                                <div className="flex items-center gap-1 text-muted-foreground">
-                                  <MapPin size={12} />
-                                  <span>Lote {p.lote.numero_lote} ({p.lote.codigo_unico})</span>
+                                <div className="flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400 tabular-nums">
+                                  <MapPin size={12} className="shrink-0" />
+                                  <span>Lote #{p.lote.numero_lote} ({p.lote.codigo_unico})</span>
                                 </div>
                               )}
                             </div>
@@ -1446,9 +1446,9 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
 
                           {/* Presupuesto */}
                           {p.presupuesto_estimado && (
-                            <div className="text-[11px] flex justify-between items-center text-muted-foreground">
+                            <div className="text-[11px] flex justify-between items-center text-zinc-500">
                               <span>Presupuesto:</span>
-                              <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                              <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
                                 {formatCurrency(p.presupuesto_estimado)}
                               </span>
                             </div>
@@ -1456,17 +1456,17 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
 
                           {/* Asesor asignado */}
                           {p.asesor && (
-                            <div className="text-[10px] text-muted-foreground truncate">
-                              Asesor: <strong className="text-foreground">{p.asesor.name}</strong>
+                            <div className="text-[10px] text-zinc-400 truncate">
+                              Asesor: <strong className="text-zinc-700 dark:text-zinc-300 font-medium">{p.asesor.name}</strong>
                             </div>
                           )}
 
                           {/* Teléfono y Botones de Acción */}
-                          <div className="pt-2 border-t border-border/50 flex items-center justify-between gap-1">
+                          <div className="pt-2.5 border-t border-black/[0.05] dark:border-white/[0.06] flex items-center justify-between gap-1.5">
                             <div className="flex items-center gap-1">
                               <a
                                 href={`tel:${p.telefono}`}
-                                className="h-7 px-2 text-[11px] inline-flex items-center gap-1 rounded bg-muted hover:bg-muted/80 text-foreground"
+                                className="h-7 px-2.5 text-[11px] font-medium tabular-nums inline-flex items-center gap-1 rounded-lg bg-zinc-100 hover:bg-zinc-200/80 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 transition-colors"
                                 title="Llamar"
                               >
                                 <Phone size={12} /> {p.telefono}
@@ -1474,7 +1474,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
 
                               <button
                                 onClick={() => handleAbrirWhatsApp(p)}
-                                className="h-7 w-7 inline-flex items-center justify-center rounded bg-emerald-600 hover:bg-emerald-700 text-white"
+                                className="h-7 w-7 inline-flex items-center justify-center rounded-lg bg-emerald-500/15 hover:bg-emerald-500 text-emerald-600 hover:text-white transition-colors"
                                 title="Abrir WhatsApp"
                               >
                                 <WhatsappLogo size={14} weight="fill" />
@@ -1485,7 +1485,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                               size="sm"
                               variant="outline"
                               onClick={() => abrirModalContacto(p)}
-                              className="h-7 px-2 text-[11px] gap-1"
+                              className="h-7 px-2.5 rounded-lg text-[11px] gap-1 border-black/[0.08] dark:border-white/[0.1]"
                               title="Registrar llamada o reunión"
                             >
                               <ChatCircleText size={13} />
@@ -1495,11 +1495,11 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
 
                           {/* BOTON CONVERTIR A COMPRADOR / INICIAR VENTA */}
                           {puedeCrear && p.estado !== 'ganado' && (
-                            <div className="pt-1">
+                            <div className="pt-0.5">
                               <Button
                                 size="sm"
                                 onClick={() => abrirModalConvertir(p)}
-                                className="w-full h-7 text-[11px] gap-1.5 bg-emerald-600/90 hover:bg-emerald-600 text-white font-medium shadow-2xs"
+                                className="w-full h-8 rounded-xl text-[11px] gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-2xs transition-all active:scale-[0.98]"
                                 title="Registrar como comprador oficial e iniciar contrato de venta"
                               >
                                 <UserCheck size={14} weight="bold" />
@@ -1519,7 +1519,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                                       handleMoverEstado(p, COLUMNAS_KANBAN[currentIndex - 1].id)
                                     }
                                   }}
-                                  className="text-muted-foreground hover:text-foreground flex items-center gap-0.5"
+                                  className="text-zinc-400 hover:text-zinc-800 dark:hover:text-white flex items-center gap-0.5 font-medium"
                                 >
                                   <CaretLeft size={11} /> Atrás
                                 </button>
@@ -1535,9 +1535,9 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                                       handleMoverEstado(p, 'ganado')
                                     }
                                   }}
-                                  className="text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-0.5"
+                                  className="text-emerald-600 hover:text-emerald-500 font-semibold flex items-center gap-0.5"
                                 >
-                                  Avanzar <CaretRight size={11} />
+                                  Avanzar <CaretRight size={11} weight="bold" />
                                 </button>
                               )}
                             </div>
@@ -1553,89 +1553,92 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
         </div>
       </div>
 
-      {/* MODAL CREAR / EDITAR PROSPECTO CON PESTAÑAS COMPLETAS */}
+      {/* MODAL CREAR / EDITAR PROSPECTO CON PESTAÑAS COMPLETAS — APPLE SHEET DIALOG */}
       <Dialog open={modalAbierto} onOpenChange={setModalAbierto}>
-        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white dark:bg-zinc-900 border-black/[0.08] dark:border-white/[0.1] shadow-2xl p-6">
           <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg flex items-center gap-2">
-              <UserPlus size={20} className="text-emerald-600" />
+            <DialogTitle className="text-base sm:text-lg font-bold tracking-tight flex items-center gap-2.5 text-zinc-900 dark:text-white">
+              <div className="h-9 w-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <UserPlus size={20} weight="duotone" />
+              </div>
               {editandoId ? 'Editar Prospecto & Datos de Cliente' : 'Nuevo Prospecto (Perfil de Cliente Completo)'}
             </DialogTitle>
           </DialogHeader>
 
-          <form onSubmit={handleSubmitProspecto} className="space-y-4 pt-1">
+          <form onSubmit={handleSubmitProspecto} className="space-y-5 pt-2">
             <Tabs value={tabFormulario} onValueChange={setTabFormulario} className="w-full">
-              <TabsList className="grid grid-cols-3 w-full h-9 mb-3">
-                <TabsTrigger value="personales" className="text-xs gap-1.5">
+              <TabsList className="grid grid-cols-3 w-full h-11 p-1 rounded-2xl bg-zinc-100 dark:bg-zinc-800 mb-4">
+                <TabsTrigger value="personales" className="rounded-xl text-xs font-semibold gap-1.5 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:shadow-xs">
                   <IdentificationCard size={15} />
                   1. Identificación
                 </TabsTrigger>
-                <TabsTrigger value="contacto" className="text-xs gap-1.5">
+                <TabsTrigger value="contacto" className="rounded-xl text-xs font-semibold gap-1.5 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:shadow-xs">
                   <HouseLine size={15} />
                   2. Contacto & Domicilio
                 </TabsTrigger>
-                <TabsTrigger value="interes" className="text-xs gap-1.5">
+                <TabsTrigger value="interes" className="rounded-xl text-xs font-semibold gap-1.5 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-900 data-[state=active]:shadow-xs">
                   <Buildings size={15} />
                   3. Interés Inmobiliario
                 </TabsTrigger>
               </TabsList>
 
               {/* PESTAÑA 1: IDENTIFICACIÓN Y DATOS PERSONALES */}
-              <TabsContent value="personales" className="space-y-3.5 focus-visible:outline-none">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Nombres *</label>
+              <TabsContent value="personales" className="space-y-4 focus-visible:outline-none">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Nombres *</label>
                     <Input
                       required
                       value={formData.nombres}
                       onChange={e => setFormData({ ...formData, nombres: e.target.value })}
                       placeholder="Ej. Juan Carlos"
-                      className="h-9 text-xs sm:text-sm"
+                      className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Apellidos *</label>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Apellidos *</label>
                     <Input
                       required
                       value={formData.apellidos}
                       onChange={e => setFormData({ ...formData, apellidos: e.target.value })}
                       placeholder="Ej. Pérez Morales"
-                      className="h-9 text-xs sm:text-sm"
+                      className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">DPI / CUI (13 dígitos)</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">DPI / CUI (13 dígitos)</label>
                     <Input
                       maxLength={13}
                       value={formData.dpi}
                       onChange={e => setFormData({ ...formData, dpi: e.target.value.replace(/\D/g, '') })}
                       placeholder="Ej. 2450123450101"
-                      className="h-9 text-xs sm:text-sm font-mono"
+                      className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm font-mono tabular-nums focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500"
                     />
-                    <span className="text-[10px] text-muted-foreground">{formData.dpi.length}/13 dígitos</span>
+                    <span className="text-[10px] text-zinc-400 pl-0.5 tabular-nums">{formData.dpi.length}/13 dígitos</span>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">NIT</label>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">NIT</label>
                     <Input
                       value={formData.nit}
                       onChange={e => setFormData({ ...formData, nit: e.target.value })}
                       placeholder="CF o número de NIT"
-                      className="h-9 text-xs sm:text-sm"
+                      className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Género</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Género</label>
                     <select
+                      aria-label="Género"
                       value={formData.genero}
                       onChange={e => setFormData({ ...formData, genero: e.target.value as any })}
-                      className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-full h-10 px-3.5 text-xs rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-zinc-900 focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
                     >
                       <option value="masculino">Masculino</option>
                       <option value="femenino">Femenino</option>
@@ -1643,22 +1646,23 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                     </select>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Fecha Nacimiento</label>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Fecha Nacimiento</label>
                     <Input
                       type="date"
                       value={formData.fecha_nacimiento}
                       onChange={e => setFormData({ ...formData, fecha_nacimiento: e.target.value })}
-                      className="h-9 text-xs"
+                      className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500"
                     />
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Estado Civil</label>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Estado Civil</label>
                     <select
+                      aria-label="Estado Civil"
                       value={formData.estado_civil}
                       onChange={e => setFormData({ ...formData, estado_civil: e.target.value })}
-                      className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-full h-10 px-3.5 text-xs rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-zinc-900 focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
                     >
                       <option value="soltero">Soltero(a)</option>
                       <option value="casado">Casado(a)</option>
@@ -1667,70 +1671,71 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-foreground">Profesión u Oficio</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Profesión u Oficio</label>
                   <Input
                     value={formData.profesion}
                     onChange={e => setFormData({ ...formData, profesion: e.target.value })}
                     placeholder="Ej. Comerciante, Perito Contador, Agricultor..."
-                    className="h-9 text-xs sm:text-sm"
+                    className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500"
                   />
                 </div>
               </TabsContent>
 
               {/* PESTAÑA 2: CONTACTO Y DOMICILIO */}
-              <TabsContent value="contacto" className="space-y-3.5 focus-visible:outline-none">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Teléfono Principal (WhatsApp) *</label>
+              <TabsContent value="contacto" className="space-y-4 focus-visible:outline-none">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Teléfono Principal (WhatsApp) *</label>
                     <Input
                       required
                       value={formData.telefono}
                       onChange={e => setFormData({ ...formData, telefono: e.target.value })}
                       placeholder="Ej. 5555-1234"
-                      className="h-9 text-xs sm:text-sm"
+                      className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500"
                     />
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Teléfono Secundario / Casa</label>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Teléfono Secundario / Casa</label>
                     <Input
                       value={formData.telefono_secundario}
                       onChange={e => setFormData({ ...formData, telefono_secundario: e.target.value })}
                       placeholder="Ej. 7777-8899"
-                      className="h-9 text-xs sm:text-sm"
+                      className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-foreground">Correo Electrónico</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Correo Electrónico</label>
                   <Input
                     type="email"
                     value={formData.email}
                     onChange={e => setFormData({ ...formData, email: e.target.value })}
                     placeholder="cliente@ejemplo.com"
-                    className="h-9 text-xs sm:text-sm"
+                    className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500"
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-foreground">Dirección Domiciliar</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Dirección Domiciliar</label>
                   <Input
                     value={formData.direccion}
                     onChange={e => setFormData({ ...formData, direccion: e.target.value })}
                     placeholder="Ej. Cantón Central, Lote 5, Zona 1"
-                    className="h-9 text-xs sm:text-sm"
+                    className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500"
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground flex items-center justify-between">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5 flex items-center justify-between">
                       <span>Departamento *</span>
-                      {cargandoDepartamentos && <span className="text-[10px] text-muted-foreground animate-pulse">Cargando...</span>}
+                      {cargandoDepartamentos && <span className="text-[10px] text-emerald-600 animate-pulse">Cargando...</span>}
                     </label>
                     <select
+                      aria-label="Departamento"
                       value={
                         departamentos.find(d => d.name === formData.departamento || String(d.geonameId) === String(departamentoSeleccionadoId))
                           ? String(departamentos.find(d => d.name === formData.departamento || String(d.geonameId) === String(departamentoSeleccionadoId))?.geonameId)
@@ -1738,7 +1743,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                       }
                       onChange={e => handleDepartamentoChange(e.target.value)}
                       disabled={cargandoDepartamentos}
-                      className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-full h-10 px-3.5 text-xs sm:text-sm rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-zinc-900 focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
                     >
                       <option value="">{cargandoDepartamentos ? 'Cargando departamentos...' : '-- Seleccionar Departamento --'}</option>
                       {departamentos.length > 0 ? (
@@ -1757,19 +1762,20 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                     </select>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground flex items-center justify-between">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5 flex items-center justify-between">
                       <span>Municipio</span>
-                      {cargandoMunicipios && <span className="text-[10px] text-muted-foreground animate-pulse">Cargando...</span>}
+                      {cargandoMunicipios && <span className="text-[10px] text-emerald-600 animate-pulse">Cargando...</span>}
                     </label>
                     {municipios.length > 0 ? (
                       <select
+                        aria-label="Municipio"
                         value={
                           municipios.find(m => m.name.toLowerCase() === formData.municipio.toLowerCase())?.name || formData.municipio
                         }
                         onChange={e => handleMunicipioChange(e.target.value)}
                         disabled={cargandoMunicipios}
-                        className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        className="w-full h-10 px-3.5 text-xs sm:text-sm rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-zinc-900 focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
                       >
                         <option value="">{cargandoMunicipios ? 'Cargando municipios...' : '-- Seleccionar Municipio --'}</option>
                         {municipios.map(m => (
@@ -1783,7 +1789,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                         value={formData.municipio}
                         onChange={e => setFormData({ ...formData, municipio: e.target.value })}
                         placeholder={cargandoMunicipios ? 'Cargando municipios...' : 'Ej. Guatemala, Quetzaltenango...'}
-                        className="h-9 text-xs sm:text-sm"
+                        className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500"
                       />
                     )}
                   </div>
@@ -1791,14 +1797,15 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
               </TabsContent>
 
               {/* PESTAÑA 3: INTERÉS INMOBILIARIO Y SEGUIMIENTO */}
-              <TabsContent value="interes" className="space-y-3.5 focus-visible:outline-none">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Proyecto / Finca de Interés</label>
+              <TabsContent value="interes" className="space-y-4 focus-visible:outline-none">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Proyecto / Finca de Interés</label>
                     <select
+                      aria-label="Proyecto o Finca de Interés"
                       value={formData.finca_id}
                       onChange={e => setFormData({ ...formData, finca_id: e.target.value, lote_id: '' })}
-                      className="w-full h-9 px-3 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-full h-10 px-3.5 text-xs sm:text-sm rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-zinc-900 focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
                     >
                       <option value="">Seleccione Finca...</option>
                       {fincas.map(f => (
@@ -1809,12 +1816,13 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                     </select>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Lote Específico</label>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Lote Específico</label>
                     <select
+                      aria-label="Lote Específico"
                       value={formData.lote_id}
                       onChange={e => setFormData({ ...formData, lote_id: e.target.value })}
-                      className="w-full h-9 px-3 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-full h-10 px-3.5 text-xs sm:text-sm rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-zinc-900 focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
                     >
                       <option value="">Sin lote específico / Indeciso</option>
                       {lotesDisponiblesForm.map(l => (
@@ -1826,13 +1834,14 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Origen del Lead</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Origen del Lead</label>
                     <select
+                      aria-label="Origen del Lead"
                       value={formData.origen}
                       onChange={e => setFormData({ ...formData, origen: e.target.value })}
-                      className="w-full h-9 px-3 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-full h-10 px-3.5 text-xs sm:text-sm rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-zinc-900 focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
                     >
                       <option value="whatsapp">WhatsApp</option>
                       <option value="redes_sociales">Redes Sociales (Facebook / Instagram)</option>
@@ -1843,26 +1852,27 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                     </select>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Presupuesto Estimado (Q)</label>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Presupuesto Estimado (Q)</label>
                     <Input
                       type="number"
                       step="0.01"
                       value={formData.presupuesto_estimado}
                       onChange={e => setFormData({ ...formData, presupuesto_estimado: e.target.value })}
                       placeholder="Ej. 85000"
-                      className="h-9 text-xs sm:text-sm"
+                      className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm tabular-nums focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Asesor Comercial Asignado</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Asesor Comercial Asignado</label>
                     <select
+                      aria-label="Asesor Comercial Asignado"
                       value={formData.asesor_id}
                       onChange={e => setFormData({ ...formData, asesor_id: e.target.value })}
-                      className="w-full h-9 px-3 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="w-full h-10 px-3.5 text-xs sm:text-sm rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-zinc-900 focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
                     >
                       <option value="">Asignar automáticamente a mí</option>
                       {asesores.map(a => (
@@ -1873,35 +1883,35 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                     </select>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Fecha Próximo Contacto</label>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Fecha Próximo Contacto</label>
                     <Input
                       type="datetime-local"
                       value={formData.fecha_proximo_contacto}
                       onChange={e => setFormData({ ...formData, fecha_proximo_contacto: e.target.value })}
-                      className="h-9 text-xs"
+                      className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-foreground">Notas y Requerimientos</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Notas y Requerimientos</label>
                   <textarea
                     rows={3}
                     value={formData.notas}
                     onChange={e => setFormData({ ...formData, notas: e.target.value })}
                     placeholder="Detalla lo que busca: medidas preferidas, enganche disponible, facilidades de pago..."
-                    className="w-full p-2.5 text-xs sm:text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    className="w-full p-3 text-xs sm:text-sm rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-zinc-900 focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
                   />
                 </div>
               </TabsContent>
             </Tabs>
 
-            <DialogFooter className="gap-2 pt-2 border-t">
-              <Button type="button" variant="outline" size="sm" onClick={() => setModalAbierto(false)}>
+            <DialogFooter className="gap-2 pt-3 border-t border-black/[0.06] dark:border-white/[0.06]">
+              <Button type="button" variant="outline" size="sm" onClick={() => setModalAbierto(false)} className="rounded-xl h-10 px-4">
                 Cancelar
               </Button>
-              <Button type="submit" size="sm" disabled={guardando} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              <Button type="submit" size="sm" disabled={guardando} className="rounded-xl h-10 px-5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-xs">
                 {guardando ? 'Guardando...' : editandoId ? 'Guardar Cambios' : 'Registrar Prospecto Completo'}
               </Button>
             </DialogFooter>
@@ -1909,32 +1919,35 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL REGISTRAR CONTACTO / SEGUIMIENTO */}
+      {/* MODAL REGISTRAR CONTACTO / SEGUIMIENTO — APPLE SHEET */}
       <Dialog open={modalContactoAbierto} onOpenChange={setModalContactoAbierto}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md rounded-3xl bg-white dark:bg-zinc-900 border-black/[0.08] dark:border-white/[0.1] shadow-2xl p-6">
           <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg flex items-center gap-2">
-              <ChatCircleText size={20} className="text-emerald-600" />
+            <DialogTitle className="text-base sm:text-lg font-bold tracking-tight flex items-center gap-2.5">
+              <div className="h-9 w-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                <ChatCircleText size={20} weight="duotone" />
+              </div>
               Registrar Contacto de Seguimiento
             </DialogTitle>
           </DialogHeader>
 
           {prospectoSeleccionado && (
             <form onSubmit={handleGuardarContacto} className="space-y-4 pt-1">
-              <div className="p-3 bg-muted/60 rounded-lg text-xs space-y-1">
-                <p className="font-semibold text-foreground">{prospectoSeleccionado.nombre_completo}</p>
-                <p className="text-muted-foreground">Teléfono: {prospectoSeleccionado.telefono}</p>
+              <div className="p-3.5 bg-[#F5F5F7] dark:bg-zinc-800/70 rounded-2xl text-xs space-y-1">
+                <p className="font-semibold text-zinc-900 dark:text-white">{prospectoSeleccionado.nombre_completo}</p>
+                <p className="text-zinc-500 tabular-nums">Teléfono: {prospectoSeleccionado.telefono}</p>
                 {prospectoSeleccionado.finca && (
-                  <p className="text-muted-foreground">Interés: {prospectoSeleccionado.finca.nombre}</p>
+                  <p className="text-zinc-500">Interés: {prospectoSeleccionado.finca.nombre}</p>
                 )}
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Tipo de Interacción *</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Tipo de Interacción *</label>
                 <select
+                  aria-label="Tipo de Interacción"
                   value={formContacto.tipo_interaccion}
                   onChange={e => setFormContacto({ ...formContacto, tipo_interaccion: e.target.value as any })}
-                  className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full h-10 px-3.5 text-xs rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
                 >
                   <option value="llamada">Llamada Telefónica</option>
                   <option value="whatsapp">Mensaje por WhatsApp</option>
@@ -1945,24 +1958,25 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                 </select>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Resumen de la Conversación *</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Resumen de la Conversación *</label>
                 <textarea
                   required
                   rows={3}
                   value={formContacto.detalle}
                   onChange={e => setFormContacto({ ...formContacto, detalle: e.target.value })}
                   placeholder="Ej. Se le compartieron las fotos del lote 14. Indica que viajará el sábado para verlo en persona..."
-                  className="w-full p-2.5 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full p-3 text-xs rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Mover a Nueva Etapa (Opcional)</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Mover a Nueva Etapa (Opcional)</label>
                 <select
+                  aria-label="Mover a Nueva Etapa"
                   value={formContacto.nuevo_estado}
                   onChange={e => setFormContacto({ ...formContacto, nuevo_estado: e.target.value as any })}
-                  className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full h-10 px-3.5 text-xs rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
                 >
                   <option value="">Mantener en etapa actual ({prospectoSeleccionado.estado})</option>
                   <option value="contactado">Mover a Contactado</option>
@@ -1973,21 +1987,21 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                 </select>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Fecha Próximo Contacto (Opcional)</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Fecha Próximo Contacto (Opcional)</label>
                 <Input
                   type="datetime-local"
                   value={formContacto.fecha_proximo_contacto}
                   onChange={e => setFormContacto({ ...formContacto, fecha_proximo_contacto: e.target.value })}
-                  className="h-9 text-xs"
+                  className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs"
                 />
               </div>
 
               <DialogFooter className="gap-2 pt-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => setModalContactoAbierto(false)}>
+                <Button type="button" variant="outline" size="sm" onClick={() => setModalContactoAbierto(false)} className="rounded-xl h-10 px-4">
                   Cancelar
                 </Button>
-                <Button type="submit" size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                <Button type="submit" size="sm" className="rounded-xl h-10 px-5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold">
                   Registrar & Reiniciar 48h
                 </Button>
               </DialogFooter>
@@ -1996,111 +2010,114 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL CONVERTIR PROSPECTO EN COMPRADOR OFICIAL */}
+      {/* MODAL CONVERTIR PROSPECTO EN COMPRADOR OFICIAL — APPLE SHEET */}
       <Dialog open={modalConvertirAbierto} onOpenChange={setModalConvertirAbierto}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-zinc-900 border-black/[0.08] dark:border-white/[0.1] shadow-2xl p-6">
           <DialogHeader>
-            <DialogTitle className="text-base sm:text-lg flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
-              <Handshake size={22} weight="duotone" />
+            <DialogTitle className="text-base sm:text-lg font-bold tracking-tight flex items-center gap-2.5 text-emerald-700 dark:text-emerald-400">
+              <div className="h-9 w-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                <Handshake size={22} weight="duotone" />
+              </div>
               Convertir Prospecto a Comprador Oficial
             </DialogTitle>
           </DialogHeader>
 
           <form onSubmit={handleConvertirCliente} className="space-y-4 pt-2">
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
               Se creará la ficha formal del cliente en la base de datos de compradores para habilitar contratos, planes de amortización y facturación.
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Nombres *</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Nombres *</label>
                 <Input
                   required
                   value={formConvertir.nombres}
                   onChange={e => setFormConvertir({ ...formConvertir, nombres: e.target.value })}
                   placeholder="Ej. Juan Carlos"
-                  className="h-9 text-xs sm:text-sm"
+                  className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Apellidos *</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Apellidos *</label>
                 <Input
                   required
                   value={formConvertir.apellidos}
                   onChange={e => setFormConvertir({ ...formConvertir, apellidos: e.target.value })}
                   placeholder="Ej. Pérez Morales"
-                  className="h-9 text-xs sm:text-sm"
+                  className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">DPI / CUI (13 dígitos) *</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">DPI / CUI (13 dígitos) *</label>
                 <Input
                   required
                   maxLength={13}
                   value={formConvertir.dpi}
                   onChange={e => setFormConvertir({ ...formConvertir, dpi: e.target.value.replace(/\D/g, '') })}
                   placeholder="Ej. 2450123450101"
-                  className="h-9 text-xs sm:text-sm font-mono"
+                  className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm font-mono tabular-nums"
                 />
-                <span className="text-[10px] text-muted-foreground">{formConvertir.dpi.length}/13 dígitos</span>
+                <span className="text-[10px] text-zinc-400 pl-0.5 tabular-nums">{formConvertir.dpi.length}/13 dígitos</span>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">NIT (Opcional)</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">NIT (Opcional)</label>
                 <Input
                   value={formConvertir.nit}
                   onChange={e => setFormConvertir({ ...formConvertir, nit: e.target.value })}
                   placeholder="CF o número de NIT"
-                  className="h-9 text-xs sm:text-sm"
+                  className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Teléfono Principal *</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Teléfono Principal *</label>
                 <Input
                   required
                   value={formConvertir.telefono}
                   onChange={e => setFormConvertir({ ...formConvertir, telefono: e.target.value })}
                   placeholder="Ej. 55551234"
-                  className="h-9 text-xs sm:text-sm"
+                  className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Teléfono Secundario</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Teléfono Secundario</label>
                 <Input
                   value={formConvertir.telefono_secundario}
                   onChange={e => setFormConvertir({ ...formConvertir, telefono_secundario: e.target.value })}
                   placeholder="Ej. 77778899"
-                  className="h-9 text-xs sm:text-sm"
+                  className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm"
                 />
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">Correo Electrónico</label>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Correo Electrónico</label>
               <Input
                 type="email"
                 value={formConvertir.email}
                 onChange={e => setFormConvertir({ ...formConvertir, email: e.target.value })}
                 placeholder="correo@ejemplo.com"
-                className="h-9 text-xs sm:text-sm"
+                className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm"
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Género *</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Género *</label>
                 <select
+                  aria-label="Género"
                   value={formConvertir.genero}
                   onChange={e => setFormConvertir({ ...formConvertir, genero: e.target.value as any })}
-                  className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full h-10 px-3.5 text-xs rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
                 >
                   <option value="masculino">Masculino</option>
                   <option value="femenino">Femenino</option>
@@ -2108,23 +2125,24 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                 </select>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Fecha Nacimiento *</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Fecha Nacimiento *</label>
                 <Input
                   type="date"
                   required
                   value={formConvertir.fecha_nacimiento}
                   onChange={e => setFormConvertir({ ...formConvertir, fecha_nacimiento: e.target.value })}
-                  className="h-9 text-xs"
+                  className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs"
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">Estado Civil</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Estado Civil</label>
                 <select
+                  aria-label="Estado Civil"
                   value={formConvertir.estado_civil}
                   onChange={e => setFormConvertir({ ...formConvertir, estado_civil: e.target.value })}
-                  className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full h-10 px-3.5 text-xs rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
                 >
                   <option value="soltero">Soltero(a)</option>
                   <option value="casado">Casado(a)</option>
@@ -2133,42 +2151,42 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">Profesión u Oficio</label>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Profesión u Oficio</label>
               <Input
                 value={formConvertir.profesion}
                 onChange={e => setFormConvertir({ ...formConvertir, profesion: e.target.value })}
                 placeholder="Ej. Comerciante"
-                className="h-9 text-xs sm:text-sm"
+                className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm"
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">Dirección Domiciliar *</label>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Dirección Domiciliar *</label>
               <Input
                 required
                 value={formConvertir.direccion}
                 onChange={e => setFormConvertir({ ...formConvertir, direccion: e.target.value })}
                 placeholder="Ej. Cantón Central, Lote 5, Zona 1"
-                className="h-9 text-xs sm:text-sm"
+                className="h-10 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-xs sm:text-sm"
               />
             </div>
 
-            <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/30 rounded-lg text-xs space-y-1 border border-emerald-200 dark:border-emerald-800">
+            <div className="p-3.5 bg-emerald-50/70 dark:bg-emerald-950/30 rounded-2xl text-xs space-y-1 border border-emerald-500/20">
               <p className="font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
-                <CheckCircle size={15} weight="bold" />
+                <CheckCircle size={15} weight="fill" className="text-emerald-500" />
                 Interés Inmobiliario Vinculado
               </p>
-              <p className="text-muted-foreground">
+              <p className="text-zinc-600 dark:text-zinc-400">
                 Proyecto: <strong>{prospectoSeleccionado?.finca?.nombre || 'General'}</strong> · Lote: <strong>{prospectoSeleccionado?.lote ? `Lote ${prospectoSeleccionado.lote.numero_lote} (${prospectoSeleccionado.lote.codigo_unico})` : 'Por definir en contrato'}</strong>
               </p>
             </div>
 
             <DialogFooter className="gap-2 pt-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setModalConvertirAbierto(false)}>
+              <Button type="button" variant="outline" size="sm" onClick={() => setModalConvertirAbierto(false)} className="rounded-xl h-10 px-4">
                 Cancelar
               </Button>
-              <Button type="submit" size="sm" disabled={convirtiendo} className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium">
+              <Button type="submit" size="sm" disabled={convirtiendo} className="rounded-xl h-10 px-5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold">
                 {convirtiendo ? 'Procesando conversión...' : 'Confirmar Comprador & Crear Venta'}
               </Button>
             </DialogFooter>
@@ -2176,29 +2194,31 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL 4: CARGA MASIVA DE PROSPECTOS & ASIGNACIÓN A ASESORES */}
+      {/* MODAL 4: CARGA MASIVA DE PROSPECTOS & ASIGNACIÓN A ASESORES — APPLE SHEET */}
       <Dialog open={modalImportarAbierto} onOpenChange={setModalImportarAbierto}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-zinc-900 border-black/[0.08] dark:border-white/[0.1] shadow-2xl p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between text-base sm:text-lg font-bold">
-              <span className="flex items-center gap-2">
-                <UploadSimple size={20} weight="bold" className="text-emerald-600" />
+            <DialogTitle className="flex flex-wrap items-center justify-between gap-2 text-base sm:text-lg font-bold tracking-tight">
+              <span className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                  <UploadSimple size={20} weight="bold" />
+                </div>
                 Carga Masiva de Leads & Asignación
               </span>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleDescargarPlantillaExcel}
-                className="text-xs gap-1.5 h-8 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                className="rounded-xl text-xs gap-1.5 h-9 px-3.5 border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10"
                 title="Descargar archivo plantilla oficial en Microsoft Excel (.xlsx)"
               >
-                <FileXls size={15} weight="bold" className="text-emerald-600" /> Descargar Plantilla Excel (.xlsx)
+                <FileXls size={15} weight="duotone" className="text-emerald-600" /> Descargar Plantilla Excel (.xlsx)
               </Button>
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg text-xs space-y-2">
+            <div className="p-4 bg-blue-50/60 dark:bg-blue-950/30 border border-blue-500/20 rounded-2xl text-xs space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
                   <Table size={15} className="text-blue-600" />
@@ -2208,27 +2228,27 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                   13 Columnas Compatibles
                 </span>
               </div>
-              <p className="text-muted-foreground text-[11px] leading-relaxed">
+              <p className="text-zinc-600 dark:text-zinc-400 text-[11px] leading-relaxed">
                 Descarga la plantilla oficial en Excel (.xlsx) con el botón superior, llénala con los datos de tus prospectos y selecciónala aquí abajo.
                 <br />
-                <strong>Columnas:</strong> <code>nombre_completo, nombres, apellidos, telefono, telefono_secundario, email, dpi, nit, departamento, municipio, direccion, presupuesto_estimado, notas</code>
+                <strong>Columnas:</strong> <code className="text-[10px]">nombre_completo, nombres, apellidos, telefono, telefono_secundario, email, dpi, nit, departamento, municipio, direccion, presupuesto_estimado, notas</code>
               </p>
             </div>
 
             {/* Selector de Archivo Excel / CSV */}
-            <div className="p-3 bg-muted/30 border border-dashed border-border/80 rounded-xl space-y-2">
+            <div className="p-4 bg-[#F5F5F7] dark:bg-zinc-800/50 border border-dashed border-black/[0.12] dark:border-white/[0.12] rounded-2xl space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
                   <UploadSimple size={15} className="text-emerald-600" />
                   Opción 1: Seleccionar Archivo Excel desde tu Equipo (.xlsx / .xls / .csv)
                 </span>
                 {nombreArchivoCargado && (
-                  <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-300">
+                  <Badge variant="outline" className="rounded-full text-[10px] text-emerald-600 border-emerald-300">
                     Cargado
                   </Badge>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <input
                   type="file"
                   id="input-archivo-leads"
@@ -2242,25 +2262,26 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                   variant="outline"
                   size="sm"
                   onClick={() => fileInputRef.current?.click()}
-                  className="h-8 gap-1.5 text-xs border-emerald-500 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                  className="h-9 px-3.5 rounded-xl gap-1.5 text-xs border-emerald-500/40 bg-white dark:bg-zinc-900 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
                 >
                   <FileArrowDown size={14} weight="bold" /> Seleccionar Archivo
                 </Button>
-                <span className="text-xs text-muted-foreground truncate">
+                <span className="text-xs text-zinc-500 truncate">
                   {nombreArchivoCargado || 'Ningún archivo seleccionado todavía'}
                 </span>
               </div>
             </div>
 
             {/* Parámetros de Asignación */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-muted/40 rounded-xl border">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-foreground">Asignar a Asesor</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 p-4 bg-[#F5F5F7] dark:bg-zinc-800/60 rounded-2xl border border-black/[0.04] dark:border-white/[0.06]">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Asignar a Asesor</label>
                 <select
+                  aria-label="Asignar a Asesor"
                   value={asesorImportacion}
                   onChange={e => setAsesorImportacion(e.target.value)}
                   disabled={distribuirEquitativo}
-                  className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background disabled:opacity-60"
+                  className="w-full h-10 px-3.5 text-xs rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-zinc-900 disabled:opacity-60"
                 >
                   <option value="">-- Sin asesor inicial --</option>
                   {asesores.map(a => (
@@ -2271,12 +2292,13 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                 </select>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-foreground">Proyecto o Finca de Interés</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Proyecto o Finca de Interés</label>
                 <select
+                  aria-label="Proyecto o Finca de Interés"
                   value={fincaImportacion}
                   onChange={e => setFincaImportacion(e.target.value)}
-                  className="w-full h-9 px-3 text-xs rounded-md border border-input bg-background"
+                  className="w-full h-10 px-3.5 text-xs rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-zinc-900"
                 >
                   <option value="">-- Asignar Finca General --</option>
                   {fincas.map(f => (
@@ -2287,26 +2309,27 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                 </select>
               </div>
 
-              <div className="sm:col-span-2 pt-1 flex items-center justify-between border-t border-border/60">
+              <div className="sm:col-span-2 pt-2 flex items-center justify-between border-t border-black/[0.06] dark:border-white/[0.06]">
                 <div className="space-y-0.5">
-                  <label className="text-xs font-semibold text-foreground flex items-center gap-1.5 cursor-pointer">
+                  <label className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={distribuirEquitativo}
                       onChange={e => setDistribuirEquitativo(e.target.checked)}
-                      className="rounded border-input text-emerald-600 focus:ring-emerald-500"
+                      className="rounded border-zinc-300 text-emerald-600 focus:ring-emerald-500"
                     />
                     Distribuir equitativamente (Round-Robin) entre asesores
                   </label>
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[11px] text-zinc-500">
                     Reparte los prospectos uno por uno entre todos los asesores activos para equilibrar la carga.
                   </p>
                 </div>
 
                 <select
+                  aria-label="Origen de importación"
                   value={origenImportacion}
                   onChange={e => setOrigenImportacion(e.target.value)}
-                  className="h-8 px-2.5 text-xs rounded-md border border-input bg-background"
+                  className="h-9 px-3 text-xs rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-white dark:bg-zinc-900"
                 >
                   <option value="facebook_ads">Campaña Facebook</option>
                   <option value="feria_inmobiliaria">Feria Inmobiliaria</option>
@@ -2319,32 +2342,32 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
             {/* Área de Texto Masivo */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-foreground">
+                <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
                   Opción 2: O Pegar Filas Directamente (Copiar desde Excel / Google Sheets) *
                 </label>
-                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
                   {textoMasivo.split('\n').filter(l => l.trim().length > 0).length} filas detectadas
                 </span>
               </div>
               <textarea
-                rows={8}
+                rows={7}
                 value={textoMasivo}
                 onChange={e => setTextoMasivo(e.target.value)}
                 placeholder={`Ejemplo:\nJuan Perez, 55443322, 44332211, juan@gmail.com, 2456789010101, 75000, Interesado en lote esquinero\nMaria Gomez, 33221100, , maria@gmail.com, 1987654320101, 60000, Pregunto por Facebook`}
-                className="w-full p-3 font-mono text-xs rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="w-full p-3.5 font-mono text-xs rounded-2xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-zinc-900 focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500"
               />
             </div>
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" size="sm" onClick={() => setModalImportarAbierto(false)}>
+            <Button variant="outline" size="sm" onClick={() => setModalImportarAbierto(false)} className="rounded-xl h-10 px-4">
               Cancelar
             </Button>
             <Button
               size="sm"
               onClick={handleProcesarCargaMasiva}
               disabled={importandoMasivo || !textoMasivo.trim()}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+              className="rounded-xl h-10 px-5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
             >
               {importandoMasivo ? 'Importando en base de datos...' : 'Importar & Asignar Prospectos'}
             </Button>
@@ -2352,49 +2375,53 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL 5: FORMULARIO DE CAPTURA PARA REDES SOCIALES (LEAD MAGNET) */}
+      {/* MODAL 5: FORMULARIO DE CAPTURA PARA REDES SOCIALES (LEAD MAGNET) — APPLE SHEET */}
       <Dialog open={modalRedesAbierto} onOpenChange={setModalRedesAbierto}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-zinc-900 border-black/[0.08] dark:border-white/[0.1] shadow-2xl p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between text-base sm:text-lg font-bold">
-              <span className="flex items-center gap-2">
-                <ShareNetwork size={20} weight="bold" className="text-blue-600" />
+            <DialogTitle className="flex items-center justify-between text-base sm:text-lg font-bold tracking-tight">
+              <span className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center">
+                  <ShareNetwork size={20} weight="duotone" />
+                </div>
                 Formulario Seguro para Redes Sociales
               </span>
-              <Badge className="bg-blue-600 text-white text-[10px]">
+              <Badge className="rounded-full bg-blue-500/15 text-blue-700 dark:text-blue-300 border-0 text-[10px] font-semibold px-2.5 py-0.5">
                 Protección Anti-Bot Activa
               </Badge>
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            <div className="p-3 bg-muted/60 rounded-xl border space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-foreground">Canal de Campaña:</span>
-                <div className="flex items-center gap-1.5">
+            <div className="p-4 bg-[#F5F5F7] dark:bg-zinc-800/60 rounded-2xl border border-black/[0.04] dark:border-white/[0.06] space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">Canal de Campaña:</span>
+                <div className="flex items-center gap-1 p-1 rounded-xl bg-white dark:bg-zinc-900 border border-black/[0.05]">
                   {['facebook', 'instagram', 'tiktok', 'whatsapp'].map(c => (
-                    <Button
+                    <button
                       key={c}
                       type="button"
-                      size="sm"
-                      variant={canalRed === c ? 'default' : 'outline'}
                       onClick={() => setCanalRed(c)}
-                      className={`h-7 px-2 text-[11px] capitalize ${canalRed === c ? 'bg-blue-600 text-white' : ''}`}
+                      className={`h-7 px-2.5 rounded-lg text-[11px] font-semibold capitalize transition-all ${
+                        canalRed === c
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                      }`}
                     >
                       {c}
-                    </Button>
+                    </button>
                   ))}
                 </div>
               </div>
 
               {/* Opción 1: Formulario directo para redes (Landing ultraligera) */}
-              <div className="space-y-1.5 p-3 rounded-lg border bg-background/50">
+              <div className="space-y-2 p-3.5 rounded-2xl border border-black/[0.05] dark:border-white/[0.06] bg-white dark:bg-zinc-900">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
                     <ShareNetwork size={14} className="text-blue-600" />
                     Enlace al Formulario Directo (Recomendado para Anuncios):
                   </span>
-                  <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-200">
+                  <Badge variant="outline" className="rounded-full text-[10px] text-blue-600 border-blue-200">
                     Mayor conversión
                   </Badge>
                 </div>
@@ -2402,7 +2429,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                   <Input
                     readOnly
                     value={`${window.location.origin}/registro?origen=${canalRed}`}
-                    className="h-8 text-xs font-mono bg-background"
+                    className="h-9 rounded-xl text-xs font-mono bg-zinc-100/80 dark:bg-zinc-800 border-transparent"
                   />
                   <Button
                     size="sm"
@@ -2411,7 +2438,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                       navigator.clipboard.writeText(`${window.location.origin}/registro?origen=${canalRed}`)
                       toast.success(`Enlace de formulario copiado (${canalRed.toUpperCase()}).`)
                     }}
-                    className="h-8 gap-1 text-xs shrink-0"
+                    className="h-9 rounded-xl gap-1 text-xs shrink-0"
                     title="Copiar enlace"
                   >
                     <Copy size={14} /> Copiar
@@ -2420,25 +2447,25 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                     size="sm"
                     variant="default"
                     onClick={() => window.open(`/registro?origen=${canalRed}`, '_blank')}
-                    className="h-8 gap-1 text-xs shrink-0 bg-blue-600 hover:bg-blue-700 text-white"
+                    className="h-9 rounded-xl gap-1 text-xs shrink-0 bg-blue-600 hover:bg-blue-500 text-white"
                     title="Abrir en pestaña nueva"
                   >
                     <ArrowSquareOut size={14} /> Abrir
                   </Button>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-[11px] text-zinc-500">
                   Lleva al visitante directamente a un formulario móvil rápido sin distracciones, ideal para campañas de Meta Ads y TikTok.
                 </p>
               </div>
 
               {/* Opción 2: Catálogo interactivo completo */}
-              <div className="space-y-1.5 p-3 rounded-lg border bg-background/50">
+              <div className="space-y-2 p-3.5 rounded-2xl border border-black/[0.05] dark:border-white/[0.06] bg-white dark:bg-zinc-900">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
                     <Compass size={14} className="text-emerald-600" />
                     Enlace al Catálogo Público Completo con Lotes:
                   </span>
-                  <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200">
+                  <Badge variant="outline" className="rounded-full text-[10px] text-emerald-600 border-emerald-200">
                     Interactivo
                   </Badge>
                 </div>
@@ -2446,7 +2473,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                   <Input
                     readOnly
                     value={`${window.location.origin}/catalogo?origen=${canalRed}`}
-                    className="h-8 text-xs font-mono bg-background"
+                    className="h-9 rounded-xl text-xs font-mono bg-zinc-100/80 dark:bg-zinc-800 border-transparent"
                   />
                   <Button
                     size="sm"
@@ -2455,7 +2482,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                       navigator.clipboard.writeText(`${window.location.origin}/catalogo?origen=${canalRed}`)
                       toast.success(`Enlace del catálogo copiado (${canalRed.toUpperCase()}).`)
                     }}
-                    className="h-8 gap-1 text-xs shrink-0"
+                    className="h-9 rounded-xl gap-1 text-xs shrink-0"
                     title="Copiar enlace"
                   >
                     <Copy size={14} /> Copiar
@@ -2464,84 +2491,84 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
                     size="sm"
                     variant="outline"
                     onClick={() => window.open(`/catalogo?origen=${canalRed}`, '_blank')}
-                    className="h-8 gap-1 text-xs shrink-0 border-emerald-500 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50"
+                    className="h-9 rounded-xl gap-1 text-xs shrink-0 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50"
                     title="Abrir en pestaña nueva"
                   >
                     <ArrowSquareOut size={14} /> Abrir
                   </Button>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-[11px] text-zinc-500">
                   Muestra la galería de fincas, filtros de precios y medidas, cotizador público y botón de contacto por WhatsApp.
                 </p>
               </div>
             </div>
 
             {/* Formulario de Prueba en Vivo */}
-            <form onSubmit={handleEnviarLeadPrueba} className="p-4 bg-card rounded-xl border space-y-3">
-              <h5 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+            <form onSubmit={handleEnviarLeadPrueba} className="p-4 bg-[#F5F5F7] dark:bg-zinc-800/50 rounded-2xl border border-black/[0.04] dark:border-white/[0.06] space-y-3">
+              <h5 className="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
                 <ChatCircleText size={15} className="text-blue-600" />
                 Prueba del Formulario de Captura (Simulador de Lead)
               </h5>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-foreground">Nombre Completo *</label>
+                  <label className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Nombre Completo *</label>
                   <Input
                     required
                     placeholder="Ej. Sofía Hernández"
                     value={formPruebaRed.nombre_completo}
                     onChange={e => setFormPruebaRed({ ...formPruebaRed, nombre_completo: e.target.value })}
-                    className="h-8 text-xs"
+                    className="h-9 rounded-xl bg-white dark:bg-zinc-900 border-black/[0.08] text-xs"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-foreground">Teléfono / WhatsApp *</label>
+                  <label className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Teléfono / WhatsApp *</label>
                   <Input
                     required
                     placeholder="Ej. 55667788"
                     value={formPruebaRed.telefono}
                     onChange={e => setFormPruebaRed({ ...formPruebaRed, telefono: e.target.value })}
-                    className="h-8 text-xs"
+                    className="h-9 rounded-xl bg-white dark:bg-zinc-900 border-black/[0.08] text-xs"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-foreground">Zona o Departamento</label>
+                  <label className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Zona o Departamento</label>
                   <Input
                     placeholder="Ej. San Lucas, Sacatepéquez"
                     value={formPruebaRed.departamento_interes}
                     onChange={e => setFormPruebaRed({ ...formPruebaRed, departamento_interes: e.target.value })}
-                    className="h-8 text-xs"
+                    className="h-9 rounded-xl bg-white dark:bg-zinc-900 border-black/[0.08] text-xs"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-foreground">Presupuesto Estimado (Q)</label>
+                  <label className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Presupuesto Estimado (Q)</label>
                   <Input
                     type="number"
                     placeholder="Ej. 70000"
                     value={formPruebaRed.presupuesto_estimado}
                     onChange={e => setFormPruebaRed({ ...formPruebaRed, presupuesto_estimado: e.target.value })}
-                    className="h-8 text-xs"
+                    className="h-9 rounded-xl bg-white dark:bg-zinc-900 border-black/[0.08] text-xs tabular-nums"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-foreground">Mensaje o Consulta</label>
+                <label className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Mensaje o Consulta</label>
                 <Input
                   placeholder="Ej. Deseo información de enganche fraccionado en Finca El Roble"
                   value={formPruebaRed.mensaje}
                   onChange={e => setFormPruebaRed({ ...formPruebaRed, mensaje: e.target.value })}
-                  className="h-8 text-xs"
+                  className="h-9 rounded-xl bg-white dark:bg-zinc-900 border-black/[0.08] text-xs"
                 />
               </div>
 
               <Button
                 type="submit"
                 disabled={enviandoRed}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs h-9 gap-1.5 shadow-sm"
+                className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs h-10 gap-1.5 shadow-xs"
               >
                 {enviandoRed ? 'Procesando captura...' : `Enviar Prospecto de Prueba (${canalRed.toUpperCase()})`}
               </Button>
@@ -2549,7 +2576,7 @@ export function ProspectosModule({ userSession }: ProspectosModuleProps = {}) {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setModalRedesAbierto(false)}>
+            <Button variant="outline" size="sm" onClick={() => setModalRedesAbierto(false)} className="rounded-xl h-9 px-4">
               Cerrar
             </Button>
           </DialogFooter>

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import { useEmpresaConfig } from '@/hooks/useEmpresaConfig'
 import { catalogoService, FincaPublica } from '@/services/catalogoService'
@@ -88,31 +87,36 @@ export function FormularioPublicoLead({ onIrACatalogo, onIrALogin }: FormularioP
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between font-sans selection:bg-emerald-500 selection:text-white">
-      {/* NAVBAR PÚBLICO ULTRA LIMPIO */}
-      <header className="border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md px-4 sm:px-6 py-3.5 flex items-center justify-between">
+    <div className="min-h-screen bg-[#F5F5F7] dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex flex-col justify-between font-sans antialiased selection:bg-emerald-500 selection:text-white">
+      {/* NAVBAR PÚBLICO — APPLE FROSTED GLASS */}
+      <header className="sticky top-0 z-40 bg-white/75 dark:bg-zinc-900/75 backdrop-blur-2xl border-b border-black/[0.06] dark:border-white/[0.08] px-4 sm:px-6 h-16 flex items-center justify-between">
         <div className="flex items-center gap-3">
           {empresaConfig.logoUrl ? (
-            <img src={empresaConfig.logoUrl} alt="Logo" className="h-9 w-auto max-w-[130px] object-contain rounded" />
+            <img src={empresaConfig.logoUrl} alt="Logo" className="h-9 w-auto max-w-[130px] object-contain rounded-xl" />
           ) : (
-            <div className="h-8 w-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold">
+            <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-white shadow-[0_4px_12px_rgba(16,185,129,0.3)]">
               <HouseLine size={18} weight="bold" />
             </div>
           )}
-          <span className="font-extrabold text-sm sm:text-base text-white tracking-tight">
-            {empresaConfig.nombreEmpresa || 'Parcelia'}
-          </span>
+          <div>
+            <span className="font-semibold text-sm sm:text-base text-zinc-900 dark:text-white tracking-tight block leading-none">
+              {empresaConfig.nombreEmpresa || 'Parcelia'}
+            </span>
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium tracking-wide">
+              Asesoría & Financiamiento Directo
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
           {onIrACatalogo && (
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={onIrACatalogo}
-              className="text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/40 gap-1.5 h-8"
+              className="rounded-full text-xs border-black/10 dark:border-white/10 bg-white/80 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 gap-1.5 h-9 px-4 font-medium shadow-2xs"
             >
-              <Compass size={14} weight="bold" /> Ver Catálogo Completo
+              <Compass size={15} weight="duotone" className="text-emerald-600" /> Ver Catálogo
             </Button>
           )}
 
@@ -121,32 +125,31 @@ export function FormularioPublicoLead({ onIrACatalogo, onIrALogin }: FormularioP
               variant="ghost"
               size="sm"
               onClick={onIrALogin}
-              className="text-xs text-slate-400 hover:text-white hover:bg-slate-800 gap-1 h-8"
+              className="rounded-full text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white gap-1 h-9 px-3"
             >
-              <LockKey size={13} /> Asesores
+              <LockKey size={13} /> Acceso
             </Button>
           )}
         </div>
       </header>
 
-      {/* CONTENIDO PRINCIPAL: FORMULARIO HIGH-CONVERSION */}
-      <main className="flex-1 flex items-center justify-center p-4 sm:p-6 my-4">
-        <div className="max-w-xl w-full bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-          {/* Luz decorativa */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -z-10" />
+      {/* CONTENIDO PRINCIPAL: FORMULARIO APPLE CUPERTINO CARD */}
+      <main className="flex-1 flex items-center justify-center p-4 sm:p-6 my-4 relative">
+        <div className="pointer-events-none absolute top-8 left-1/2 -translate-x-1/2 w-[520px] h-[260px] bg-gradient-to-tr from-emerald-400/15 via-teal-300/10 to-transparent rounded-full blur-3xl" />
 
+        <div className="max-w-xl w-full bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] rounded-3xl p-6 sm:p-10 shadow-[0_20px_60px_rgb(0,0,0,0.06)] relative z-10 overflow-hidden">
           {!enviadoExitoso ? (
             <div className="space-y-6">
-              <div className="text-center space-y-2">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[11px] font-semibold">
-                  <Sparkle size={13} weight="fill" />
+              <div className="text-center space-y-2.5">
+                <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-[11px] font-semibold">
+                  <Sparkle size={13} weight="fill" className="text-emerald-500" />
                   Asesoría Gratuita & Financiamiento Propio
                 </div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900 dark:text-white tracking-tight leading-tight">
                   Encuentra Tu Terreno Ideal en Guatemala
                 </h1>
-                <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto">
-                  Déjanos tus datos y un asesor te compartirá las opciones de terrenos con <strong>enganche desde Q500</strong> y cuotas mensuales hasta 10 años.
+                <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 max-w-md mx-auto leading-relaxed">
+                  Déjanos tus datos y un asesor te compartirá las opciones de terrenos con <strong className="text-zinc-800 dark:text-zinc-200 font-semibold">enganche desde Q500</strong> y cuotas mensuales de hasta 10 años.
                 </p>
               </div>
 
@@ -163,51 +166,52 @@ export function FormularioPublicoLead({ onIrACatalogo, onIrALogin }: FormularioP
                   aria-hidden="true"
                 />
 
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-200">Nombre Completo *</label>
+                <div className="space-y-3.5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Nombre Completo *</label>
                     <Input
                       required
                       placeholder="Ej. Juan Carlos Morales"
                       value={nombreCompleto}
                       onChange={e => setNombreCompleto(e.target.value)}
-                      className="h-10 bg-slate-950 border-slate-700 text-xs text-white"
+                      className="h-11 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500 focus-visible:ring-4 focus-visible:ring-emerald-500/15"
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-200">Teléfono / WhatsApp *</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Teléfono / WhatsApp *</label>
                       <Input
                         required
-                        placeholder="Ej. 55443322"
+                        placeholder="Ej. 5544-3322"
                         value={telefono}
                         onChange={e => setTelefono(e.target.value)}
-                        className="h-10 bg-slate-950 border-slate-700 text-xs text-white"
+                        className="h-11 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500 focus-visible:ring-4 focus-visible:ring-emerald-500/15"
                       />
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-200">Correo Electrónico (opcional)</label>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Correo Electrónico (opcional)</label>
                       <Input
                         type="email"
                         placeholder="ejemplo@correo.com"
                         value={email}
                         onChange={e => setEmail(e.target.value)}
-                        className="h-10 bg-slate-950 border-slate-700 text-xs text-white"
+                        className="h-11 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500 focus-visible:ring-4 focus-visible:ring-emerald-500/15"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-200">Proyecto de Interés</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Proyecto de Interés</label>
                       <select
+                        aria-label="Proyecto de Interés"
                         value={fincaId}
                         onChange={e => setFincaId(e.target.value)}
-                        className="w-full h-10 px-3 text-xs rounded-md border border-slate-700 bg-slate-950 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        className="w-full h-11 px-3.5 text-sm rounded-xl border border-black/[0.08] dark:border-white/[0.1] bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-900 dark:text-white focus:outline-none focus:bg-white dark:focus:bg-zinc-900 focus:ring-4 focus:ring-emerald-500/15 focus:border-emerald-500 transition-all"
                       >
-                        <option value="">-- Ver todos los proyectos --</option>
+                        <option value="">Todos los proyectos</option>
                         {fincas.map(f => (
                           <option key={f.id} value={f.id}>
                             {f.nombre} ({f.municipio})
@@ -216,51 +220,54 @@ export function FormularioPublicoLead({ onIrACatalogo, onIrALogin }: FormularioP
                       </select>
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-200">Presupuesto Estimado (Q)</label>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Presupuesto Estimado (Q)</label>
                       <Input
                         type="number"
                         placeholder="Ej. 65000"
                         value={presupuesto}
                         onChange={e => setPresupuesto(e.target.value)}
-                        className="h-10 bg-slate-950 border-slate-700 text-xs text-white"
+                        className="h-11 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500 focus-visible:ring-4 focus-visible:ring-emerald-500/15 tabular-nums"
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-200">¿Cómo prefieres ser contactado?</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
+                  {/* Selector segmentado estilo iOS / macOS */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">¿Cómo prefieres ser contactado?</label>
+                    <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-zinc-100 dark:bg-zinc-800 border border-black/[0.04] dark:border-white/[0.05]">
+                      <button
                         type="button"
-                        variant={medioContacto === 'whatsapp' ? 'default' : 'outline'}
                         onClick={() => setMedioContacto('whatsapp')}
-                        className={`h-9 text-xs gap-1.5 ${
-                          medioContacto === 'whatsapp' ? 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold' : 'border-slate-700 bg-slate-950 text-slate-300'
+                        className={`h-9 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                          medioContacto === 'whatsapp'
+                            ? 'bg-white dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                            : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
                         }`}
                       >
                         <WhatsappLogo size={16} weight="fill" /> Por WhatsApp
-                      </Button>
-                      <Button
+                      </button>
+                      <button
                         type="button"
-                        variant={medioContacto === 'llamada' ? 'default' : 'outline'}
                         onClick={() => setMedioContacto('llamada')}
-                        className={`h-9 text-xs gap-1.5 ${
-                          medioContacto === 'llamada' ? 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold' : 'border-slate-700 bg-slate-950 text-slate-300'
+                        className={`h-9 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                          medioContacto === 'llamada'
+                            ? 'bg-white dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                            : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
                         }`}
                       >
                         <PhoneCall size={16} weight="fill" /> Llamada Telefónica
-                      </Button>
+                      </button>
                     </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-200">Consulta o Mensaje (opcional)</label>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 pl-0.5">Consulta o Mensaje (opcional)</label>
                     <Input
                       placeholder="Ej. Me interesa conocer las opciones de pago a 5 años"
                       value={mensaje}
                       onChange={e => setMensaje(e.target.value)}
-                      className="h-10 bg-slate-950 border-slate-700 text-xs text-white"
+                      className="h-11 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border-black/[0.08] dark:border-white/[0.1] text-sm text-zinc-900 dark:text-white placeholder:text-zinc-400 focus-visible:bg-white dark:focus-visible:bg-zinc-900 focus-visible:border-emerald-500 focus-visible:ring-4 focus-visible:ring-emerald-500/15"
                     />
                   </div>
                 </div>
@@ -268,35 +275,37 @@ export function FormularioPublicoLead({ onIrACatalogo, onIrALogin }: FormularioP
                 <Button
                   type="submit"
                   disabled={enviando}
-                  className="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-extrabold text-sm shadow-lg gap-2 mt-2"
+                  className="w-full h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm shadow-[0_8px_20px_rgba(16,185,129,0.3)] gap-2 mt-2 transition-all active:scale-[0.99]"
                 >
                   <WhatsappLogo size={20} weight="fill" />
                   {enviando ? 'Enviando solicitud...' : 'Solicitar Información Inmediata'}
                 </Button>
 
-                <p className="text-[11px] text-center text-slate-400 flex items-center justify-center gap-1">
-                  <ShieldCheck size={14} className="text-emerald-400" />
+                <p className="text-[11px] text-center text-zinc-400 flex items-center justify-center gap-1.5 pt-1">
+                  <ShieldCheck size={15} weight="fill" className="text-emerald-500" />
                   Tus datos están 100% protegidos y no compartimos tu información.
                 </p>
               </form>
             </div>
           ) : (
-            <div className="text-center py-6 space-y-5">
-              <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/30">
+            <div className="text-center py-8 space-y-5">
+              <div className="w-16 h-16 rounded-3xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-xs">
                 <CheckCircle size={36} weight="fill" />
               </div>
 
               <div className="space-y-1.5">
-                <h2 className="text-2xl font-bold text-white">¡Muchas Gracias, {nombreCompleto.split(' ')[0]}!</h2>
-                <p className="text-xs sm:text-sm text-slate-300 max-w-sm mx-auto">
-                  Tu solicitud ha sido asignada a un asesor inmobiliario. Te contactaremos hoy mismo por {medioContacto === 'whatsapp' ? 'WhatsApp' : 'llamada'}.
+                <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">
+                  ¡Muchas Gracias, {nombreCompleto.split(' ')[0]}!
+                </h2>
+                <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 max-w-sm mx-auto leading-relaxed">
+                  Tu solicitud ha sido asignada a un asesor inmobiliario. Te contactaremos hoy mismo por {medioContacto === 'whatsapp' ? 'WhatsApp' : 'llamada telefónica'}.
                 </p>
               </div>
 
-              <div className="space-y-2 pt-2">
+              <div className="space-y-2.5 pt-2">
                 <Button
                   onClick={handleAbrirWhatsAppDirecto}
-                  className="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-extrabold text-sm gap-2 shadow-lg"
+                  className="w-full h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm gap-2 shadow-[0_8px_20px_rgba(16,185,129,0.3)]"
                 >
                   <WhatsappLogo size={20} weight="fill" />
                   Abrir Chat de WhatsApp Ahora
@@ -306,9 +315,9 @@ export function FormularioPublicoLead({ onIrACatalogo, onIrALogin }: FormularioP
                   <Button
                     variant="outline"
                     onClick={onIrACatalogo}
-                    className="w-full h-10 border-slate-700 bg-slate-950 text-slate-300 text-xs gap-1.5 hover:text-white"
+                    className="w-full h-11 rounded-2xl border-black/[0.08] dark:border-white/[0.1] bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 text-xs font-medium gap-1.5"
                   >
-                    <Compass size={15} /> Explorar Catálogo de Lotes
+                    <Compass size={16} /> Explorar Catálogo de Lotes
                   </Button>
                 )}
               </div>
@@ -318,10 +327,9 @@ export function FormularioPublicoLead({ onIrACatalogo, onIrALogin }: FormularioP
       </main>
 
       {/* FOOTER */}
-      <footer className="border-t border-slate-800/80 bg-slate-950 py-4 px-4 text-center text-[11px] text-slate-500">
+      <footer className="border-t border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-zinc-900 py-5 px-4 text-center text-[11px] text-zinc-400">
         © {new Date().getFullYear()} {empresaConfig.nombreEmpresa || 'Parcelia'} · Terrenos Urbanizados en Guatemala
       </footer>
     </div>
   )
 }
-

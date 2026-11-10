@@ -1824,6 +1824,7 @@ export const negociacionService = {
     estado?: string
     tipo_negociacion?: string
     cliente_id?: number
+    finca_id?: number
     per_page?: number | string
     page?: number
     busqueda?: string
@@ -1834,6 +1835,7 @@ export const negociacionService = {
     if (params?.estado && params.estado !== 'todos') query.append('estado', params.estado)
     if (params?.tipo_negociacion && params.tipo_negociacion !== '') query.append('tipo_negociacion', params.tipo_negociacion)
     if (params?.cliente_id) query.append('cliente_id', params.cliente_id.toString())
+    if (params?.finca_id) query.append('finca_id', params.finca_id.toString())
     if (params?.per_page !== undefined) query.append('per_page', params.per_page.toString())
     if (params?.page) query.append('page', params.page.toString())
     if (params?.busqueda) query.append('busqueda', params.busqueda.trim())

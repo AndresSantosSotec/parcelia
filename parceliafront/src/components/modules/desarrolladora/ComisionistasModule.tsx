@@ -9,10 +9,12 @@ import { toast } from 'sonner'
 import {
   api,
   comisionistaService,
+  fincaService,
   negociacionService,
   type ComisionItem,
   type ComisionistaItem,
   type ComisionRegla,
+  type Finca,
   type Negociacion,
 } from '@/lib/api'
 import { usePermissions } from '@/hooks/use-permissions'
@@ -30,6 +32,15 @@ const MOMENTO: Record<string, string> = {
   al_liquidar: 'Al liquidar la venta',
   proporcional: 'Conforme el comprador abona, hasta escriturar',
 }
+function etiquetaVenta(v: Negociacion) {
+  const comprador = v.comprador || v.cliente
+  const nombre = comprador
+    ? [comprador.nombres, comprador.apellidos].filter(Boolean).join(' ').trim() || comprador.nombre || ''
+    : ''
+  const lote = v.lote?.numero_lote || v.lote?.codigo_unico || 'lote'
+  return `${v.codigo_negociacion} · lote ${lote}${nombre ? ` · ${nombre}` : ''} · ${q(v.precio_final)}`
+}
+
 const BASE: Record<string, string> = {
   precio_final: 'Precio final de la venta',
   precio_venta: 'Precio de lista',
@@ -48,6 +59,9 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
   const [reglas, setReglas] = useState<ComisionRegla[]>([])
   const [comisiones, setComisiones] = useState<ComisionItem[]>([])
   const [ventas, setVentas] = useState<Negociacion[]>([])
+  const [fincas, setFincas] = useState<Finca[]>([])
+  const [fincaId, setFincaId] = useState('')
+  const [cargandoVentas, setCargandoVentas] = useState(false)
   const [persona, setPersona] = useState({ nombre: '', telefono: '', direccion: '', dpi: '' })
   const [regla, setRegla] = useState({ nombre: '', tipo: 'porcentaje', base: 'precio_final', valor: '', momento: 'al_contrato' })
   const [aplicar, setAplicar] = useState({ comisionista_id: '', negociacion_id: '', regla_id: '', monto: '' })
@@ -77,13 +91,39 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
       comisionistaService.listar(),
       comisionistaService.reglas(),
       comisionistaService.comisiones(),
-      negociacionService.getAll({ per_page: 200 }),
+      fincaService.getAll(),
     ])
     setPersonas(a.data || [])
     setReglas(b.data || [])
     setComisiones(c.data || [])
-    setVentas(Array.isArray(d.data) ? d.data : [])
+    setFincas(Array.isArray(d.data) ? d.data : [])
   }, [])
+
+  useEffect(() => {
+    if (!fincaId) {
+      setVentas([])
+      return
+    }
+    let vivo = true
+    setCargandoVentas(true)
+    negociacionService.getAll({ finca_id: Number(fincaId), per_page: 500 })
+      .then(async (res) => {
+        const lista = Array.isArray(res.data) ? [...res.data] : []
+        const ultima = Number(res.pagination?.last_page || 1)
+        for (let page = 2; page <= ultima; page += 1) {
+          const sig = await negociacionService.getAll({ finca_id: Number(fincaId), per_page: 500, page })
+          if (Array.isArray(sig.data)) lista.push(...sig.data)
+        }
+        if (vivo) setVentas(lista)
+      })
+      .catch(() => {
+        if (vivo) toast.error('No se pudieron cargar las ventas de esa finca')
+      })
+      .finally(() => {
+        if (vivo) setCargandoVentas(false)
+      })
+    return () => { vivo = false }
+  }, [fincaId])
 
   useEffect(() => {
     cargar().catch(() => toast.error('No se pudo cargar comisionistas'))
@@ -352,13 +392,34 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
               <CardHeader><CardTitle>Ligar una comisión a una venta</CardTitle></CardHeader>
               <CardContent className="grid gap-3 md:grid-cols-2">
                 <div>
-                  <Label>Venta de terreno</Label>
-                  <select className={campo} value={aplicar.negociacion_id} onChange={(e) => setAplicar({ ...aplicar, negociacion_id: e.target.value })}>
+                  <Label>Proyecto / finca</Label>
+                  <select
+                    className={campo}
+                    value={fincaId}
+                    onChange={(e) => {
+                      setFincaId(e.target.value)
+                      setAplicar({ ...aplicar, negociacion_id: '' })
+                    }}
+                  >
                     <option value="">Elegir</option>
+                    {fincas.map((f) => (
+                      <option key={f.id} value={f.id}>{f.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label>Venta de terreno</Label>
+                  <select
+                    className={campo}
+                    value={aplicar.negociacion_id}
+                    disabled={!fincaId || cargandoVentas}
+                    onChange={(e) => setAplicar({ ...aplicar, negociacion_id: e.target.value })}
+                  >
+                    <option value="">
+                      {!fincaId ? 'Primero elige el proyecto' : cargandoVentas ? 'Cargando ventas...' : ventas.length === 0 ? 'Esta finca no tiene ventas' : 'Elegir'}
+                    </option>
                     {ventas.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.codigo_negociacion} · {v.lote?.numero_lote || v.lote?.codigo_unico || 'lote'} · {q(v.precio_final)}
-                      </option>
+                      <option key={v.id} value={v.id}>{etiquetaVenta(v)}</option>
                     ))}
                   </select>
                 </div>
@@ -429,6 +490,7 @@ export function ComisionistasModule({ userSession }: { userSession?: { userData?
                       regla_id: aplicar.regla_id ? Number(aplicar.regla_id) : null,
                       monto_comision: aplicar.regla_id ? null : Number(aplicar.monto),
                     })
+                    setFincaId('')
                     setAplicar({ comisionista_id: '', negociacion_id: '', regla_id: '', monto: '' })
                     await cargar()
                     toast.success('Comisión ligada a la venta')

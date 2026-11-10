@@ -43,6 +43,13 @@ class NegociacionController extends Controller
             $query->where('cliente_id', $request->cliente_id);
         }
 
+        if ($request->filled('finca_id')) {
+            $fincaId = (int) $request->input('finca_id');
+            $query->whereHas('lote.parcela', function ($pq) use ($fincaId) {
+                $pq->where('finca_id', $fincaId);
+            });
+        }
+
         if ($request->filled('_sucursal_scope')) {
             $query->where('sucursal_id', $request->_sucursal_scope);
         }

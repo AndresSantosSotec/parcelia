@@ -6,6 +6,7 @@ use App\Models\ConfiguracionSistema;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 
 class ConfiguracionSistemaController extends Controller
 {
@@ -153,10 +154,27 @@ class ConfiguracionSistemaController extends Controller
     public function getEmpresaConfig(): JsonResponse
     {
         $config = \App\Helpers\EmpresaConfigHelper::getConfig();
+        $config['logoUrl'] = $this->logoParaCliente($config['logoUrl'] ?? null);
 
         return response()->json([
             'success' => true,
             'data'    => $config,
+        ]);
+    }
+
+    /**
+     * Imagen del logotipo. /storage queda bloqueado en el servidor, así que se entrega por la API.
+     * GET /api/v1/empresa-config/logo
+     */
+    public function logo()
+    {
+        $ruta = $this->rutaLogo();
+        if (!$ruta) {
+            return response()->json(['success' => false, 'message' => 'No hay logotipo'], 404);
+        }
+
+        return response()->file($ruta, [
+            'Cache-Control' => 'public, max-age=3600',
         ]);
     }
 
@@ -202,6 +220,7 @@ class ConfiguracionSistemaController extends Controller
         }
 
         $guardado = \App\Helpers\EmpresaConfigHelper::setConfig($data);
+        $guardado['logoUrl'] = $this->logoParaCliente($guardado['logoUrl'] ?? null);
 
         return response()->json([
             'success' => true,
@@ -244,12 +263,69 @@ class ConfiguracionSistemaController extends Controller
         $config = \App\Helpers\EmpresaConfigHelper::getConfig();
         $config['logoUrl'] = $url;
         \App\Helpers\EmpresaConfigHelper::setConfig($config);
+        $publico = $this->logoParaCliente($url);
 
         return response()->json([
             'success' => true,
             'message' => 'Logo oficial actualizado correctamente.',
-            'logoUrl' => $url,
-            'data'    => $config,
+            'logoUrl' => $publico,
+            'data'    => array_merge($config, ['logoUrl' => $publico]),
         ]);
+    }
+
+    private function logoParaCliente(?string $logoUrl): ?string
+    {
+        if (!$logoUrl) {
+            return null;
+        }
+        if (str_starts_with($logoUrl, 'data:image/')) {
+            return $logoUrl;
+        }
+        $ruta = $this->rutaLogo();
+        if (!$ruta) {
+            return $logoUrl;
+        }
+
+        $version = @filemtime($ruta) ?: time();
+
+        return $this->origenPublico().'/api/v1/empresa-config/logo?v='.$version;
+    }
+
+    private function rutaLogo(): ?string
+    {
+        try {
+            $disk = Storage::disk('public');
+            $configUrl = (string) (\App\Helpers\EmpresaConfigHelper::getConfig()['logoUrl'] ?? '');
+            $relativo = null;
+            if (preg_match('#/storage/([^?]+)#', $configUrl, $coincidencia)) {
+                $candidato = ltrim($coincidencia[1], '/');
+                if (preg_match('#^logos/[A-Za-z0-9._-]+$#', $candidato)) {
+                    $relativo = $candidato;
+                }
+            }
+            if ($relativo && $disk->exists($relativo)) {
+                return $disk->path($relativo);
+            }
+
+            $archivos = collect($disk->files('logos'))
+                ->filter(fn ($archivo) => preg_match('/\.(png|jpe?g|webp|gif|svg)$/i', $archivo))
+                ->sortByDesc(fn ($archivo) => $disk->lastModified($archivo))
+                ->values();
+            $primero = $archivos->first();
+
+            return $primero ? $disk->path($primero) : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function origenPublico(): string
+    {
+        $origen = request()->getSchemeAndHttpHost();
+        if ($origen) {
+            return rtrim($origen, '/');
+        }
+
+        return rtrim((string) config('app.url'), '/');
     }
 }

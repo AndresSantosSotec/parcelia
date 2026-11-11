@@ -253,7 +253,12 @@ export function SimuladorModule(_props: SimuladorModuleProps = {}) {
                     onChange={(e) => setPlazoMeses(parseInt(e.target.value) || 12)}
                     className="w-full bg-background border rounded-lg p-2 text-xs font-semibold"
                   >
-                    <option value={12}>12 meses (1 año)</option>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((meses) => (
+                      <option key={meses} value={meses}>
+                        {meses === 1 ? '1 mes' : `${meses} meses`}
+                        {meses === 12 ? ' (1 año)' : ''}
+                      </option>
+                    ))}
                     <option value={24}>24 meses (2 años)</option>
                     <option value={36}>36 meses (3 años)</option>
                     <option value={48}>48 meses (4 años)</option>

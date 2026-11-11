@@ -86,6 +86,7 @@ Route::prefix('v1')->group(function () {
 
     // Configuración pública de empresa/marca (logo, nombres, etc.)
     Route::get('/empresa-config', [ConfiguracionSistemaController::class, 'getEmpresaConfig']);
+    Route::get('/empresa-config/logo', [ConfiguracionSistemaController::class, 'logo'])->middleware('throttle:120,1');
 
     Route::get('/publico/terrenos/{token}', [LoteController::class, 'publico'])->middleware('throttle:60,1');
     Route::get('/publico/media/lotes/{id}', [LoteController::class, 'media'])->middleware('throttle:120,1');

@@ -558,6 +558,15 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
     e.preventDefault()
     if (!negociacionSeleccionada) return
 
+    if (contadoYaCobrado(negociacionSeleccionada)) {
+      toast.error('Esta venta de contado ya está cobrada. No se puede registrar otro pago.')
+      return
+    }
+    if (negociacionSeleccionada.tipo_negociacion === 'contado' && formPago.tipo_pago !== 'pago_total') {
+      toast.error('En una venta de contado solo se liquida el saldo. No se registra abono a capital.')
+      return
+    }
+
     if (cajaPagoAbierta !== true || !cajaPagoId) {
       avisarAbrirCaja()
       return
@@ -748,20 +757,29 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
     navigate('caja')
   }
 
-  const abrirPago = async (neg: Negociacion) => {
-    setNegociacionSeleccionada(neg)
-    const cuotaSugerida = neg.saldo_capital_pendiente > 0 ? (neg.cuota_mensual || neg.saldo_capital_pendiente) : 0
-    const esEnganche = neg.enganche_pagado < neg.enganche_pactado
-    const tipoInicial = esEnganche ? 'enganche' : 'cuota_normal'
+  const contadoYaCobrado = (neg: Negociacion) =>
+    neg.tipo_negociacion === 'contado' && Number(neg.saldo_capital_pendiente || 0) <= 0.05
 
-    setCuotaBaseSugerida(cuotaSugerida)
+  const abrirPago = async (neg: Negociacion) => {
+    if (contadoYaCobrado(neg)) {
+      toast.error('Esta venta de contado ya está cobrada. No se puede registrar otro pago.')
+      return
+    }
+    setNegociacionSeleccionada(neg)
+    const esContado = neg.tipo_negociacion === 'contado'
+    const cuotaSugerida = neg.saldo_capital_pendiente > 0 ? (neg.cuota_mensual || neg.saldo_capital_pendiente) : 0
+    const esEnganche = !esContado && neg.enganche_pagado < neg.enganche_pactado
+    const tipoInicial = esContado ? 'pago_total' : esEnganche ? 'enganche' : 'cuota_normal'
+    const montoInicial = esContado ? Number(neg.saldo_capital_pendiente || 0) : cuotaSugerida
+
+    setCuotaBaseSugerida(esContado ? montoInicial : cuotaSugerida)
     setMoraCalculada(0)
     setMoraEditada(0)
     setCargandoMoraPago(true)
 
     setFormPago({
       tipo_pago: tipoInicial,
-      monto: cuotaSugerida,
+      monto: esContado ? montoInicial : cuotaSugerida,
       metodo_pago: 'efectivo',
       referencia_bancaria: '',
       observaciones: '',
@@ -1216,17 +1234,17 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                     </div>
                   </div>
                   <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 pt-1">
-                    <Button size="sm" variant="default" onClick={() => abrirEstadoCuenta(neg, 'kardex')} className="h-8.5 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium" title="Reimprimir tickets y recibos de pago">
+                    {neg.estado !== 'rescindida' && !contadoYaCobrado(neg) && (
+                      <Button size="sm" variant="default" onClick={() => abrirPago(neg)} className="col-span-2 sm:col-span-1 h-9 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs">
+                        <Wallet size={15} /> Cobrar / Registrar Pago
+                      </Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={() => abrirEstadoCuenta(neg, 'kardex')} className="h-8.5 gap-1.5 text-xs font-medium" title="Reimprimir tickets y recibos de pago">
                       <Printer size={15} /> Recibos / Ticket
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => abrirEstadoCuenta(neg, 'plan')} className="h-8.5 gap-1.5 text-xs font-medium">
                       <Receipt size={15} /> Cuotas & Estado
                     </Button>
-                    {neg.estado !== 'rescindida' && (
-                      <Button size="sm" variant="outline" onClick={() => abrirPago(neg)} className="h-8.5 gap-1.5 text-xs text-primary border-primary/30 hover:bg-primary/10">
-                        <Wallet size={15} /> Registrar Pago
-                      </Button>
-                    )}
                     {puedeEditarFecha && neg.estado !== 'rescindida' && (
                       <Button size="sm" variant="outline" onClick={() => abrirEditarFecha(neg)} className="h-8.5 gap-1 text-xs" title="Cambiar fecha de venta / contrato">
                         <Calendar size={14} /> Fecha
@@ -1252,7 +1270,7 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                   <th className="py-3 px-4">Saldo Pendiente</th>
                   <th className="py-3 px-4">Progreso</th>
                   <th className="py-3 px-4">Estado</th>
-                  <th className="py-3 px-4 text-right">Acciones</th>
+                  <th className="py-3 px-4 text-right sticky right-0 z-10 bg-muted/95 backdrop-blur-sm border-l border-border/60 shadow-[-8px_0_16px_-8px_rgba(0,0,0,0.08)]">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -1333,32 +1351,36 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                         {neg.estado === 'reservada' && <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30">Reservado</Badge>}
                         {neg.estado === 'rescindida' && <Badge variant="outline">Rescindida</Badge>}
                       </td>
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <Button size="sm" variant="outline" onClick={() => handleDescargarContratoPdf(neg)} disabled={descargandoDoc === 'contrato'} className="h-8 gap-1 text-xs text-emerald-700 hover:text-emerald-800 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" title="Descargar Contrato Legal de Promesa de Compraventa a Plazos">
-                            <FileText size={14} /> Promesa PDF
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => abrirEstadoCuenta(neg)} className="h-8 gap-1 text-xs">
-                            <Receipt size={14} /> Estado Cuenta
-                          </Button>
-                          {puedeEditarFecha && neg.estado !== 'rescindida' && (
-                            <Button size="sm" variant="outline" onClick={() => abrirEditarFecha(neg)} className="h-8 gap-1 text-xs" title="Cambiar fecha de venta y recalcular cronograma">
-                              <Calendar size={14} /> Cambiar fecha
+                      <td className="py-3 px-3 text-right sticky right-0 z-10 bg-card/95 backdrop-blur-sm border-l border-border/60 shadow-[-8px_0_16px_-8px_rgba(0,0,0,0.08)]">
+                        <div className="flex flex-col items-end gap-1.5 min-w-[195px]">
+                          <div className="flex items-center justify-end gap-1.5 w-full">
+                            {neg.estado !== 'rescindida' && !contadoYaCobrado(neg) && (
+                              <Button size="sm" onClick={() => abrirPago(neg)} className="h-8 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs flex-1 justify-center">
+                                <Wallet size={14} /> Cobrar
+                              </Button>
+                            )}
+                            <Button size="sm" variant="outline" onClick={() => abrirEstadoCuenta(neg)} className="h-8 gap-1 text-xs">
+                              <Receipt size={14} /> Estado Cuenta
                             </Button>
-                          )}
-                          <Button size="sm" variant="ghost" onClick={() => handleDescargarPlanPagosPdf(neg)} className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground" disabled={descargandoDoc === 'plan'}>
-                            <DownloadSimple size={14} /> Plan
-                          </Button>
-                          {neg.estado !== 'rescindida' && (
-                            <Button size="sm" onClick={() => abrirPago(neg)} className="h-8 gap-1 text-xs">
-                              <Wallet size={14} /> Cobrar
+                          </div>
+                          <div className="flex items-center justify-end gap-1 flex-wrap">
+                            <Button size="sm" variant="outline" onClick={() => handleDescargarContratoPdf(neg)} disabled={descargandoDoc === 'contrato'} className="h-7 px-2 gap-1 text-[11px] text-emerald-700 hover:text-emerald-800 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" title="Descargar Contrato Legal de Promesa de Compraventa a Plazos">
+                              <FileText size={13} /> Promesa PDF
                             </Button>
-                          )}
-                          {neg.estado !== 'rescindida' && (
-                            <Button size="sm" variant="ghost" onClick={() => abrirRescision(neg)} className="h-8 gap-1 text-xs text-destructive">
-                              <XCircle size={14} /> Rescindir
+                            <Button size="sm" variant="ghost" onClick={() => handleDescargarPlanPagosPdf(neg)} className="h-7 px-2 gap-1 text-[11px] text-muted-foreground hover:text-foreground" disabled={descargandoDoc === 'plan'}>
+                              <DownloadSimple size={13} /> Plan
                             </Button>
-                          )}
+                            {puedeEditarFecha && neg.estado !== 'rescindida' && (
+                              <Button size="sm" variant="ghost" onClick={() => abrirEditarFecha(neg)} className="h-7 px-2 gap-1 text-[11px] text-muted-foreground hover:text-foreground" title="Cambiar fecha de venta y recalcular cronograma">
+                                <Calendar size={13} /> Fecha
+                              </Button>
+                            )}
+                            {neg.estado !== 'rescindida' && (
+                              <Button size="sm" variant="ghost" onClick={() => abrirRescision(neg)} className="h-7 px-2 gap-1 text-[11px] text-destructive hover:bg-destructive/10">
+                                <XCircle size={13} /> Rescindir
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -2179,11 +2201,17 @@ export function NegociacionesModule({ userSession }: { userSession?: { userData?
                     }}
                     className="w-full rounded-lg border border-border bg-background p-2.5 text-sm text-foreground"
                   >
-                    <option value="cuota_normal">Pago de Cuota Ordinaria</option>
-                    <option value="enganche">Pago de Enganche</option>
-                    <option value="abono_capital">Abono Extraordinario a Capital</option>
-                    <option value="pago_total">Liquidación Total de Saldo</option>
-                    <option value="gastos_escritura">Gastos de Escrituración</option>
+                    {negociacionSeleccionada.tipo_negociacion === 'contado' ? (
+                      <option value="pago_total">Liquidación de la venta de contado</option>
+                    ) : (
+                      <>
+                        <option value="cuota_normal">Pago de Cuota Ordinaria</option>
+                        <option value="enganche">Pago de Enganche</option>
+                        <option value="abono_capital">Abono Extraordinario a Capital</option>
+                        <option value="pago_total">Liquidación Total de Saldo</option>
+                        <option value="gastos_escritura">Gastos de Escrituración</option>
+                      </>
+                    )}
                   </select>
                 </div>
 

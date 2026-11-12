@@ -70,6 +70,15 @@ class PaymentAllocationService
                 throw new InvalidArgumentException('No se pueden registrar pagos sobre una negociación liquidada o rescindida.');
             }
 
+            if ($negociacion->tipo_negociacion === 'contado') {
+                $yaCobrada = PagoTerreno::where('negociacion_id', $negociacion->id)
+                    ->where('anulado', false)
+                    ->exists();
+                if ($yaCobrada) {
+                    throw new InvalidArgumentException('La venta de contado ya tiene su recibo. No se registra otro pago.');
+                }
+            }
+
             if ($idempotencyKey) {
                 $existente = PagoTerreno::where('idempotency_key', $idempotencyKey)->first();
                 if ($existente) {
@@ -121,6 +130,16 @@ class PaymentAllocationService
                     $fechaEfectiva,
                     $moraPersonalizada
                 );
+            }
+
+            $aplicado = round($distCapital + $distInteres + $distMora + $distGastos, 2);
+            if ($aplicado < 0.01) {
+                throw new InvalidArgumentException('El pago no aplica a ningún saldo pendiente.');
+            }
+
+            if ($negociacion->tipo_negociacion === 'contado') {
+                $negociacion->enganche_pagado = (float) $negociacion->enganche_pactado;
+                $negociacion->save();
             }
 
             $this->actualizarEstadoTrasPago($negociacion, $saldoPosterior);
